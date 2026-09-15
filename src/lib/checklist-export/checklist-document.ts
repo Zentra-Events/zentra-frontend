@@ -15,8 +15,7 @@ export const CHECKLIST_EXPORT_COLUMNS = [
     "Days",
     "Vendor",
     "Status",
-    "Start Date",
-    "End Date",
+    "Deadline",
 ] as const;
 
 export const CHECKLIST_COLUMN_COUNT = CHECKLIST_EXPORT_COLUMNS.length;

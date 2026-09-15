@@ -44,14 +44,12 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 "",
                 "",
                 "",
-                "",
             ]);
             segment.rowMeta.push({ fillColor: PDF_COLORS.categoryBg, fontStyle: "bold" });
         } else if (exportRow.type === "subCategory") {
             segment.body.push([
                 "",
                 `Sub Category: ${exportRow.name}`,
-                "",
                 "",
                 "",
                 "",
@@ -72,8 +70,7 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 item.days != null ? String(item.days) : "—",
                 exportRow.vendorDisplay,
                 item.status || "PENDING",
-                item.startDate || "—",
-                item.endDate || "—",
+                item.deadlineDate || "—",
             ]);
             segment.rowMeta.push({});
         }

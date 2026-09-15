@@ -233,10 +233,8 @@ async function populateWorksheet(
                 row.getCell(7).alignment = { horizontal: "left", vertical: "top", wrapText: true };
                 row.getCell(8).value = item.status || "PENDING";
                 row.getCell(8).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(9).value = item.startDate || "—";
+                row.getCell(9).value = item.deadlineDate || "—";
                 row.getCell(9).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(10).value = item.endDate || "—";
-                row.getCell(10).alignment = { horizontal: "center", vertical: "top" };
                 applyBorderRange(row, 1, CHECKLIST_COLUMN_COUNT);
                 row.height = 28;
                 rowIndex += 1;

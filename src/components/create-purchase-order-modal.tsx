@@ -4,8 +4,13 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Table, type Column } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
+import { InlineNumber } from "@/components/ui/inline-number";
+import { InlineUnitSelect } from "@/components/ui/inline-unit-select";
+import { QUANTITY_UNITS } from "@/lib/utils/artifact-utils";
+import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import { cn } from "@/lib/utils/cn";
 import type { EventResponse, VendorSummary } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
@@ -13,6 +18,18 @@ import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+
+const GST_TYPE_OPTIONS: { label: string; value: string }[] = [
+    { label: "No GST", value: "NONE" },
+    { label: "CGST + SGST", value: "CGST_SGST" },
+    { label: "IGST", value: "IGST" },
+];
+
+const GST_LABEL_BY_TYPE: Record<string, string> = {
+    NONE: "GST",
+    CGST_SGST: "CGST + SGST",
+    IGST: "IGST",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Raw API item type – matches EventResponse.items shape              */
@@ -27,6 +44,8 @@ interface RawEventItem {
     days?: number;
     serialNumber?: number;
     category?: string;
+    subCategory?: string;
+    unit?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -40,18 +59,33 @@ interface LineItem {
     qty: number;
     rate: number;
     days: number;
+    unit?: string;
+    /** Flat index into the editable items array, used to write edits back. */
+    srcIndex: number;
     subCategory?: string;
+}
+
+interface SubCategoryGroup {
+    id: string;
+    name: string;
+    items: LineItem[];
 }
 
 interface CategorySection {
     id: string;
     title: string;
     description: string;
+    /** Flat list of all items in the category (direct items then sub-category items). */
     items: LineItem[];
+    /** Items without a sub-category. */
+    directItems: LineItem[];
+    /** Items grouped under their respective sub-category headers. */
+    subCategories: SubCategoryGroup[];
 }
 
 interface Financials {
     subtotal: number;
+    gstType: string;
     gstPercent: number;
     tdsPercent: number;
     advance: number;
@@ -76,7 +110,7 @@ interface CreatePurchaseOrderModalProps {
 /* ------------------------------------------------------------------ */
 
 /** Convert a RawEventItem into a LineItem for display in the table. */
-function toLineItem(item: RawEventItem, index: number): LineItem {
+function toLineItem(item: RawEventItem, index: number, srcIndex: number): LineItem {
     return {
         id: `item-${index}`,
         itemName: item.item ?? "",
@@ -84,48 +118,87 @@ function toLineItem(item: RawEventItem, index: number): LineItem {
         qty: item.quantity ?? 1,
         rate: item.pricePerItem ?? 0,
         days: item.days ?? 1,
+        unit: item.unit && item.unit.trim() ? item.unit.trim() : "nos",
+        srcIndex,
     };
 }
 
 /**
- * Group items from `itemList` by category for a given vendor ID.
+ * Group items from `items` by category for a given vendor ID.
  * Returns an array of CategorySection suitable for display.
+ * Each produced LineItem carries `srcIndex` so qty/rate edits can be
+ * written back to the flat editable items array used by the table editors.
  */
 function groupItemsByCategory(
     items: RawEventItem[],
     vendorId: string | undefined,
 ): CategorySection[] {
-    // Filter to items belonging to this vendor
-    const vendorItems = items.filter(eventItem => {
+    // Filter to items belonging to this vendor, remembering each flat index.
+    const vendorItems: { eventItem: RawEventItem; srcIndex: number }[] = [];
+    items.forEach((eventItem, srcIndex) => {
         const eventVendor = eventItem.vendor;
+        let matches = false;
         if (vendorId === "SELF") {
             // For SELF (inventory) items, match items with no vendor or vendor "SELF"
-            return !eventVendor || eventVendor === "SELF";
+            matches = !eventVendor || eventVendor === "SELF";
+        } else if (eventVendor) {
+            matches = vendorId ? eventVendor === vendorId : true;
         }
-        if (!eventVendor) return false;
-        if (vendorId) {
-            return eventVendor === vendorId;
+        if (matches) {
+            vendorItems.push({ eventItem, srcIndex });
         }
-        return true;
     });
 
     // Group remaining items by category
-    const grouped = new Map<string, RawEventItem[]>();
-    vendorItems.forEach(eventItem => {
+    const grouped = new Map<string, { eventItem: RawEventItem; srcIndex: number }[]>();
+    vendorItems.forEach(({ eventItem, srcIndex }) => {
         const category = eventItem.category ?? "Uncategorized";
         if (!grouped.has(category)) {
             grouped.set(category, []);
         }
-        grouped.get(category)!.push(eventItem);
+        grouped.get(category)!.push({ eventItem, srcIndex });
     });
 
-    // Convert each group to a CategorySection
-    return Array.from(grouped.entries()).map(([category, categoryItems], idx) => ({
-        id: `category-${idx}`,
-        title: category,
-        description: `Procurement for ${category}`,
-        items: categoryItems.map((item, i) => toLineItem(item, i)),
-    }));
+    // Convert each group to a CategorySection with optional subcategory grouping
+    return Array.from(grouped.entries()).map(([category, categoryItems], idx) => {
+        // Partition the category's items into direct items (no sub-category) and
+        // items grouped under their respective sub-category headers.
+        const directItems: LineItem[] = [];
+        const subMap = new Map<string, LineItem[]>();
+        const subOrder: string[] = [];
+
+        categoryItems.forEach(({ eventItem, srcIndex }, i) => {
+            const lineItem = toLineItem(eventItem, i, srcIndex);
+            const sub = eventItem.subCategory?.trim();
+            if (sub) {
+                if (!subMap.has(sub)) {
+                    subMap.set(sub, []);
+                    subOrder.push(sub);
+                }
+                subMap.get(sub)!.push(lineItem);
+            } else {
+                directItems.push(lineItem);
+            }
+        });
+
+        const subCategories: SubCategoryGroup[] = subOrder.map((name, subIdx) => ({
+            id: `sub-${idx}-${subIdx}`,
+            name,
+            items: subMap.get(name)!,
+        }));
+
+        // Flat list preserving order: direct items first, then each sub-category's items.
+        const items = [...directItems, ...subCategories.flatMap(sub => sub.items)];
+
+        return {
+            id: `category-${idx}`,
+            title: category,
+            description: `Procurement for ${category}`,
+            items,
+            directItems,
+            subCategories,
+        };
+    });
 }
 
 /** Determine the set of vendors that appear in the item list. */
@@ -155,6 +228,7 @@ function buildFinancialsFromSummary(
     if (vs) {
         return {
             subtotal: vs.totalAmount ?? computedSubtotal,
+            gstType: vs.gstType ?? "NONE",
             gstPercent: vs.gst ?? 0,
             tdsPercent: vs.tds ?? 0,
             advance: vs.advanceAmount ?? 0,
@@ -163,6 +237,7 @@ function buildFinancialsFromSummary(
     }
     return {
         subtotal: computedSubtotal,
+        gstType: "NONE",
         gstPercent: 0,
         tdsPercent: 0,
         advance: 0,
@@ -219,6 +294,27 @@ export function CreatePurchaseOrderModal({
     const [activeVendorId, setActiveVendorId] = useState<string>("");
     const [showBreakdown, setShowBreakdown] = useState(false);
 
+    /* ---------- Save / checklist-update confirmation ---------- */
+    const [isSaving, setIsSaving] = useState(false);
+    const [showChecklistConfirmation, setShowChecklistConfirmation] = useState(false);
+
+    /* ---------- Editable working copy of line items ----------
+     * Initialised from the event items each time the modal opens, and then
+     * mutated in place by the inline qty/rate/unit editors. This is the source
+     * of truth for both the table and the payload saved back to the API. */
+    const [editableItems, setEditableItems] = useState<RawEventItem[]>([]);
+    // Snapshot of the working copy taken when the modal opens; used to detect
+    // whether the user changed any editable line-item value before saving.
+    const [originalItems, setOriginalItems] = useState<RawEventItem[]>([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            const init = itemList.map(it => ({ ...it }));
+            setEditableItems(init);
+            setOriginalItems(init.map(it => ({ ...it })));
+        }
+    }, [isOpen]);
+
     // Reset active vendor when vendors change
     useEffect(() => {
         if (vendors.length > 0) {
@@ -232,9 +328,9 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Derive categories for active vendor ---------- */
     const categories: CategorySection[] = useMemo(() => {
-        if (!itemList || !activeVendorId) return [];
-        return groupItemsByCategory(itemList, activeVendorId);
-    }, [itemList, activeVendorId]);
+        if (!editableItems || !activeVendorId) return [];
+        return groupItemsByCategory(editableItems, activeVendorId);
+    }, [editableItems, activeVendorId]);
 
     /* ---------- Computed subtotal from items ---------- */
     const computedSubtotal = useMemo(() => {
@@ -243,6 +339,25 @@ export function CreatePurchaseOrderModal({
             0,
         );
     }, [categories]);
+
+    /* ---------- Detect whether any editable line-item value changed ---------- */
+    // Compares the working copy of line items against the snapshot taken when
+    // the modal opened. When any qty / rate / unit differs, saving will require
+    // a confirmation because the change will propagate to the event checklist.
+    const editableItemsChanged = useMemo(() => {
+        if (editableItems.length !== originalItems.length) return true;
+        return originalItems.some((orig, i) => {
+            const cur = editableItems[i];
+            if (!cur) return true;
+            const origUnit = orig.unit?.trim() || "nos";
+            const curUnit = cur.unit?.trim() || "nos";
+            return (
+                (orig.quantity ?? 1) !== (cur.quantity ?? 1) ||
+                (orig.pricePerItem ?? 0) !== (cur.pricePerItem ?? 0) ||
+                origUnit !== curUnit
+            );
+        });
+    }, [editableItems, originalItems]);
 
     /* ---------- Per‑vendor financials state so edits survive vendor switches ---------- */
     const [financialsByVendor, setFinancialsByVendor] = useState<Record<string, Financials>>({});
@@ -292,6 +407,7 @@ export function CreatePurchaseOrderModal({
         return (
             financialsByVendor[activeVendorId] ?? {
                 subtotal: computedSubtotal,
+                gstType: "NONE",
                 gstPercent: 0,
                 tdsPercent: 0,
                 advance: 0,
@@ -314,7 +430,7 @@ export function CreatePurchaseOrderModal({
         return vendors.some(v => {
             const f = financialsByVendor[v.id];
             if (!f) return false;
-            const cats = groupItemsByCategory(itemList, v.id);
+            const cats = groupItemsByCategory(editableItems, v.id);
             const computed = cats.reduce(
                 (sum, section) =>
                     sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
@@ -322,7 +438,7 @@ export function CreatePurchaseOrderModal({
             );
             return Math.abs(f.subtotal - computed) > 0.01;
         });
-    }, [vendors, financialsByVendor, itemList]);
+    }, [vendors, financialsByVendor, editableItems]);
 
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
@@ -358,8 +474,8 @@ export function CreatePurchaseOrderModal({
             const current = prev[activeVendorId];
             if (!current) return prev;
             let updated: Financials;
-            if (field === "note") {
-                updated = { ...current, note: value };
+            if (field === "note" || field === "gstType") {
+                updated = { ...current, [field]: value };
             } else if (value === "") {
                 updated = { ...current, [field]: value };
             } else {
@@ -370,6 +486,29 @@ export function CreatePurchaseOrderModal({
             return { ...prev, [activeVendorId]: updated };
         });
     };
+
+    /* ---------- Inline edit handler for line items ---------- */
+    // Writes a qty/rate/unit edit back into the editable items working copy.
+    // Recomputing `categories`/`computedSubtotal` from `editableItems` then
+    // automatically propagates the new subtotal to balances/breakdown.
+    const updateLineItem = useCallback(
+        (srcIndex: number, field: "qty" | "rate" | "unit", value: number | string) => {
+            setEditableItems(prev => {
+                if (srcIndex < 0 || srcIndex >= prev.length) return prev;
+                const next = [...prev];
+                const current = next[srcIndex];
+                if (field === "qty") {
+                    next[srcIndex] = { ...current, quantity: value as number };
+                } else if (field === "rate") {
+                    next[srcIndex] = { ...current, pricePerItem: value as number };
+                } else if (field === "unit") {
+                    next[srcIndex] = { ...current, unit: value as string };
+                }
+                return next;
+            });
+        },
+        [],
+    );
 
     /* ---------- Line item columns (display-only) ---------- */
     const lineItemColumns: Column<LineItem>[] = [
@@ -412,7 +551,31 @@ export function CreatePurchaseOrderModal({
             header: "Qty",
             align: "center",
             cellClassName: "w-16",
-            render: (item: LineItem) => <span className="text-sm">{item.qty}</span>,
+            render: (item: LineItem) => (
+                <InlineNumber
+                    value={item.qty}
+                    min={1}
+                    step={1}
+                    className="text-xs"
+                    data-field="qty"
+                    onSave={val => updateLineItem(item.srcIndex, "qty", val)}
+                />
+            ),
+        },
+        {
+            key: "unit",
+            header: "Unit",
+            align: "center",
+            cellClassName: "w-16",
+            render: (item: LineItem) => (
+                <InlineUnitSelect
+                    value={item.unit || "nos"}
+                    options={QUANTITY_UNITS}
+                    className="text-xs text-center"
+                    data-field="unit"
+                    onSave={val => updateLineItem(item.srcIndex, "unit", val || "nos")}
+                />
+            ),
         },
 
         {
@@ -421,7 +584,14 @@ export function CreatePurchaseOrderModal({
             align: "right",
             cellClassName: "w-28",
             render: (item: LineItem) => (
-                <span className="text-sm">{formatCurrency(item.rate)}</span>
+                <InlineNumber
+                    value={item.rate}
+                    min={0}
+                    step={0.01}
+                    className="text-xs"
+                    data-field="rate"
+                    onSave={val => updateLineItem(item.srcIndex, "rate", val)}
+                />
             ),
         },
         {
@@ -437,7 +607,9 @@ export function CreatePurchaseOrderModal({
         },
     ];
 
+    /* ---------- Save order ---------- */
     const handleSave = async () => {
+        setIsSaving(true);
         try {
             // Validation: Warn if any vendor's subtotal doesn't match the computed total from line items
             if (hasSubtotalMismatch) {
@@ -463,6 +635,7 @@ export function CreatePurchaseOrderModal({
                         totalAmount: f.subtotal,
                         advanceAmount: f.advance,
                         gst: f.gstPercent,
+                        gstType: f.gstType ?? "NONE",
                         tds: f.tdsPercent,
                         adjustedAmt: netTotal,
                         balance: bal,
@@ -476,8 +649,11 @@ export function CreatePurchaseOrderModal({
                 vs => !vendors.some(v => v.id === vs.vendor),
             );
 
+            // Persist the editable line items (with updated qty/rate) so the
+            // updated values reach the backend together with the financials.
             const updatedEvent = {
                 ...eventData,
+                items: editableItems.length > 0 ? editableItems : eventData.items,
                 vendorSummary: [...updatedVendorSummary, ...otherSummaries],
             };
 
@@ -505,6 +681,20 @@ export function CreatePurchaseOrderModal({
         } catch (err) {
             console.error("Error saving purchase order:", err);
             toast.error("Error saving purchase order");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    /* ---------- Save click: confirm when line-item values changed ---------- */
+    // If any editable qty / rate / unit value differs from the previously
+    // saved value, prompt the user before proceeding, since the change will
+    // trigger a checklist update. Otherwise save directly.
+    const handleSaveClick = () => {
+        if (editableItemsChanged) {
+            setShowChecklistConfirmation(true);
+        } else {
+            void handleSave();
         }
     };
 
@@ -586,14 +776,35 @@ export function CreatePurchaseOrderModal({
                                             </div>
                                         </div>
 
-                                        {/* Table */}
-                                        <div className="border border-border rounded-lg overflow-hidden">
-                                            <Table
-                                                data={section.items}
-                                                columns={lineItemColumns}
-                                                getKey={(item: LineItem) => item.id}
-                                            />
-                                        </div>
+                                        {/* Direct items (no sub-category) */}
+                                        {section.directItems.length > 0 && (
+                                            <div className="border border-border rounded-lg overflow-hidden">
+                                                <Table
+                                                    data={section.directItems}
+                                                    columns={lineItemColumns}
+                                                    getKey={(item: LineItem) => item.id}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Sub-category groups */}
+                                        {section.subCategories.map(sub => (
+                                            <div key={sub.id} className="space-y-2">
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <span className="inline-block w-2 h-2 rounded-full bg-primary/50" />
+                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                                        Sub Category: {sub.name}
+                                                    </p>
+                                                </div>
+                                                <div className="border border-border rounded-lg overflow-hidden">
+                                                    <Table
+                                                        data={sub.items}
+                                                        columns={lineItemColumns}
+                                                        getKey={(item: LineItem) => item.id}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
                                     </section>
                                 ))}
 
@@ -619,9 +830,28 @@ export function CreatePurchaseOrderModal({
                                             }
                                             disabled={!hasSubtotalMismatch}
                                         />
+                                        <Select
+                                            id="financial-gst-type"
+                                            label="Tax Type"
+                                            options={GST_TYPE_OPTIONS}
+                                            value={
+                                                GST_TYPE_OPTIONS.find(
+                                                    o => o.value === (financials.gstType ?? "NONE"),
+                                                ) ?? GST_TYPE_OPTIONS[0]
+                                            }
+                                            onChange={option =>
+                                                updateFinancial(
+                                                    "gstType",
+                                                    option && option.value ? option.value : "NONE",
+                                                )
+                                            }
+                                            smallLabel
+                                        />
                                         <Input
                                             id="financial-gst"
-                                            label="GST (%)"
+                                            label={`${
+                                                GST_LABEL_BY_TYPE[financials.gstType] ?? "GST"
+                                            } (%)`}
                                             type="number"
                                             min="0"
                                             max="100"
@@ -631,6 +861,7 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("gstPercent", e.target.value)
                                             }
                                             smallLabel
+                                            disabled={financials.gstType === "NONE"}
                                         />
                                         <Input
                                             id="financial-tds"
@@ -769,12 +1000,29 @@ export function CreatePurchaseOrderModal({
                         <Button variant="outline" onClick={onViewPurchaseOrder}>
                             Preview Order
                         </Button>
-                        <Button className="shadow-lg shadow-primary/30" onClick={handleSave}>
+                        <Button className="shadow-lg shadow-primary/30" onClick={handleSaveClick}>
                             Save Purchase Order
                         </Button>
                     </div>
                 </ModalFooter>
             )}
+            <ConfirmationModal
+                open={showChecklistConfirmation}
+                onClose={() => setShowChecklistConfirmation(false)}
+                onConfirm={() => {
+                    setShowChecklistConfirmation(false);
+                    void handleSave();
+                }}
+                title="Confirm Checklist Update"
+                description={
+                    "The changes you have made to one or more line items (Qty, Rate, or Unit) " +
+                    "will cause the checklist to update. Are you sure you want to continue with this action?"
+                }
+                confirmText="Continue"
+                cancelText="Cancel"
+                variant="primary"
+                isLoading={isSaving}
+            />
         </Modal>
     );
 }

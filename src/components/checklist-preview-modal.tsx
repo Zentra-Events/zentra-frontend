@@ -126,15 +126,16 @@ export function ChecklistPreviewModal({
                         );
                     })()}
                 </td>
-                <td className="py-3 px-3 align-middle text-center">{item.startDate || "-"}</td>
                 <td className="py-3 px-3 align-middle text-center">
-                    {item.endDate ? (
+                    {item.deadlineDate ? (
                         <span
                             className={
-                                checkPastDate(item.endDate) ? "text-red-500 font-medium" : ""
+                                checkPastDate(item.deadlineDate)
+                                    ? "text-red-500 font-medium"
+                                    : ""
                             }
                         >
-                            {item.endDate}
+                            {item.deadlineDate}
                         </span>
                     ) : (
                         "-"
@@ -213,8 +214,7 @@ export function ChecklistPreviewModal({
                                 <th className="py-3 px-3 font-medium text-center w-16">Days</th>
                                 <th className="py-3 px-3 font-medium">Vendor / Inventory</th>
                                 <th className="py-3 px-3 font-medium text-center w-24">Status</th>
-                                <th className="py-3 px-3 font-medium text-center">Start Date</th>
-                                <th className="py-3 px-3 font-medium text-center">End Date</th>
+                                <th className="py-3 px-3 font-medium text-center">Deadline</th>
                                 <Access roles={["super_admin"]}>
                                     <th className="py-3 px-3 font-medium text-right w-20">Rate</th>
                                 </Access>
@@ -233,7 +233,7 @@ export function ChecklistPreviewModal({
                                             className="bg-muted/50 border-b border-border"
                                         >
                                             <td
-                                                colSpan={10}
+                                                colSpan={9}
                                                 className="px-4 py-2 text-sm font-semibold text-foreground uppercase tracking-wide"
                                             >
                                                 {group.name}
@@ -264,7 +264,7 @@ export function ChecklistPreviewModal({
                                                 className="bg-muted/30 border-b border-border"
                                             >
                                                 <td
-                                                    colSpan={10}
+                                                    colSpan={9}
                                                     className="px-6 py-1.5 text-xs font-medium text-muted-foreground"
                                                 >
                                                     {sub.name}

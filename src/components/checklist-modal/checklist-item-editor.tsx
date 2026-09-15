@@ -194,7 +194,11 @@ export function ChecklistItemEditor({
                                         </div>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 md:grid-cols-4 col-span-3">
+                                {/* Days / Quantity / Unit / Vendor row.
+                                    Vendor uses a wider 1.53fr track so it visually matches
+                                    the Inventory dropdown (a single 1/3-col in the parent
+                                    md:grid-cols-3 layout) directly above it. */}
+                                <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_1fr_1.53fr] col-span-3">
                                     <div>
                                         <Input
                                             label="Days"

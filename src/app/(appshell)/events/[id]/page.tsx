@@ -206,7 +206,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             icon: ClipboardCheck,
             title: "Event Checklist",
             description: "Assign tasks and track execution milestones.",
-            linkLabel: "Open Tasks",
+            linkLabel: "Open Checklist",
             onClick: () => setIsChecklistPreviewModalOpen(true),
         },
         {
@@ -693,6 +693,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                         name: inv.itemName,
                     }))}
                     onClose={() => setIsPurchaseOrderPreviewOpen(false)}
+                    totalEstimatedCost={totalEstimatedCost}
                 />
             )}
 

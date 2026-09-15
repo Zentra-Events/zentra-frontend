@@ -121,10 +121,7 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                         {item.status || "PENDING"}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.startDate || "—"}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.endDate || "—"}
+                                        {item.deadlineDate || "—"}
                                     </td>
                                 </tr>
                             );

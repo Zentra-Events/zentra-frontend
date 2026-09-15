@@ -111,6 +111,7 @@ export type VendorSummary = {
     totalAmount: number;
     advanceAmount: number;
     gst?: number;
+    gstType?: string;
     tds?: number;
     adjustedAmt?: number;
     balance: number;
@@ -193,11 +194,23 @@ export interface PurchaseOrderPreviewModalProps {
     vendorList?: Array<{ id?: string; name: string }>;
     inventoryList?: Array<{ id?: string; name: string }>;
     onClose: () => void;
+    totalEstimatedCost: number;
+}
+
+/** A group of purchase items sharing the same sub-category within a category. */
+export interface PurchaseSubCategoryRow {
+    name: string;
+    items: PurchaseItemRow[];
 }
 
 export interface CategoryPurchaseRow {
     category: string;
+    /** Flat list of all items in this category (direct items then sub-category items). */
     items: PurchaseItemRow[];
+    /** Items without a sub-category. */
+    directItems: PurchaseItemRow[];
+    /** Items grouped under their respective sub-category headers. */
+    subCategories: PurchaseSubCategoryRow[];
     subtotal: number;
 }
 
@@ -206,6 +219,7 @@ export interface PurchaseItemRow {
     itemName: string;
     description: string;
     qty: number;
+    unit?: string;
     rate: number;
     days: number;
     amount: number;
@@ -221,6 +235,8 @@ export interface VendorFinancialRow {
     vendorName: string;
     totalAmount: number;
     gstPercent: number;
+    /** Tax type applied for this vendor. One of "NONE", "CGST_SGST", "IGST". */
+    gstType?: string;
     tdsPercent: number;
     adjustedAmt: number;
     advanceAmount: number;

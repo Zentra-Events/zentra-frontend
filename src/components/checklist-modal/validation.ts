@@ -2,9 +2,10 @@
  * Shared validation for Execution Checklist items.
  *
  * Centralized so the editor (inline field errors) and the modal (Save gate +
- * hierarchy highlighting) both rely on the exact same rules. The "Inventory vs
- * Vendor" conditional requirement is re-evaluated on every check, so errors
- * update immediately as the "Use Inventory" toggle changes.
+ * hierarchy highlighting) both rely on the exact same rules. Vendor / Inventory
+ * are OPTIONAL fields — an item may be saved without either. The
+ * `hasVendorOrInventory` helper powers a non-blocking confirmation that lists
+ * such items when the user saves.
  */
 import type { ChecklistItem } from "./types";
 
@@ -58,17 +59,23 @@ export function validateChecklistItem(item: ChecklistItem): ChecklistItemValidat
         errors.unit = "Unit is required.";
     }
 
-    // Conditional: Inventory required when "Use Inventory" is enabled;
-    // otherwise Assigned Vendor is required.
-    if (item.isInventoryItem) {
-        if (item.inventoryID == null || String(item.inventoryID).trim() === "") {
-            errors.inventoryID = 'Inventory is required when "Use Inventory" is enabled.';
-        }
-    } else if (!item.vendor?.trim()) {
-        errors.vendor = "Vendor is required when inventory is not used.";
-    }
+    // Vendor / Inventory are OPTIONAL fields. Missing either does NOT block
+    // saving; if any item lacks a Vendor and an Inventory, the modal surfaces a
+    // non-blocking confirmation listing those items (see hasVendorOrInventory).
 
     return errors;
+}
+
+/**
+ * True when the item has a Vendor (when inventory is not used) OR an Inventory
+ * (when "Use Inventory" is enabled). Both are optional, so this only drives an
+ * informational confirmation on Save — it never blocks persisting the item.
+ */
+export function hasVendorOrInventory(item: ChecklistItem): boolean {
+    if (item.isInventoryItem) {
+        return item.inventoryID != null && String(item.inventoryID).trim() !== "";
+    }
+    return !!(item.vendor && item.vendor.trim() !== "");
 }
 
 /** True when the item has at least one validation error. */

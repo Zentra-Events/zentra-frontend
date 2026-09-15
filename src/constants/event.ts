@@ -40,6 +40,7 @@ export const purchaseOrderPreviewStyles = {
     titleBg: "bg-[#e6e0f8]",
     headerBg: "bg-[#e6e0f8]",
     categoryBg: "bg-[#d9ead3]",
+    subCategoryBg: "bg-[#eef5ea]",
     totalBg: "bg-[#b4c6e7]",
     subTotalBg: "bg-[#fff2cc]",
     summaryBg: "bg-[#e6e0f8]",

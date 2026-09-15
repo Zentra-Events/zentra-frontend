@@ -12,8 +12,7 @@ import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { ChecklistHierarchy, type ChecklistHierarchyActions } from "./checklist-hierarchy";
 import { ChecklistItemEditor } from "./checklist-item-editor";
 import { ChecklistFooter } from "./checklist-footer";
-import { validateChecklistItem, type ChecklistItemValidation } from "./validation";
-import { PlusIcon } from "@/components/ui/icons";
+import { validateChecklistItem, hasVendorOrInventory, type ChecklistItemValidation } from "./validation";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import type { ChecklistItem, ChecklistModalProps, ChecklistSummary, EventItem } from "./types";
 
@@ -43,6 +42,9 @@ export function ExecutionChecklistModal({
     const [focusTarget, setFocusTarget] = useState<string | null>(null);
     const [convertUid, setConvertUid] = useState<string | null>(null);
     const [validationModalOpen, setValidationModalOpen] = useState(false);
+    // Non-blocking confirmation shown on Save listing items with no Vendor and
+    // no Inventory. Vendor / Inventory are optional, so this never blocks saving.
+    const [missingVendorModalOpen, setMissingVendorModalOpen] = useState(false);
     // Once the user clicks "Save Checklist" and validation fails, inline errors
     // and hierarchy highlights become visible and update live as values change.
     // Until then nothing is validated (friendly initial-load experience).
@@ -53,6 +55,7 @@ export function ExecutionChecklistModal({
         // Fresh open: reset any prior validation so nothing is flagged on load.
         setValidationTriggered(false);
         setValidationModalOpen(false);
+        setMissingVendorModalOpen(false);
 
         let rawItems: ChecklistItem[] = [];
         if (eventData.checklist && eventData.checklist.length > 0) {
@@ -156,8 +159,16 @@ export function ExecutionChecklistModal({
 
     const invalidUids = useMemo(() => new Set<string>(Object.keys(errorMap)), [errorMap]);
 
+    // Persistable items missing both a Vendor and an Inventory. Vendor / Inventory
+    // are optional, so these never block saving — a non-blocking confirmation
+    // lists them when the user clicks Save.
+    const missingVendorItems = useMemo(
+        () => persistableItems.filter(it => !hasVendorOrInventory(it)),
+        [persistableItems],
+    );
+
     const selectedItemErrors = useMemo<ChecklistItemValidation>(
-        () => (selectedUid ? errorMap[selectedUid] ?? {} : {}),
+        () => (selectedUid ? (errorMap[selectedUid] ?? {}) : {}),
         [errorMap, selectedUid],
     );
 
@@ -308,9 +319,7 @@ export function ExecutionChecklistModal({
             _uid: generateId(),
         };
 
-        setChecklistData(prev =>
-            prev.map(it => (it._uid === convertUid ? newChild : it)),
-        );
+        setChecklistData(prev => prev.map(it => (it._uid === convertUid ? newChild : it)));
 
         setSelectedUid(newChild._uid ?? null);
         setExpandedCategories(prev => new Set(prev).add(category));
@@ -411,15 +420,7 @@ export function ExecutionChecklistModal({
         onCollapseAll: handleCollapseAll,
     };
 
-    const handleSave = async () => {
-        // Guard: if any persisted item fails validation, prevent saving, reveal
-        // inline/hierarchy errors and show the warning modal instead of a toast.
-        if (Object.keys(errorMap).length > 0) {
-            setValidationTriggered(true);
-            setValidationModalOpen(true);
-            return;
-        }
-
+    const performSave = async () => {
         setSaving(true);
         try {
             const filteredData = persistableItems;
@@ -449,6 +450,30 @@ export function ExecutionChecklistModal({
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleMissingVendorConfirm = async () => {
+        setMissingVendorModalOpen(false);
+        await performSave();
+    };
+
+    const handleSave = async () => {
+        // Guard: if any persisted item fails required-field validation, prevent
+        // saving, reveal inline/hierarchy errors and show the warning modal.
+        if (Object.keys(errorMap).length > 0) {
+            setValidationTriggered(true);
+            setValidationModalOpen(true);
+            return;
+        }
+
+        // Vendor / Inventory are optional. If some items still lack either,
+        // confirm before saving instead of throwing a blocking validation error.
+        if (missingVendorItems.length > 0) {
+            setMissingVendorModalOpen(true);
+            return;
+        }
+
+        await performSave();
     };
 
     const handleCancel = () => {
@@ -529,10 +554,9 @@ export function ExecutionChecklistModal({
             >
                 <ModalBody>
                     <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">
-                        Some checklist items contain missing or invalid information.
-
-                        Please review the highlighted items and correct the validation errors before
-                        saving the checklist.
+                        Some checklist items contain missing or invalid information. Please review
+                        the highlighted items and correct the validation errors before saving the
+                        checklist.
                     </p>
                 </ModalBody>
                 <ModalFooter>
@@ -545,6 +569,20 @@ export function ExecutionChecklistModal({
                     </Button>
                 </ModalFooter>
             </Modal>
+
+            <ConfirmationModal
+                open={missingVendorModalOpen}
+                onClose={() => setMissingVendorModalOpen(false)}
+                onConfirm={handleMissingVendorConfirm}
+                title="Save Without Vendor / Inventory?"
+                description={`Some items do not have a Vendor or Inventory assigned yet.\n\nYou can still save the checklist and assign them later.\n\nThe following items are missing a Vendor / Inventory:\n${missingVendorItems
+                    .map(it => `• ${it.item || "Unnamed Item"}`)
+                    .join("\n")}`}
+                confirmText="Save Checklist"
+                cancelText="Go Back"
+                variant="primary"
+                isLoading={saving}
+            />
 
             <ConfirmationModal
                 open={!!convertUid}
