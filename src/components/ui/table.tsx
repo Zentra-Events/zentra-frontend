@@ -5,7 +5,12 @@ import { cn } from "@/lib/utils/cn";
 
 export interface Column<T> {
     key: string;
-    header: string;
+    /**
+     * Header content. Accepts a plain string, or any node so columns can
+     * render a small affordance (e.g. a pencil icon) to signal that their
+     * cells are inline-editable.
+     */
+    header: string | React.ReactNode;
     align?: "left" | "center" | "right";
     render?: (item: T, index: number) => React.ReactNode;
     className?: string;

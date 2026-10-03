@@ -20,6 +20,21 @@ export const GST_LABEL_BY_TYPE: Record<string, string> = {
     IGST: "IGST",
 };
 
+/**
+ * Formats a numeric field value for display inside a controlled number input.
+ *
+ * The client financials state stores numbers and defaults them to `0`, so
+ * binding that value directly (e.g. `value={x}`) renders a `0` the user has to
+ * clear before typing. Rendering an empty string for `0` / null / undefined /
+ * NaN keeps the field blank until the user actually enters a value.
+ */
+export function toNumericInputValue(value: number | null | undefined): string | number {
+    if (value === null || value === undefined || Number.isNaN(value) || value === 0) {
+        return "";
+    }
+    return value;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
@@ -39,14 +54,28 @@ export interface ClientFinancials {
     receivedAmount: number;
 }
 
+/**
+ * A single filtered estimate version (status EVENT_CREATED or EVENT_MERGED)
+ * shown in the Estimates section. Only its expense total is surfaced.
+ */
+export interface EstimateExpensesRow {
+    id: string;
+    versionTitle?: string;
+    estimateStatus?: string;
+    expensesTotal: number;
+}
+
 interface PurchaseOrderClientDetailsProps {
     clientName: string;
     eventName: string;
     eventDescription: string;
     clientFinancials: ClientFinancials;
     onFinancialChange: (field: keyof ClientFinancials, value: string) => void;
-    /** Total approved / final estimate amount (item subtotal + additional costs). */
-    estimatedAmount: number;
+    /**
+     * Filtered estimate versions (status EVENT_CREATED / EVENT_MERGED).
+     * Each estimate's expensesTotal is displayed together with the sum of all.
+     */
+    estimates: EstimateExpensesRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -59,8 +88,14 @@ export function PurchaseOrderClientDetails({
     eventDescription,
     clientFinancials,
     onFinancialChange,
-    estimatedAmount,
+    estimates,
 }: PurchaseOrderClientDetailsProps) {
+    // Sum of every filtered estimate's expensesTotal.
+    const totalExpenses = estimates.reduce(
+        (sum, estimate) => sum + (estimate.expensesTotal ?? 0),
+        0,
+    );
+
     return (
         <section className="rounded-2xl border border-border bg-surface-container-low/30 p-5">
             <div className="flex items-center justify-between border-l-4 border-primary pl-4 py-1 mb-4">
@@ -101,22 +136,50 @@ export function PurchaseOrderClientDetails({
                     smallLabel
                 />
             </div>
-            {/* Estimates – approved / final estimate figures */}
+            {/* Estimates – event created / merged estimate expense figures */}
             <div className="mt-5 pt-5 border-t border-border">
                 <h4 className="text-sm font-bold uppercase tracking-widest text-primary mb-1">
                     Estimates
                 </h4>
                 <p className="text-xs text-muted-foreground mb-3">
-                    Approved / final estimate figures for this engagement
+                    Event created / merged estimate expenses for this engagement
                 </p>
-                <div className="flex items-center justify-between gap-4 rounded-xl bg-primary/[0.04] border border-primary/10 px-4 py-3">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-primary">
-                        Estimated Amount
-                    </span>
-                    <span className="text-lg font-extrabold text-foreground">
-                        {formatCurrency(estimatedAmount)}
-                    </span>
-                </div>
+                {estimates.length === 0 ? (
+                    <p className="text-xs italic text-muted-foreground">
+                        No event created or merged estimates available.
+                    </p>
+                ) : (
+                    <div className="rounded-xl bg-primary/[0.04] border border-primary/10 divide-y divide-primary/10">
+                        {estimates.map(estimate => (
+                            <div
+                                key={estimate.id}
+                                className="flex items-center justify-between gap-4 px-4 py-2.5"
+                            >
+                                <div className="flex flex-col text-left">
+                                    <span className="text-xs font-semibold text-foreground">
+                                        {estimate.versionTitle || "Estimate"}
+                                    </span>
+                                    {estimate.estimateStatus && (
+                                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                            {estimate.estimateStatus.replace(/_/g, " ")}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-sm font-bold text-foreground">
+                                    {formatCurrency(estimate.expensesTotal)}
+                                </span>
+                            </div>
+                        ))}
+                        <div className="flex items-center justify-between gap-4 px-4 py-3 bg-primary/[0.06]">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+                                Total Expenses
+                            </span>
+                            <span className="text-lg font-extrabold text-foreground">
+                                {formatCurrency(totalExpenses)}
+                            </span>
+                        </div>
+                    </div>
+                )}
             </div>
             {/* Client Billing Details – mirrors the Create Estimate billing fields */}
             <div className="mt-5 pt-5 border-t border-border">
@@ -130,7 +193,7 @@ export function PurchaseOrderClientDetails({
                         type="number"
                         min="0"
                         step="0.01"
-                        value={clientFinancials.serviceCharge ?? ""}
+                        value={toNumericInputValue(clientFinancials.serviceCharge)}
                         onChange={e => onFinancialChange("serviceCharge", e.target.value)}
                         smallLabel
                     />
@@ -159,7 +222,7 @@ export function PurchaseOrderClientDetails({
                         min="0"
                         max="100"
                         step="0.01"
-                        value={clientFinancials.gst ?? ""}
+                        value={toNumericInputValue(clientFinancials.gst)}
                         onChange={e => onFinancialChange("gst", e.target.value)}
                         smallLabel
                         disabled={clientFinancials.gstType === "NONE"}
@@ -172,7 +235,7 @@ export function PurchaseOrderClientDetails({
                         type="number"
                         min="0"
                         step="0.01"
-                        value={clientFinancials.discount ?? ""}
+                        value={toNumericInputValue(clientFinancials.discount)}
                         onChange={e => onFinancialChange("discount", e.target.value)}
                         smallLabel
                     />
@@ -183,7 +246,7 @@ export function PurchaseOrderClientDetails({
                         // min="0"
                         max="100"
                         step="0.01"
-                        value={clientFinancials.tds ?? ""}
+                        value={toNumericInputValue(clientFinancials.tds)}
                         onChange={e => onFinancialChange("tds", e.target.value)}
                         smallLabel
                     />
@@ -193,7 +256,7 @@ export function PurchaseOrderClientDetails({
                         type="number"
                         min="0"
                         step="0.01"
-                        value={clientFinancials.receivedAmount ?? ""}
+                        value={toNumericInputValue(clientFinancials.receivedAmount)}
                         onChange={e => onFinancialChange("receivedAmount", e.target.value)}
                         smallLabel
                     />

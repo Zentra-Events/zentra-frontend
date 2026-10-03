@@ -17,13 +17,14 @@ import {
     ClientFinancials,
     GST_TYPE_OPTIONS,
     GST_LABEL_BY_TYPE,
+    type EstimateExpensesRow,
 } from "@/components/purchase-order-client-details";
 import { cn } from "@/lib/utils/cn";
 import type { EventResponse, VendorSummary } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil, Info } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { calculateEstimateSummary } from "@/lib/utils/estimate";
 
@@ -99,7 +100,18 @@ interface CreatePurchaseOrderModalProps {
     onViewPurchaseOrder?: () => void;
     vendorList?: Array<{ id?: string; name: string }>;
     eventData: EventResponse;
+    /**
+     * Pre-tax estimate base used by the Cost Summary (= sum of the filtered
+     * estimates' expensesTotal). Service charge, discount, GST and TDS are
+     * applied on top of this value, so it must NOT already include them
+     * (pass the expensesTotal sum, not the netTotal sum).
+     */
     totalClientEstimatedAmount: number;
+    /**
+     * Filtered estimate versions (status EVENT_CREATED / EVENT_MERGED) surfaced
+     * in the Estimate section of the Client Details view.
+     */
+    estimates?: EstimateExpensesRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -242,6 +254,28 @@ function buildFinancialsFromSummary(
     };
 }
 
+/**
+ * Instructional microcopy surfaced by the info tooltip beside each category
+ * section header. Kept in a tooltip (rather than an always-on banner) so it
+ * explains the editable fields without permanently consuming modal space.
+ */
+const EDITABLE_FIELDS_HINT =
+    "Click any Qty, Unit or Rate value to edit it. Changes update the event checklist when you save the purchase order.";
+
+/**
+ * Table column header that flags the column's cells as inline-editable.
+ * Renders a small pencil glyph next to the label so users can tell at a glance
+ * which fields accept input, without having to hover every cell first.
+ */
+function EditableHeader({ label }: { label: string }) {
+    return (
+        <span className="inline-flex items-center gap-1">
+            {label}
+            <Pencil size={11} className="text-primary/70" aria-hidden="true" />
+        </span>
+    );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                         */
 /* ------------------------------------------------------------------ */
@@ -254,6 +288,7 @@ export function CreatePurchaseOrderModal({
     vendorList,
     eventData,
     totalClientEstimatedAmount = 0,
+    estimates = [],
 }: CreatePurchaseOrderModalProps) {
     const itemList = eventData?.items ?? [];
     const vendorSummary = eventData?.vendorSummary ?? [];
@@ -508,26 +543,6 @@ export function CreatePurchaseOrderModal({
         });
     };
 
-    /* ---------- Client cost summary ----------
-     * Client-side financial calculation based on the approved/final estimate
-     * (item subtotal + additional costs) plus the editable client billing
-     * details (service charge, discount, GST, TDS, received amount). It reuses
-     * the same calculation logic established in the Create Estimate flow and is
-     * completely independent from the vendor financial calculation. */
-    // const clientItemSubtotal = useMemo(() => {
-    //     return (eventData?.items ?? []).reduce(
-    //         (sum, it) => sum + (it.count ?? 1) * (it.pricePerItem ?? 0),
-    //         0,
-    //     );
-    // }, [eventData?.items]);
-
-    // const additionalCosts = useMemo(() => {
-    //     return (eventData?.additionalCostEstimate ?? []).reduce(
-    //         (sum, c) => sum + (c.amount ?? 0),
-    //         0,
-    //     );
-    // }, [eventData?.additionalCostEstimate]);
-
     const clientSummary = useMemo(() => {
         return calculateEstimateSummary({
             totalAmount: totalClientEstimatedAmount,
@@ -535,7 +550,12 @@ export function CreatePurchaseOrderModal({
             serviceCharge: clientFinancials.serviceCharge,
             discounts: clientFinancials.discount,
         });
-    }, [clientFinancials.gst, clientFinancials.serviceCharge, clientFinancials.discount]);
+    }, [
+        totalClientEstimatedAmount,
+        clientFinancials.gst,
+        clientFinancials.serviceCharge,
+        clientFinancials.discount,
+    ]);
 
     // TDS is applied on the same base used for GST (total after service charge
     // and discount adjustments), mirroring the vendor-side net total convention
@@ -546,7 +566,12 @@ export function CreatePurchaseOrderModal({
             clientSummary.serviceChargeAmount -
             clientFinancials.discount;
         return base * (clientFinancials.tds / 100);
-    }, [clientSummary.serviceChargeAmount, clientFinancials.discount, clientFinancials.tds]);
+    }, [
+        totalClientEstimatedAmount,
+        clientSummary.serviceChargeAmount,
+        clientFinancials.discount,
+        clientFinancials.tds,
+    ]);
 
     const clientTotal = clientSummary.totalWithGST - clientTdsAmount;
     const clientOutstanding = clientTotal - clientFinancials.receivedAmount;
@@ -667,7 +692,7 @@ export function CreatePurchaseOrderModal({
         },
         {
             key: "qty",
-            header: "Qty",
+            header: <EditableHeader label="Qty" />,
             align: "center",
             cellClassName: "w-16",
             render: (item: LineItem) => (
@@ -683,7 +708,7 @@ export function CreatePurchaseOrderModal({
         },
         {
             key: "unit",
-            header: "Unit",
+            header: <EditableHeader label="Unit" />,
             align: "center",
             cellClassName: "w-16",
             render: (item: LineItem) => (
@@ -699,7 +724,7 @@ export function CreatePurchaseOrderModal({
 
         {
             key: "rate",
-            header: "Rate",
+            header: <EditableHeader label="Rate" />,
             align: "right",
             cellClassName: "w-28",
             render: (item: LineItem) => (
@@ -958,7 +983,7 @@ export function CreatePurchaseOrderModal({
                                 eventDescription={eventDescription}
                                 clientFinancials={clientFinancials}
                                 onFinancialChange={updateClientFinancial}
-                                estimatedAmount={totalClientEstimatedAmount}
+                                estimates={estimates}
                             />
                         ) : categories.length === 0 ? (
                             <div className="text-center py-12">
@@ -970,7 +995,9 @@ export function CreatePurchaseOrderModal({
                             </div>
                         ) : (
                             <>
-                                {/* Category Sections – display only */}
+                                {/* Category Sections – line items with inline-editable
+                                    Qty / Unit / Rate and read-only Days / Total. The ⓘ beside
+                                    each section header explains what can be edited. */}
                                 {categories.map(section => (
                                     <section key={section.id} className="space-y-4">
                                         {/* Section header */}
@@ -983,6 +1010,11 @@ export function CreatePurchaseOrderModal({
                                                     {section.description}
                                                 </p>
                                             </div>
+                                            <Tooltip content={EDITABLE_FIELDS_HINT}>
+                                                <span className="inline-flex cursor-help items-center text-muted-foreground transition-colors hover:text-primary">
+                                                    <Info size={14} aria-hidden="true" />
+                                                </span>
+                                            </Tooltip>
                                         </div>
 
                                         {/* Direct items (no sub-category) */}

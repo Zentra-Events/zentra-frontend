@@ -41,7 +41,7 @@ export const API_ENDPOINTS = {
         list: "/api/estimates",
         detail: (id: string | number) => `/api/estimates/${id}`,
         byEnquiry: (id: string | number) => `/api/estimates/by-enquiry/${id}`,
-        netTotal: (eventId: string | number) => `/api/estimates/net-total/${eventId}`,
+        netTotal: (eventId: string | number) => `/api/estimates/net-total?eventID=${eventId}`,
     },
     auth: {
         login: "/api/login",

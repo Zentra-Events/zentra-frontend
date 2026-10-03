@@ -29,6 +29,15 @@ export interface InvoiceSummary {
     serviceChargeAmt: number;
 }
 
+// Response item returned by GET /estimates/net-total?eventID=<eventID>
+// (one entry per estimate version of the event)
+export interface EstimateNetTotalResponse {
+    id: string;
+    versionTitle?: string;
+    estimateStatus?: EstimateVersionStatus;
+    invoiceSummary?: InvoiceSummary;
+}
+
 export interface EstimateItem {
     id: string;
     description: string;
