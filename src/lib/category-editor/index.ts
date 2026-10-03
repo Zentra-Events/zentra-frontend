@@ -22,6 +22,7 @@ export {
 } from "./utils/grouping";
 
 export {
+    DEFAULT_GENERAL_CATEGORY,
     getLineCategoryName,
     insertLineAt,
     insertAtEndOfCategory,

@@ -128,12 +128,15 @@ export type EventResponse = {
     venue?: string;
     status?: string;
     gst?: number;
+    gstType?: string;
     tds?: number;
     advanceAmt?: number;
     serviceCharge?: number;
     discounts?: number;
     billingAddress?: string;
     pan?: string;
+    highlvelRequirement?: string;
+    additionalCostEstimate?: AdditionalCost[];
     checklist?: unknown[];
     checkListCompleted: boolean;
     invoiceSummary?: {

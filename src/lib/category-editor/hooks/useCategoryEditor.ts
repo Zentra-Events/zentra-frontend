@@ -16,6 +16,7 @@ import {
     groupLines,
 } from "../utils/grouping";
 import {
+    DEFAULT_GENERAL_CATEGORY,
     deleteCategoryLines,
     deleteItemLines,
     deleteSubCategoryLines,
@@ -69,6 +70,7 @@ export interface CategoryEditorController<L extends CategoryEditorLine> {
     ) => void;
     addItemToCategory: (categoryName: string) => void;
     addItemToSubCategory: (categoryName: string, subCategoryName: string) => void;
+    addItemWithoutCategory: () => void;
     updateItem: (itemId: string, patch: CategoryEditorItemPatch<L>) => void;
     deleteItem: (itemId: string) => void;
     getFocusState: (group: CategoryEditorGroup<L>) => CategoryEditorGroupFocusState;
@@ -254,6 +256,21 @@ export function useCategoryEditor<L extends CategoryEditorLine>(
         [lines, commit, findCategoryId, findSubCategoryId, queueFocus, creators],
     );
 
+    const addItemWithoutCategory = useCallback(() => {
+        // Create an item with no explicit category so it is not grouped.
+        // getLineCategoryName falls back to DEFAULT_GENERAL_CATEGORY ("General"),
+        // so the line is bucketed under a top-level "General" group on render.
+        const newItem = creators.createItemLine("", "");
+        commit([...lines, newItem]);
+        queueFocus({
+            kind: "item",
+            categoryId: "",
+            categoryName: DEFAULT_GENERAL_CATEGORY,
+            itemId: newItem.id,
+            signal: Date.now(),
+        });
+    }, [lines, commit, queueFocus, creators]);
+
     const updateItem = useCallback(
         (itemId: string, patch: CategoryEditorItemPatch<L>) => {
             commit(patchLineItem(lines, itemId, patch));
@@ -307,6 +324,7 @@ export function useCategoryEditor<L extends CategoryEditorLine>(
         renameSubCategory,
         addItemToCategory,
         addItemToSubCategory,
+        addItemWithoutCategory,
         updateItem,
         deleteItem,
         getFocusState,

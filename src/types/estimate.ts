@@ -20,6 +20,15 @@ export type EstimateVersionStatus =
     | "EVENT_CREATED"
     | "EVENT_MERGED";
 
+export interface InvoiceSummary {
+    additionalCostAmt: number;
+    discountAmount: number;
+    expensesTotal: number;
+    gstAmount: number;
+    netTotal: number;
+    serviceChargeAmt: number;
+}
+
 export interface EstimateItem {
     id: string;
     description: string;
@@ -73,14 +82,7 @@ export interface EstimateDto {
     billingAddress?: string;
     additionalEstimate?: boolean;
     lastEstimateID?: string;
-    invoiceSummary?: {
-        additionalCostAmt: number;
-        discountAmount: number;
-        expensesTotal: number;
-        gstAmount: number;
-        netTotal: number;
-        serviceChargeAmt: number;
-    };
+    invoiceSummary?: InvoiceSummary;
     categorySummary?: {
         category: string;
         subTotal: number;
@@ -134,4 +136,5 @@ export interface CreateEstimatePayload {
     estimateStatus?: string;
     additionalEstimate?: boolean;
     lastEstimateID?: string;
+    invoiceSummary?: InvoiceSummary;
 }

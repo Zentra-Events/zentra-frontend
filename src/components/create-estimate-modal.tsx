@@ -16,6 +16,7 @@ import {
     EstimateItem,
     EstimateLineItemPayload,
     EstimateStatus,
+    InvoiceSummary,
 } from "@/types/estimate";
 import { EventItem } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
@@ -983,6 +984,24 @@ export default function CreateEstimateModal({
                 c => c.clientName === prefillData.client,
             )?.clientId;
 
+            // Build invoiceSummary from the same Cost Summary calculations shown
+            // in the modal footer (calculateEstimateSummary).
+            const discountAmount = Number(values.discountAmount) || 0;
+            const submitSummary = calculateEstimateSummary({
+                totalAmount,
+                gst: Number(values.gst) || 0,
+                serviceCharge: Number(values.serviceCharge) || 0,
+                discounts: discountAmount,
+            });
+            const invoiceSummary: InvoiceSummary = {
+                discountAmount,
+                serviceChargeAmt: Number(submitSummary.serviceChargeAmount.toFixed(2)),
+                additionalCostAmt: 0,
+                expensesTotal: Number(totalAmount.toFixed(2)),
+                gstAmount: Number(submitSummary.gstAmount.toFixed(2)),
+                netTotal: Number(submitSummary.totalWithGST.toFixed(2)),
+            };
+
             const payload: CreateEstimatePayload = {
                 title: values.title,
                 highlvelRequirement: values.highlvelRequirement,
@@ -1007,6 +1026,7 @@ export default function CreateEstimateModal({
                 discounts: values.discountAmount,
                 billingAddress: values.billingAddress,
                 estimateStatus: "DRAFT",
+                invoiceSummary,
                 additionalEstimate: isAdditionalEstimate || undefined,
                 lastEstimateID: isAdditionalEstimate ? prefillData.lastEstimateID : undefined,
             };
@@ -1071,6 +1091,7 @@ export default function CreateEstimateModal({
                 enquiryId: payload.enquiryId,
                 eventName: payload.eventName,
                 eventID: payload.eventID,
+                invoiceSummary: payload.invoiceSummary,
             };
 
             toast.success(
@@ -1134,6 +1155,7 @@ export default function CreateEstimateModal({
                 enquiryId: pendingAdditionalEstimate.payload.enquiryId,
                 eventName: pendingAdditionalEstimate.payload.eventName,
                 eventID: pendingAdditionalEstimate.payload.eventID,
+                invoiceSummary: pendingAdditionalEstimate.payload.invoiceSummary,
                 // additionalEstimate: true,
                 lastEstimateID: pendingAdditionalEstimate.payload.lastEstimateID,
             };
@@ -1204,7 +1226,7 @@ export default function CreateEstimateModal({
                     validationSchema={validationSchema}
                     onSubmit={handleSubmit}
                 >
-                    {({ status, values }) => {
+                    {({ status, values, setFieldValue }) => {
                         const summary = calculateEstimateSummary({
                             totalAmount,
                             gst: Number(values.gst) || 0,
@@ -1459,6 +1481,12 @@ export default function CreateEstimateModal({
                                                     label="Tax Type"
                                                     options={GST_TYPE_OPTIONS}
                                                     isDisabled={!prefillData?.enquiryId}
+                                                    onChange={() => {
+                                                        // Reset the GST percentage to its default
+                                                        // whenever the tax type changes so the
+                                                        // cost summary breakups recalculate cleanly.
+                                                        setFieldValue("gst", 0);
+                                                    }}
                                                 />
                                                 <FormikFieldInput
                                                     name="gst"

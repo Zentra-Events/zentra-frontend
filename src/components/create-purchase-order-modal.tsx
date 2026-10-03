@@ -11,6 +11,13 @@ import { InlineNumber } from "@/components/ui/inline-number";
 import { InlineUnitSelect } from "@/components/ui/inline-unit-select";
 import { QUANTITY_UNITS } from "@/lib/utils/artifact-utils";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
+import { CostSummary } from "@/components/cost-summary";
+import {
+    PurchaseOrderClientDetails,
+    ClientFinancials,
+    GST_TYPE_OPTIONS,
+    GST_LABEL_BY_TYPE,
+} from "@/components/purchase-order-client-details";
 import { cn } from "@/lib/utils/cn";
 import type { EventResponse, VendorSummary } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
@@ -18,18 +25,7 @@ import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-
-const GST_TYPE_OPTIONS: { label: string; value: string }[] = [
-    { label: "No GST", value: "NONE" },
-    { label: "CGST + SGST", value: "CGST_SGST" },
-    { label: "IGST", value: "IGST" },
-];
-
-const GST_LABEL_BY_TYPE: Record<string, string> = {
-    NONE: "GST",
-    CGST_SGST: "CGST + SGST",
-    IGST: "IGST",
-};
+import { calculateEstimateSummary } from "@/lib/utils/estimate";
 
 /* ------------------------------------------------------------------ */
 /*  Raw API item type – matches EventResponse.items shape              */
@@ -103,6 +99,7 @@ interface CreatePurchaseOrderModalProps {
     onViewPurchaseOrder?: () => void;
     vendorList?: Array<{ id?: string; name: string }>;
     eventData: EventResponse;
+    totalClientEstimatedAmount: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -256,9 +253,18 @@ export function CreatePurchaseOrderModal({
     onViewPurchaseOrder,
     vendorList,
     eventData,
+    totalClientEstimatedAmount = 0,
 }: CreatePurchaseOrderModalProps) {
     const itemList = eventData?.items ?? [];
     const vendorSummary = eventData?.vendorSummary ?? [];
+    // Client / event display info, populated from the existing event/estimate data.
+    const clientName = eventData?.client || "—";
+    const eventName = eventData?.title || "—";
+    const eventDescription =
+        (eventData?.highlvelRequirement as string) ||
+        eventData?.venue ||
+        eventData?.location ||
+        "—";
     // Determine which vendors to show in the sidebar: all vendors from vendorList
     // that have items in itemList
     const activeVendorIds = useMemo(() => getItemVendorIds(itemList), [itemList]);
@@ -293,6 +299,39 @@ export function CreatePurchaseOrderModal({
 
     const [activeVendorId, setActiveVendorId] = useState<string>("");
     const [showBreakdown, setShowBreakdown] = useState(false);
+    // Which sidebar tab is active: "client" renders the Client Details section,
+    // "vendor" renders the selected vendor's items & financials. Client Details
+    // is the initial standalone selection, independent of any vendor.
+    const [activeView, setActiveView] = useState<"client" | "vendor">("client");
+
+    /* ---------- Client / estimate financials ----------
+     * Editable client billing details, pre-populated from the approved/final
+     * estimate (eventData). These are purely client-side and never feed the
+     * vendor financial calculation below. */
+    const [clientFinancials, setClientFinancials] = useState<ClientFinancials>({
+        serviceCharge: 0,
+        gstType: "NONE",
+        gst: 0,
+        discount: 0,
+        billingAddress: "",
+        tds: 0,
+        receivedAmount: 0,
+    });
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setClientFinancials({
+            serviceCharge: eventData?.serviceCharge ?? 0,
+            gstType: eventData?.gstType ?? "NONE",
+            gst: eventData?.gst ?? 0,
+            discount: eventData?.discounts ?? 0,
+            billingAddress: eventData?.billingAddress ?? "",
+            tds: eventData?.tds ?? 0,
+            // Amount already received from the client. Defaults to the
+            // recorded client advance when available.
+            receivedAmount: eventData?.advanceAmt ?? 0,
+        });
+    }, [isOpen]);
 
     /* ---------- Save / checklist-update confirmation ---------- */
     const [isSaving, setIsSaving] = useState(false);
@@ -361,6 +400,22 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Per‑vendor financials state so edits survive vendor switches ---------- */
     const [financialsByVendor, setFinancialsByVendor] = useState<Record<string, Financials>>({});
+    /**
+     * Tracks vendors whose TDS (%) was explicitly edited in the vendor
+     * financials form. Client Details TDS (`clientFinancials.tds`) must only
+     * update the root-level `tds` — it must never overwrite per-vendor
+     * `vendorSummary[].tds`. So on save, vendors NOT in this set keep their
+     * original `vendorSummary.tds` value verbatim.
+     */
+    const [tdsEditedVendorIds, setTdsEditedVendorIds] = useState<Record<string, boolean>>({});
+
+    // Reset per-open edit tracking so TDS edits from a previous
+    // event/modal session never leak into the next save.
+    useEffect(() => {
+        if (isOpen) {
+            setTdsEditedVendorIds({});
+        }
+    }, [isOpen]);
 
     // Initialise financials for each vendor on mount / data change
     useEffect(() => {
@@ -440,6 +495,62 @@ export function CreatePurchaseOrderModal({
         });
     }, [vendors, financialsByVendor, editableItems]);
 
+    /* ---------- Client billing field handlers ---------- */
+    const updateClientFinancial = (field: keyof ClientFinancials, value: string) => {
+        setClientFinancials(prev => {
+            if (field === "gstType" || field === "billingAddress") {
+                return { ...prev, [field]: value };
+            }
+            if (value === "") return { ...prev, [field]: 0 };
+            const parsed = parseFloat(value);
+            if (Number.isNaN(parsed)) return prev;
+            return { ...prev, [field]: parsed };
+        });
+    };
+
+    /* ---------- Client cost summary ----------
+     * Client-side financial calculation based on the approved/final estimate
+     * (item subtotal + additional costs) plus the editable client billing
+     * details (service charge, discount, GST, TDS, received amount). It reuses
+     * the same calculation logic established in the Create Estimate flow and is
+     * completely independent from the vendor financial calculation. */
+    // const clientItemSubtotal = useMemo(() => {
+    //     return (eventData?.items ?? []).reduce(
+    //         (sum, it) => sum + (it.count ?? 1) * (it.pricePerItem ?? 0),
+    //         0,
+    //     );
+    // }, [eventData?.items]);
+
+    // const additionalCosts = useMemo(() => {
+    //     return (eventData?.additionalCostEstimate ?? []).reduce(
+    //         (sum, c) => sum + (c.amount ?? 0),
+    //         0,
+    //     );
+    // }, [eventData?.additionalCostEstimate]);
+
+    const clientSummary = useMemo(() => {
+        return calculateEstimateSummary({
+            totalAmount: totalClientEstimatedAmount,
+            gst: clientFinancials.gst,
+            serviceCharge: clientFinancials.serviceCharge,
+            discounts: clientFinancials.discount,
+        });
+    }, [clientFinancials.gst, clientFinancials.serviceCharge, clientFinancials.discount]);
+
+    // TDS is applied on the same base used for GST (total after service charge
+    // and discount adjustments), mirroring the vendor-side net total convention
+    // without mixing the two calculations.
+    const clientTdsAmount = useMemo(() => {
+        const base =
+            totalClientEstimatedAmount +
+            clientSummary.serviceChargeAmount -
+            clientFinancials.discount;
+        return base * (clientFinancials.tds / 100);
+    }, [clientSummary.serviceChargeAmount, clientFinancials.discount, clientFinancials.tds]);
+
+    const clientTotal = clientSummary.totalWithGST - clientTdsAmount;
+    const clientOutstanding = clientTotal - clientFinancials.receivedAmount;
+
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
         const { subtotal, gstPercent, tdsPercent, advance } = financials;
@@ -470,6 +581,14 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Financial field handlers ---------- */
     const updateFinancial = (field: keyof Financials, value: string) => {
+        // Editing a vendor's own TDS field is the ONLY way its
+        // `vendorSummary[].tds` may change. Record it so save can
+        // preserve original vendor TDS values for untouched vendors.
+        if (field === "tdsPercent") {
+            setTdsEditedVendorIds(prev =>
+                prev[activeVendorId] ? prev : { ...prev, [activeVendorId]: true },
+            );
+        }
         setFinancialsByVendor(prev => {
             const current = prev[activeVendorId];
             if (!current) return prev;
@@ -622,12 +741,28 @@ export function CreatePurchaseOrderModal({
 
             // Build updated vendorSummary by merging original vendorSummary
             // with user-edited financials for each vendor.
+            // IMPORTANT: Client Details TDS (`clientFinancials.tds`) only
+            // updates the root-level `tds`. A vendor's `vendorSummary[].tds`
+            // changes ONLY when that vendor's own TDS (%) field was edited
+            // (tracked in `tdsEditedVendorIds`). Otherwise the original
+            // `vendorSummary[].tds` is preserved verbatim.
             const updatedVendorSummary: VendorSummary[] = vendors
                 .filter(v => financialsByVendor[v.id])
                 .map(v => {
                     const f = financialsByVendor[v.id];
+                    const originalVs = (vendorSummary ?? []).find(s => {
+                        if (v.id === "SELF") {
+                            return !s.vendor || s.vendor === "SELF";
+                        }
+                        return s.vendor === v.id;
+                    });
+                    // Keep the stored vendor TDS unless this vendor's TDS
+                    // field was explicitly edited in this session.
+                    const tdsPercentToSave = tdsEditedVendorIds[v.id]
+                        ? f.tdsPercent
+                        : (originalVs?.tds ?? f.tdsPercent);
                     const gstAmount = f.subtotal * (f.gstPercent / 100);
-                    const tdsAmount = f.subtotal * (f.tdsPercent / 100);
+                    const tdsAmount = f.subtotal * (tdsPercentToSave / 100);
                     const netTotal = f.subtotal + gstAmount - tdsAmount;
                     const bal = netTotal - f.advance;
                     return {
@@ -636,7 +771,7 @@ export function CreatePurchaseOrderModal({
                         advanceAmount: f.advance,
                         gst: f.gstPercent,
                         gstType: f.gstType ?? "NONE",
-                        tds: f.tdsPercent,
+                        tds: tdsPercentToSave,
                         adjustedAmt: netTotal,
                         balance: bal,
                         changeSummary: f.note,
@@ -651,10 +786,20 @@ export function CreatePurchaseOrderModal({
 
             // Persist the editable line items (with updated qty/rate) so the
             // updated values reach the backend together with the financials.
+            // The editable client billing details are merged in as well so the
+            // approved/final estimate billing info stays in sync. Vendor TDS /
+            // advance remain untouched (they live in `vendorSummary`).
             const updatedEvent = {
                 ...eventData,
                 items: editableItems.length > 0 ? editableItems : eventData.items,
                 vendorSummary: [...updatedVendorSummary, ...otherSummaries],
+                gst: clientFinancials.gst,
+                gstType: clientFinancials.gstType,
+                tds: clientFinancials.tds,
+                serviceCharge: clientFinancials.serviceCharge,
+                discounts: clientFinancials.discount,
+                billingAddress: clientFinancials.billingAddress,
+                receivedAmount: clientFinancials.receivedAmount,
             };
 
             // Use POST to create the event – requires the event id
@@ -708,50 +853,114 @@ export function CreatePurchaseOrderModal({
         >
             {/* Two-column layout */}
             <div className="flex max-h-[calc(100vh-200px)]">
-                {/* Left: Vendor Sidebar */}
-                {vendors.length > 0 && (
-                    <aside className="w-72 border-r border-border bg-surface-container-low/30 overflow-y-auto shrink-0">
-                        <nav className="p-2 space-y-2">
-                            {vendors.map(v => {
-                                const isActive = v.id === activeVendorId;
-                                return (
-                                    <button
-                                        key={v.id}
-                                        onClick={() => setActiveVendorId(v.id)}
-                                        className={cn(
-                                            "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
-                                            isActive
-                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                : "hover:bg-surface-container-high",
-                                        )}
-                                    >
-                                        <span
+                {/* Left: Client + Vendor Sidebar */}
+                <aside className="w-72 border-r border-border bg-surface-container-low/30 overflow-y-auto shrink-0">
+                    <nav className="p-2 space-y-5">
+                        {/* Client Detail section */}
+                        <div>
+                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Client Detail
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setActiveView("client")}
+                                className={cn(
+                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
+                                    activeView === "client"
+                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                        : "hover:bg-surface-container-high",
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        "text-sm font-bold truncate",
+                                        activeView === "client"
+                                            ? "text-inherit"
+                                            : "text-foreground",
+                                    )}
+                                >
+                                    Billing & settlement
+                                </span>
+                                {/* <span
+                                    className={cn(
+                                        "text-xs italic",
+                                        activeView === "client"
+                                            ? "opacity-80"
+                                            : "text-muted-foreground",
+                                    )}
+                                >
+                                    Billing & settlement
+                                </span> */}
+                            </button>
+                        </div>
+
+                        {/* Vendor Detail section */}
+                        <div className="border-t border-border pt-3">
+                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Vendor Detail
+                            </p>
+                            <div className="space-y-2">
+                                {vendors.map(v => {
+                                    const isActive =
+                                        activeView === "vendor" && v.id === activeVendorId;
+                                    return (
+                                        <button
+                                            key={v.id}
+                                            onClick={() => {
+                                                setActiveView("vendor");
+                                                setActiveVendorId(v.id);
+                                            }}
                                             className={cn(
-                                                "text-sm font-bold truncate",
-                                                isActive ? "text-inherit" : "text-foreground",
+                                                "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
+                                                isActive
+                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                    : "hover:bg-surface-container-high",
                                             )}
                                         >
-                                            {v.name}
-                                        </span>
-                                        <span
-                                            className={cn(
-                                                "text-xs italic",
-                                                isActive ? "opacity-80" : "text-muted-foreground",
-                                            )}
-                                        >
-                                            {v.status}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </nav>
-                    </aside>
-                )}
+                                            <span
+                                                className={cn(
+                                                    "text-sm font-bold truncate",
+                                                    isActive ? "text-inherit" : "text-foreground",
+                                                )}
+                                            >
+                                                {v.name}
+                                            </span>
+                                            <span
+                                                className={cn(
+                                                    "text-xs italic",
+                                                    isActive
+                                                        ? "opacity-80"
+                                                        : "text-muted-foreground",
+                                                )}
+                                            >
+                                                {v.status}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                                {vendors.length === 0 && (
+                                    <p className="px-3 text-xs italic text-muted-foreground">
+                                        No vendors assigned
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </nav>
+                </aside>
 
                 {/* Right: Main Content */}
                 <main className="flex-1 overflow-y-auto p-6">
                     <div className="max-w-4xl mx-auto space-y-8">
-                        {categories.length === 0 ? (
+                        {activeView === "client" ? (
+                            <PurchaseOrderClientDetails
+                                clientName={clientName}
+                                eventName={eventName}
+                                eventDescription={eventDescription}
+                                clientFinancials={clientFinancials}
+                                onFinancialChange={updateClientFinancial}
+                                estimatedAmount={totalClientEstimatedAmount}
+                            />
+                        ) : categories.length === 0 ? (
                             <div className="text-center py-12">
                                 <p className="text-sm text-muted-foreground">
                                     {vendors.length === 0
@@ -920,92 +1129,171 @@ export function CreatePurchaseOrderModal({
                 </main>
             </div>
 
-            {/* Footer */}
-            {categories.length > 0 && (
-                <ModalFooter className="justify-between">
-                    <div className="flex items-center gap-4 bg-primary/[0.04] rounded-xl px-5 py-3 border border-primary/10">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                                Outstanding Balance
-                            </p>
-                            <p className="text-xs text-muted-foreground">Final vendor settlement</p>
-                        </div>
-                        <span className="text-xl font-extrabold text-primary tracking-tight">
-                            {formatCurrency(balance())}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setShowBreakdown(!showBreakdown)}
-                            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                            aria-label="Toggle balance breakdown"
-                        >
-                            {showBreakdown ? (
-                                <ChevronUp className="w-4 h-4" />
-                            ) : (
-                                <ChevronDown className="w-4 h-4" />
-                            )}
-                        </button>
-                    </div>
-                    {showBreakdown && (
-                        <div className="absolute bottom-20 left-5 bg-surface border border-border rounded-xl shadow-xl p-4 z-50 w-72">
-                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-                                Balance Breakdown
-                            </p>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Subtotal</span>
-                                    <span className="font-medium">
-                                        {formatCurrency(breakdownDetails.subtotal)}
-                                    </span>
+            {/* Footer – Client view shows COST SUMMARY; vendor view shows OUTSTANDING BALANCE */}
+            <ModalFooter className="relative justify-between flex-wrap">
+                <div className="flex items-center gap-4 flex-wrap">
+                    {activeView === "client" ? (
+                        <>
+                            {/* COST SUMMARY – client / estimate financial position.
+                        Shown ONLY when the Client Details selection is active. */}
+                            <CostSummary
+                                title="Cost Summary"
+                                subtitle="Client / estimate settlement"
+                                amount={clientOutstanding}
+                                breakdownTitle="Cost Breakdown"
+                                items={[
+                                    {
+                                        label: "Estimate/Subtotal",
+                                        amount: totalClientEstimatedAmount,
+                                    },
+                                    ...(clientSummary.serviceChargeAmount > 0
+                                        ? [
+                                              {
+                                                  label: `Service Charge (${clientFinancials.serviceCharge}%)`,
+                                                  amount: clientSummary.serviceChargeAmount,
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientFinancials.discount > 0
+                                        ? [
+                                              {
+                                                  label: "Discount",
+                                                  amount: clientFinancials.discount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientSummary.gstAmount > 0
+                                        ? [
+                                              {
+                                                  label: `GST (${clientFinancials.gst}%)`,
+                                                  amount: clientSummary.gstAmount,
+                                                  tone: "positive" as const,
+                                                  prefix: "+",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientTdsAmount > 0
+                                        ? [
+                                              {
+                                                  label: `TDS (${clientFinancials.tds}%)`,
+                                                  amount: clientTdsAmount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientFinancials.receivedAmount > 0
+                                        ? [
+                                              {
+                                                  label: "Received Amount",
+                                                  amount: clientFinancials.receivedAmount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                ]}
+                                totalItem={{
+                                    label: "Client Outstanding",
+                                    amount: clientOutstanding,
+                                }}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            {/* OUTSTANDING BALANCE – vendor settlement amount.
+                        Shown ONLY when a vendor selection is active. */}
+                            <div className="flex items-center gap-4 bg-primary/[0.04] rounded-xl px-5 py-3 border border-primary/10">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                                        Outstanding Balance
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Final vendor settlement
+                                    </p>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">
-                                        GST ({breakdownDetails.gstPercent}%)
-                                    </span>
-                                    <span className="font-medium text-success">
-                                        +{formatCurrency(breakdownDetails.gstAmount)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">
-                                        TDS ({breakdownDetails.tdsPercent}%)
-                                    </span>
-                                    <span className="font-medium text-destructive">
-                                        -{formatCurrency(breakdownDetails.tdsAmount)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Net Total</span>
-                                    <span className="font-medium">
-                                        {formatCurrency(breakdownDetails.netTotal)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Advance Paid</span>
-                                    <span className="font-medium text-destructive">
-                                        -{formatCurrency(breakdownDetails.advance)}
-                                    </span>
-                                </div>
-                                <div className="border-t border-border pt-2 flex justify-between font-bold text-primary">
-                                    <span>Outstanding Balance</span>
-                                    <span>{formatCurrency(breakdownDetails.balance)}</span>
-                                </div>
+                                <span className="text-xl font-extrabold text-primary tracking-tight">
+                                    {formatCurrency(balance())}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBreakdown(!showBreakdown)}
+                                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                                    aria-label="Toggle balance breakdown"
+                                >
+                                    {showBreakdown ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                    )}
+                                </button>
                             </div>
-                        </div>
+                            {showBreakdown && (
+                                <div className="absolute bottom-20 left-5 bg-surface border border-border rounded-xl shadow-xl p-4 z-50 w-72">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                                        Balance Breakdown
+                                    </p>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Subtotal</span>
+                                            <span className="font-medium">
+                                                {formatCurrency(breakdownDetails.subtotal)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">
+                                                GST ({breakdownDetails.gstPercent}%)
+                                            </span>
+                                            <span className="font-medium text-success">
+                                                +{formatCurrency(breakdownDetails.gstAmount)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">
+                                                TDS ({breakdownDetails.tdsPercent}%)
+                                            </span>
+                                            <span className="font-medium text-destructive">
+                                                -{formatCurrency(breakdownDetails.tdsAmount)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Net Total</span>
+                                            <span className="font-medium">
+                                                {formatCurrency(breakdownDetails.netTotal)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">
+                                                Advance Paid
+                                            </span>
+                                            <span className="font-medium text-destructive">
+                                                -{formatCurrency(breakdownDetails.advance)}
+                                            </span>
+                                        </div>
+                                        <div className="border-t border-border pt-2 flex justify-between font-bold text-primary">
+                                            <span>Outstanding Balance</span>
+                                            <span>{formatCurrency(breakdownDetails.balance)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
-                    <div className="flex items-center gap-3">
-                        <Button variant="ghost" onClick={onClose}>
-                            Cancel
-                        </Button>
-                        <Button variant="outline" onClick={onViewPurchaseOrder}>
-                            Preview Order
-                        </Button>
-                        <Button className="shadow-lg shadow-primary/30" onClick={handleSaveClick}>
-                            Save Purchase Order
-                        </Button>
-                    </div>
-                </ModalFooter>
-            )}
+                </div>
+                <div className="flex items-center gap-3">
+                    <Button variant="ghost" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button variant="outline" onClick={onViewPurchaseOrder}>
+                        Preview Order
+                    </Button>
+                    <Button className="shadow-lg shadow-primary/30" onClick={handleSaveClick}>
+                        Save Purchase Order
+                    </Button>
+                </div>
+            </ModalFooter>
             <ConfirmationModal
                 open={showChecklistConfirmation}
                 onClose={() => setShowChecklistConfirmation(false)}

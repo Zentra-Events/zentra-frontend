@@ -258,6 +258,7 @@ export function EstimateVersionsView({
                 discounts: version.discounts,
                 serviceCharge: version.serviceCharge,
                 gst: version.gst,
+                gstType: version.gstType,
                 enquiryDate: version.enquiryDate,
                 items: flattenedItems,
                 enquiryPoc: version.enquiryPoC,

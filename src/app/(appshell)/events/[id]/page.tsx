@@ -87,6 +87,23 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
         fetchEventData();
     }, [fetchEventData]);
 
+    const fetchEstimateNetTotal = React.useCallback(async () => {
+        try {
+            const res = await apiRequest(
+                API_ENDPOINTS.estimates.netTotal(encodeURIComponent(String(id))),
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            console.log("Estimate net total response:", data);
+        } catch (err) {
+            console.error("Failed to fetch estimate net total:", err);
+        }
+    }, [id]);
+
+    useEffect(() => {
+        fetchEstimateNetTotal();
+    }, [fetchEstimateNetTotal]);
+
     const fetchVendorsOnly = React.useCallback(async () => {
         setLoadingVendors(true);
         try {
@@ -680,6 +697,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                     }}
                     vendorList={vendorList}
                     eventData={eventData}
+                    totalClientEstimatedAmount={totalEstimatedCost}
                 />
             )}
 

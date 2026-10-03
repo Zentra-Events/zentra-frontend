@@ -513,6 +513,14 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
     if (vendorRows.length === 0) return null;
 
     const grandTotalAmount = vendorRows.reduce((sum, v) => sum + v.totalAmount, 0);
+    const grandGstAmount = vendorRows.reduce(
+        (sum, v) => sum + v.totalAmount * ((v.gstPercent ?? 0) / 100),
+        0,
+    );
+    const grandTdsAmount = vendorRows.reduce(
+        (sum, v) => sum + v.totalAmount * ((v.tdsPercent ?? 0) / 100),
+        0,
+    );
     const grandNetTotal = vendorRows.reduce((sum, v) => sum + v.adjustedAmt, 0);
     const grandAdvance = vendorRows.reduce((sum, v) => sum + v.advanceAmount, 0);
     const grandBalance = vendorRows.reduce((sum, v) => sum + v.balance, 0);
@@ -581,8 +589,16 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
                         <td className="border border-black px-2 py-1.5 text-right font-bold">
                             {formatExportCurrency(grandTotalAmount)}
                         </td>
-                        <td className="border border-black px-2 py-1.5" />
-                        <td className="border border-black px-2 py-1.5" />
+                        <td className="border border-black px-2 py-1.5 text-right font-bold text-green-700">
+                            {grandGstAmount > 0
+                                ? `+${formatExportCurrency(grandGstAmount)}`
+                                : "—"}
+                        </td>
+                        <td className="border border-black px-2 py-1.5 text-right font-bold text-destructive">
+                            {grandTdsAmount > 0
+                                ? `-${formatExportCurrency(grandTdsAmount)}`
+                                : "—"}
+                        </td>
                         <td className="border border-black px-2 py-1.5 text-right font-bold">
                             {formatExportCurrency(grandNetTotal)}
                         </td>

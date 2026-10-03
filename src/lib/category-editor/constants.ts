@@ -8,6 +8,7 @@ export interface CategoryEditorStrings {
     addCategory: string;
     addSubCategory: string;
     addItem: string;
+    addUngroupedItem: string;
     categoryNamePlaceholder: string;
     subCategoryNamePlaceholder: string;
     emptyStateText: string;
@@ -19,6 +20,7 @@ export const DEFAULT_LABELS: CategoryEditorStrings = {
     addCategory: "Add Category",
     addSubCategory: "Sub Category",
     addItem: "Item",
+    addUngroupedItem: "Add General Item",
     categoryNamePlaceholder: "Category name",
     subCategoryNamePlaceholder: "Sub category",
     emptyStateText: "No elements added yet.",
