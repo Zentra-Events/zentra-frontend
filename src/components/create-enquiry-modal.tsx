@@ -119,7 +119,9 @@ function SectionHeader({
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {eyebrow}
                 </p>
-                <h3 id={id} className="mt-0.5 text-sm font-semibold text-foreground">{title}</h3>
+                <h3 id={id} className="mt-0.5 text-sm font-semibold text-foreground">
+                    {title}
+                </h3>
                 <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
             </div>
             {badge ? <span className="shrink-0">{badge}</span> : null}
@@ -167,6 +169,11 @@ export default function CreateEnquiryModal({
         }
     };
 
+    const normalizeAssignedTo = (value?: string) => {
+        const normalized = value?.trim() || "";
+        return normalized === "Unassigned" ? "" : normalized;
+    };
+
     const initialValues: EnquiryFormData = editData
         ? {
               ...editData,
@@ -174,6 +181,7 @@ export default function CreateEnquiryModal({
               fromDate: normalizeDateForForm(editData.fromDate || "") || "",
               toDate: normalizeDateForForm(editData.toDate || "") || "",
               eventType: editData.eventType || "CORPORATE",
+              assignedTo: normalizeAssignedTo(editData.assignedTo),
           }
         : {
               highlvelRequirement: "",
@@ -241,6 +249,7 @@ export default function CreateEnquiryModal({
 
             const requestBody: Record<string, unknown> = {
                 ...restValues,
+                assignedTo: normalizeAssignedTo(values.assignedTo),
                 client: clientDisplayName,
                 clientID: clientId,
                 enquiryDate: (isEdit ? values.enquiryDate : "") || new Date().toISOString(),
@@ -418,7 +427,6 @@ export default function CreateEnquiryModal({
                                                     </>
                                                 }
                                                 placeholderText="Select start date & time"
-                                                isClearable
                                             />
                                             <FormikFieldDatePicker
                                                 name="toDate"
@@ -428,7 +436,6 @@ export default function CreateEnquiryModal({
                                                     </>
                                                 }
                                                 placeholderText="Select end date & time"
-                                                isClearable
                                             />
                                         </div>
 
@@ -525,235 +532,261 @@ export default function CreateEnquiryModal({
                                                         value: c.id,
                                                         label: c.name,
                                                     }))}
-                                                value={(() => {
-                                                    const option = clients.find(
-                                                        c => c.id === values.client,
-                                                    );
-                                                    if (option)
-                                                        return {
-                                                            value: option.id,
-                                                            label: option.name,
-                                                        };
-                                                    if (clientsLoading) return null;
-                                                    if (values.clientName)
-                                                        return {
-                                                            value: "__new__",
-                                                            label: values.clientName,
-                                                        };
-                                                    return null;
-                                                })()}
-                                                onChange={selectedValue => {
-                                                    const selectedOption = clients.find(
-                                                        c => c.id === selectedValue,
-                                                    );
-                                                    const personal = isPersonalEvent(values.eventType);
-                                                    // Update client + clientName (+ clientPoC for PERSONAL)
-                                                    // atomically with a single setValues call. Separate
-                                                    // sequential setFieldValue() calls re-validate the
-                                                    // form against stale values, so the second call
-                                                    // (clientName = "") re-triggers "Please select a
-                                                    // client" even though the client id was just set.
-                                                    if (selectedValue === "__new__") {
+                                                    value={(() => {
+                                                        const option = clients.find(
+                                                            c => c.id === values.client,
+                                                        );
+                                                        if (option)
+                                                            return {
+                                                                value: option.id,
+                                                                label: option.name,
+                                                            };
+                                                        if (clientsLoading) return null;
+                                                        if (values.clientName)
+                                                            return {
+                                                                value: "__new__",
+                                                                label: values.clientName,
+                                                            };
+                                                        return null;
+                                                    })()}
+                                                    onChange={selectedValue => {
+                                                        const selectedOption = clients.find(
+                                                            c => c.id === selectedValue,
+                                                        );
+                                                        const personal = isPersonalEvent(
+                                                            values.eventType,
+                                                        );
+                                                        // Update client + clientName (+ clientPoC for PERSONAL)
+                                                        // atomically with a single setValues call. Separate
+                                                        // sequential setFieldValue() calls re-validate the
+                                                        // form against stale values, so the second call
+                                                        // (clientName = "") re-triggers "Please select a
+                                                        // client" even though the client id was just set.
+                                                        if (selectedValue === "__new__") {
+                                                            setValues({
+                                                                ...values,
+                                                                client: "",
+                                                                ...(personal
+                                                                    ? {
+                                                                          clientPoC:
+                                                                              values.clientName,
+                                                                      }
+                                                                    : {}),
+                                                            });
+                                                        } else if (selectedOption) {
+                                                            setValues({
+                                                                ...values,
+                                                                client: selectedOption.id,
+                                                                clientName: "",
+                                                                ...(personal
+                                                                    ? {
+                                                                          clientPoC:
+                                                                              selectedOption.name,
+                                                                      }
+                                                                    : {}),
+                                                            });
+                                                        } else {
+                                                            setValues({
+                                                                ...values,
+                                                                client: "",
+                                                                clientName: "",
+                                                            });
+                                                        }
+                                                    }}
+                                                    onCreateOption={(inputValue: string) => {
+                                                        // Do not persist immediately; store typed name and show as selected.
+                                                        // Single atomic update (same stale-values rationale as above).
                                                         setValues({
                                                             ...values,
                                                             client: "",
-                                                            ...(personal
-                                                                ? {
-                                                                      clientPoC: values.clientName,
-                                                                  }
+                                                            clientName: inputValue,
+                                                            ...(isPersonalEvent(values.eventType)
+                                                                ? { clientPoC: inputValue }
                                                                 : {}),
                                                         });
-                                                    } else if (selectedOption) {
-                                                        setValues({
-                                                            ...values,
-                                                            client: selectedOption.id,
-                                                            clientName: "",
-                                                            ...(personal
-                                                                ? {
-                                                                      clientPoC: selectedOption.name,
-                                                                  }
-                                                                : {}),
-                                                        });
-                                                    } else {
-                                                        setValues({
-                                                            ...values,
-                                                            client: "",
-                                                            clientName: "",
-                                                        });
-                                                    }
-                                                }}
-                                                onCreateOption={(inputValue: string) => {
-                                                    // Do not persist immediately; store typed name and show as selected.
-                                                    // Single atomic update (same stale-values rationale as above).
-                                                    setValues({
-                                                        ...values,
-                                                        client: "",
-                                                        clientName: inputValue,
-                                                        ...(isPersonalEvent(values.eventType)
-                                                            ? { clientPoC: inputValue }
-                                                            : {}),
-                                                    });
+                                                    }}
+                                                />
+                                            )}
+                                            <p className="mt-1.5 text-xs text-muted-foreground">
+                                                Search an existing client or type a new name and
+                                                press Enter.
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <FormikFieldInput
+                                                name="clientPoC"
+                                                label={
+                                                    isPersonalEvent(values.eventType)
+                                                        ? "Client POC (same as client)"
+                                                        : "Client POC"
+                                                }
+                                                type="text"
+                                                placeholder={
+                                                    isPersonalEvent(values.eventType)
+                                                        ? "Auto-filled from client"
+                                                        : "Primary contact name"
+                                                }
+                                                disabled={isPersonalEvent(values.eventType)}
+                                                inputClassName={cn(
+                                                    isPersonalEvent(values.eventType) &&
+                                                        "cursor-not-allowed opacity-80",
+                                                )}
+                                            />
+                                            <FormikFieldInput
+                                                name="enquiryPoCNumber"
+                                                label={
+                                                    <>
+                                                        Client POC number
+                                                        <RequiredMark />
+                                                    </>
+                                                }
+                                                type="tel"
+                                                inputMode="tel"
+                                                autoComplete="tel"
+                                                placeholder="10-digit mobile number"
+                                                maxLength={10}
+                                                onChange={e => {
+                                                    const value = e.target.value
+                                                        .replace(/\D/g, "")
+                                                        .slice(0, 10);
+                                                    setFieldValue("enquiryPoCNumber", value);
                                                 }}
                                             />
+                                        </div>
+                                        {isPersonalEvent(values.eventType) && (
+                                            <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                                Individual events use the client name as the point
+                                                of contact.
+                                            </p>
                                         )}
-                                        <p className="mt-1.5 text-xs text-muted-foreground">
-                                            Search an existing client or type a new name and press
-                                            Enter.
-                                        </p>
                                     </div>
+                                </section>
+                            </div>
 
-                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                        <FormikFieldInput
-                                            name="clientPoC"
-                                            label={
-                                                isPersonalEvent(values.eventType)
-                                                    ? "Client POC (same as client)"
-                                                    : "Client POC"
-                                            }
-                                            type="text"
-                                            placeholder={
-                                                isPersonalEvent(values.eventType)
-                                                    ? "Auto-filled from client"
-                                                    : "Primary contact name"
-                                            }
-                                            disabled={isPersonalEvent(values.eventType)}
-                                            inputClassName={cn(
-                                                isPersonalEvent(values.eventType) &&
-                                                    "cursor-not-allowed opacity-80",
-                                            )}
-                                        />
-                                        <FormikFieldInput
-                                            name="enquiryPoCNumber"
-                                            label={
-                                                <>
-                                                    Client POC number
-                                                    <RequiredMark />
-                                                </>
-                                            }
-                                            type="tel"
-                                            inputMode="tel"
-                                            autoComplete="tel"
-                                            placeholder="10-digit mobile number"
-                                            maxLength={10}
-                                            onChange={e => {
-                                                const value = e.target.value
-                                                    .replace(/\D/g, "")
-                                                    .slice(0, 10);
-                                                setFieldValue("enquiryPoCNumber", value);
-                                            }}
-                                        />
-                                    </div>
-                                    {isPersonalEvent(values.eventType) && (
-                                        <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-5 text-muted-foreground">
-                                            Individual events use the client name as the point of
-                                            contact.
-                                        </p>
-                                    )}
+                            <section
+                                aria-labelledby="enquiry-additional-contacts-heading"
+                                className="rounded-xl border border-border bg-background p-4 sm:p-5"
+                            >
+                                <SectionHeader
+                                    id="enquiry-additional-contacts-heading"
+                                    icon={<Users size={18} aria-hidden="true" />}
+                                    eyebrow="Step 3"
+                                    title="Additional contacts & assignment"
+                                    description="Add these only when they differ from the primary client contact."
+                                    badge={
+                                        <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                                            Optional
+                                        </span>
+                                    }
+                                />
+                                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <FormikFieldInput
+                                        name="eventPoC"
+                                        label={
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <UserRound
+                                                    size={14}
+                                                    className="text-muted-foreground"
+                                                    aria-hidden="true"
+                                                />
+                                                Event POC name
+                                            </span>
+                                        }
+                                        type="text"
+                                        placeholder="On-ground contact person"
+                                    />
+                                    <FormikFieldInput
+                                        name="eventPoCNumber"
+                                        label={
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <Phone
+                                                    size={14}
+                                                    className="text-muted-foreground"
+                                                    aria-hidden="true"
+                                                />
+                                                Event POC number
+                                            </span>
+                                        }
+                                        type="tel"
+                                        inputMode="tel"
+                                        autoComplete="tel"
+                                        placeholder="10-digit mobile number"
+                                        maxLength={10}
+                                        onChange={e => {
+                                            const value = e.target.value
+                                                .replace(/\D/g, "")
+                                                .slice(0, 10);
+                                            setFieldValue("eventPoCNumber", value);
+                                        }}
+                                    />
+                                    <FormikFieldInput
+                                        name="enquiryPoC"
+                                        label={
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <UserRound
+                                                    size={14}
+                                                    className="text-muted-foreground"
+                                                    aria-hidden="true"
+                                                />
+                                                Enquiry POC name
+                                            </span>
+                                        }
+                                        type="text"
+                                        placeholder="Follow-up contact person"
+                                    />
+                                    <FormikFieldInput
+                                        name="assignedTo"
+                                        label={
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <Briefcase
+                                                    size={14}
+                                                    className="text-muted-foreground"
+                                                    aria-hidden="true"
+                                                />
+                                                Assigned to
+                                            </span>
+                                        }
+                                        type="text"
+                                        placeholder="Team member handling this enquiry"
+                                    />
                                 </div>
                             </section>
-                        </div>
-
-                        <section
-                            aria-labelledby="enquiry-additional-contacts-heading"
-                            className="rounded-xl border border-border bg-background p-4 sm:p-5"
-                        >
-                            <SectionHeader
-                                id="enquiry-additional-contacts-heading"
-                                icon={<Users size={18} aria-hidden="true" />}
-                                eyebrow="Step 3"
-                                title="Additional contacts & assignment"
-                                description="Add these only when they differ from the primary client contact."
-                                badge={
-                                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                        Optional
-                                    </span>
-                                }
-                            />
-                            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <FormikFieldInput
-                                    name="eventPoC"
-                                    label={
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <UserRound size={14} className="text-muted-foreground" aria-hidden="true" />
-                                            Event POC name
-                                        </span>
-                                    }
-                                    type="text"
-                                    placeholder="On-ground contact person"
-                                />
-                                <FormikFieldInput
-                                    name="eventPoCNumber"
-                                    label={
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <Phone size={14} className="text-muted-foreground" aria-hidden="true" />
-                                            Event POC number
-                                        </span>
-                                    }
-                                    type="tel"
-                                    inputMode="tel"
-                                    autoComplete="tel"
-                                    placeholder="10-digit mobile number"
-                                    maxLength={10}
-                                    onChange={e => {
-                                        const value = e.target.value
-                                            .replace(/\D/g, "")
-                                            .slice(0, 10);
-                                        setFieldValue("eventPoCNumber", value);
-                                    }}
-                                />
-                                <FormikFieldInput
-                                    name="enquiryPoC"
-                                    label="Enquiry POC name"
-                                    type="text"
-                                    placeholder="Follow-up contact person"
-                                />
-                                <FormikFieldInput
-                                    name="assignedTo"
-                                    label={
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <Briefcase size={14} className="text-muted-foreground" aria-hidden="true" />
-                                            Assigned to
-                                        </span>
-                                    }
-                                    type="text"
-                                    placeholder="Team member handling this enquiry"
-                                />
+                        </ModalBody>
+                        <ModalFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <MapPin size={14} className="shrink-0" aria-hidden="true" />
+                                <span>
+                                    Fields marked{" "}
+                                    <span className="font-semibold text-error">*</span> are
+                                    required.
+                                </span>
+                            </p>
+                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                                <Button
+                                    variant="outline"
+                                    onClick={onClose}
+                                    type="button"
+                                    disabled={isSubmitting || saveProcessing}
+                                    className="w-full sm:w-auto"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="button"
+                                    isLoading={isSubmitting || saveProcessing}
+                                    disabled={isSubmitting || saveProcessing}
+                                    onClick={() => submitForm()}
+                                    className="w-full sm:w-auto"
+                                >
+                                    {saveProcessing || isSubmitting
+                                        ? "Saving..."
+                                        : isEdit
+                                          ? "Save changes"
+                                          : "Create enquiry"}
+                                </Button>
                             </div>
-                        </section>
-                    </ModalBody>
-                    <ModalFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <MapPin size={14} className="shrink-0" aria-hidden="true" />
-                            <span>
-                                Fields marked <span className="font-semibold text-error">*</span>{" "}
-                                are required.
-                            </span>
-                        </p>
-                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-                            <Button
-                                variant="outline"
-                                onClick={onClose}
-                                type="button"
-                                disabled={isSubmitting || saveProcessing}
-                                className="w-full sm:w-auto"
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="button"
-                                isLoading={isSubmitting || saveProcessing}
-                                disabled={isSubmitting || saveProcessing}
-                                onClick={() => submitForm()}
-                                className="w-full sm:w-auto"
-                            >
-                                {saveProcessing || isSubmitting
-                                    ? "Saving..."
-                                    : isEdit
-                                      ? "Save changes"
-                                      : "Create enquiry"}
-                            </Button>
-                        </div>
-                    </ModalFooter>
+                        </ModalFooter>
                     </Form>
                 )}
             </Formik>

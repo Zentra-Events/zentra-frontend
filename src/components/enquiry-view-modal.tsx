@@ -66,6 +66,12 @@ function isEstimateCreated(statusFlag: string): boolean {
     return statusFlag === "ESTIMATE_CREATED";
 }
 
+function getEnquiryAssignee(enquiry: Enquiry): string {
+    const assignedTo = enquiry.assignedTo?.trim() || "";
+    if (assignedTo && assignedTo !== "Unassigned") return assignedTo;
+    return enquiry.assignee?.trim() || "";
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryViewModalProps) {
@@ -142,7 +148,7 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
                 enquiryDate: enquiry.date || new Date().toISOString(),
                 fromDate: enquiry.fromDate || enquiry.date || new Date().toISOString(),
                 toDate: enquiry.toDate || enquiry.date || new Date().toISOString(),
-                assignedTo: enquiry.assignee,
+                assignedTo: getEnquiryAssignee(enquiry),
                 eventID: enquiry.eventID,
                 venue: enquiry.venue || "",
                 eventName: enquiry.eventName || enquiry.title || "Event",
@@ -444,9 +450,9 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
                             icon={<PhoneIcon size={14} />}
                         />
                         <InfoRow
-                            label="Assignee"
-                            value={enquiry.assignee}
-                            icon={<UserIcon size={14} />}
+                            label="Assigned To"
+                            value={getEnquiryAssignee(enquiry)}
+                            icon={<BriefcaseIcon size={14} />}
                         />
                     </InfoCard>
 

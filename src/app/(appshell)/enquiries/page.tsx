@@ -222,7 +222,12 @@ export default function EnquiriesPage() {
             title: enquiry.eventName || "",
             enquiryPoC: enquiry.enquiryPoC || "",
             eventPoCNumber: enquiry.eventPoCNumber || "",
-            assignedTo: enquiry.assignee || "",
+            assignedTo:
+                enquiry.assignedTo && enquiry.assignedTo !== "Unassigned"
+                    ? enquiry.assignedTo
+                    : enquiry.assignee && enquiry.assignee !== "Unassigned"
+                      ? enquiry.assignee
+                      : "",
         };
         setEditEnquiry(editData);
         setModalOpen(true);
