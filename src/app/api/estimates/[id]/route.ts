@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBackendHeaders, getBackendUrl, addContentType } from "@/lib/api/api-server";
+import { getBackendHeaders, getBackendUrl, addContentType, forwardBackendResponse } from "@/lib/api/api-server";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const BACKEND_URL = getBackendUrl();
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const contentType = res.headers.get("content-type");
         if (contentType) responseHeaders["content-type"] = contentType;
 
-        return new NextResponse(text, { status: res.status, headers: responseHeaders });
+        return forwardBackendResponse(text, res.status, responseHeaders);
     } catch (error) {
         console.error("Failed to fetch estimate:", error);
         return NextResponse.json({ error: "Failed to fetch estimate" }, { status: 502 });
@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const responseHeaders: Record<string, string> = {};
         const contentType = res.headers.get("content-type");
         if (contentType) responseHeaders["content-type"] = contentType;
-        return new NextResponse(text, { status: res.status, headers: responseHeaders });
+        return forwardBackendResponse(text, res.status, responseHeaders);
     } catch (error) {
         console.error("Failed to update estimate:", error);
         return NextResponse.json({ error: "Failed to update estimate" }, { status: 502 });
@@ -60,7 +60,7 @@ export async function DELETE(
         const responseHeaders: Record<string, string> = {};
         const contentType = res.headers.get("content-type");
         if (contentType) responseHeaders["content-type"] = contentType;
-        return new NextResponse(text, { status: res.status, headers: responseHeaders });
+        return forwardBackendResponse(text, res.status, responseHeaders);
     } catch (error) {
         console.error("Failed to delete estimate:", error);
         return NextResponse.json({ error: "Failed to delete estimate" }, { status: 502 });

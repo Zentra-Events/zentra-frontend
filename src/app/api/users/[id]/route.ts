@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBackendHeaders, getBackendUrl } from "@/lib/api/api-server";
+import { getBackendHeaders, getBackendUrl, forwardBackendResponse } from "@/lib/api/api-server";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const BACKEND_URL = getBackendUrl();
@@ -12,10 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         });
         const data = await res.text();
         const contentType = res.headers.get("content-type");
-        return new NextResponse(data, {
-            status: res.status,
-            headers: contentType ? { "content-type": contentType } : undefined,
-        });
+        return forwardBackendResponse(data, res.status, contentType ? { "content-type": contentType } : {});
     } catch (error) {
         console.error("[User Detail API] Error:", error);
         return NextResponse.json({ error: "Failed to fetch user" }, { status: 502 });
@@ -35,10 +32,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         });
         const data = await res.text();
         const contentType = res.headers.get("content-type");
-        return new NextResponse(data, {
-            status: res.status,
-            headers: contentType ? { "content-type": contentType } : undefined,
-        });
+        return forwardBackendResponse(data, res.status, contentType ? { "content-type": contentType } : {});
     } catch (_error) {
         return NextResponse.json({ error: "Failed to update user" }, { status: 502 });
     }
@@ -55,10 +49,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         });
         const data = await res.text();
         const contentType = res.headers.get("content-type");
-        return new NextResponse(data, {
-            status: res.status,
-            headers: contentType ? { "content-type": contentType } : undefined,
-        });
+        return forwardBackendResponse(data, res.status, contentType ? { "content-type": contentType } : {});
     } catch (_error) {
         return NextResponse.json({ error: "Failed to delete user" }, { status: 502 });
     }

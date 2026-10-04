@@ -16,9 +16,9 @@ import { Enquiry, EnquiryFormData, EnquiriesTableFiltersFormValues } from "@/typ
 import { DEFAULT_PAGE_SIZE } from "@/constants";
 import { APIResponse } from "@/types";
 import { usePagination } from "@/hooks/usePagination";
-import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { downloadCSV } from "@/lib/utils/file";
+import { formatScheduleRange, formatShortDate } from "@/lib/utils/date";
 import { buildQueryUrl } from "@/lib/api/query-params";
 import { AccessButton } from "@/components/shared/access-button";
 import { Download, MessageSquarePlus } from "lucide-react";
@@ -68,29 +68,13 @@ const columns = (onView: (enquiry: Enquiry) => void): Column<Enquiry>[] => [
             <div className="space-y-2">
                 <div>
                     <div className="text-xs text-gray-500">Created</div>
-                    <div className="text-sm">
-                        {row.date ? new Date(row.date).toLocaleDateString() : "-"}
-                    </div>
+                    <div className="text-sm">{row.date ? formatShortDate(row.date) : "-"}</div>
                 </div>
                 {(row.fromDate || row.toDate) && (
                     <div>
                         <div className="text-xs text-gray-500">Event</div>
                         <div className="text-xs">
-                            {row.fromDate
-                                ? new Date(row.fromDate).toLocaleString(undefined, {
-                                      dateStyle: "short",
-                                      timeStyle: "short",
-                                  })
-                                : "TBD"}
-                            <br />
-                            to
-                            <br />
-                            {row.toDate
-                                ? new Date(row.toDate).toLocaleString(undefined, {
-                                      dateStyle: "short",
-                                      timeStyle: "short",
-                                  })
-                                : "TBD"}
+                            {formatScheduleRange(row.fromDate, row.toDate)}
                         </div>
                     </div>
                 )}
@@ -215,6 +199,12 @@ export default function EnquiriesPage() {
 
     const handleEdit = (enquiry: Enquiry) => {
         setModalMode("edit");
+        // NOTE: `enquiry.client` holds the client NAME (that is what the create flow
+        // posts), while the form's `client` field expects the client ID. Keep both so
+        // the modal can resolve the ID against the clients list and still fall back to
+        // the name when the client is not found.
+        const clientId = enquiry.clientID || "";
+        const clientDisplayName = enquiry.clientName || enquiry.client || "";
         const editData: EnquiryFormData = {
             id: enquiry.id,
             highlvelRequirement: enquiry.highlvelRequirement || "",
@@ -223,9 +213,10 @@ export default function EnquiriesPage() {
             toDate: enquiry.toDate || "",
             venue: enquiry.venue || "",
             location: enquiry.location || "",
-            clientPoC: enquiry.poc || "",
+            clientPoC: enquiry.clientPoC || enquiry.poc || "",
             enquiryPoCNumber: enquiry.enquiryPoCNumber || "",
-            client: enquiry.client,
+            client: clientId,
+            clientName: clientDisplayName,
             eventType: (enquiry.eventType as "PERSONAL" | "CORPORATE" | "OTHER") || "CORPORATE",
             eventPoC: enquiry.eventPoC || "",
             title: enquiry.eventName || "",
@@ -326,7 +317,10 @@ export default function EnquiriesPage() {
                                 </span>
                             </div>
                             <div className="mb-1">
-                                Date: <span className="font-medium">{enquiry.date}</span>
+                                Date:{" "}
+                                <span className="font-medium">
+                                    {enquiry.date ? formatShortDate(enquiry.date) : "-"}
+                                </span>
                             </div>
                             <div className="mb-2">
                                 Assignee: <span className="font-medium">{enquiry.assignee}</span>

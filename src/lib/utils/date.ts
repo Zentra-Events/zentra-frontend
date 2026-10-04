@@ -10,6 +10,23 @@ export function toDateKey(year: number, month: number, day: number) {
     return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/**
+ * Parse a date/datetime coming from the backend into a Date.
+ *
+ * The backend stores naive `LocalDateTime` values that represent UTC, e.g.
+ * "2026-11-19T09:30:00" (no timezone marker). Passing such a string straight to
+ * `new Date()` makes JavaScript interpret it as *local* time, which shifts the
+ * value by the browser's timezone offset (e.g. -5:30 for IST). Appending the
+ * "Z" marker for timezone-less date-times makes them parse as UTC while leaving
+ * values that already carry a timezone (or plain dates) untouched.
+ */
+export function parseApiDate(value: string | Date): Date {
+    if (value instanceof Date) return value;
+    const hasTimezone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(value);
+    const hasTime = value.includes("T");
+    return new Date(!hasTimezone && hasTime ? `${value}Z` : value);
+}
+
 export function formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
     const defaultOptions: Intl.DateTimeFormatOptions = {
         year: "numeric",
@@ -70,3 +87,60 @@ export function formatDisplayTime(timestamp: string | Date): string {
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
 }
+
+/**
+ * Format a date/datetime for display in the shared short format,
+ * e.g. "4 Oct 2026". Timezone-less API datetimes are parsed as UTC first so the
+ * value is not shifted by the browser timezone offset.
+ */
+export function formatShortDate(value?: string | Date | null): string {
+    if (!value) return "";
+    try {
+        return parseApiDate(value).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+        });
+    } catch {
+        return typeof value === "string" ? value : "";
+    }
+}
+
+/**
+ * Like {@link formatShortDate} but also includes the time,
+ * e.g. "4 Oct 2026, 02:30 pm".
+ */
+export function formatShortDateTime(value?: string | Date | null): string {
+    if (!value) return "";
+    try {
+        return parseApiDate(value).toLocaleString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    } catch {
+        return typeof value === "string" ? value : "";
+    }
+}
+
+/**
+ * Format an event schedule from its start/end date-times.
+ *
+ * - When both are present: "<start date, time> – <end date, time>"
+ * - When only one is present: just that date (no time, no trailing separator)
+ * - When neither is present: an empty string
+ */
+export function formatScheduleRange(
+    fromDate?: string | Date | null,
+    toDate?: string | Date | null,
+): string {
+    if (fromDate && toDate) {
+        return `${formatShortDateTime(fromDate)} – ${formatShortDateTime(toDate)}`;
+    }
+    if (fromDate) return formatShortDate(fromDate);
+    if (toDate) return formatShortDate(toDate);
+    return "";
+}
+

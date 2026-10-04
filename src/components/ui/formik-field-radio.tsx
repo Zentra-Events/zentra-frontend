@@ -62,6 +62,12 @@ export function FormikFieldRadio({
                                         id={`${radioId}-${option.value}`}
                                         {...field}
                                         value={option.value}
+                                        // Formik only computes `field.checked` when `type` is
+                                        // forwarded to <Field>. This component renders <Field>
+                                        // with just a name, so derive `checked` explicitly to
+                                        // keep the selected option in sync with the form value
+                                        // (e.g. when pre-populating on edit).
+                                        checked={field.value === option.value}
                                         disabled={disabled}
                                         className={cn(
                                             "w-4 h-4 cursor-pointer",
