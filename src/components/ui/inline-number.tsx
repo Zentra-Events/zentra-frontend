@@ -10,6 +10,10 @@ interface InlineNumberProps {
     disabled?: boolean;
     min?: number;
     step?: number;
+    focusSignal?: number;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    refCb?: (el: HTMLElement | null) => void;
+    "data-field"?: string;
 }
 
 export function InlineNumber({
@@ -19,6 +23,10 @@ export function InlineNumber({
     disabled = false,
     min = 0,
     step = 1,
+    focusSignal = 0,
+    onKeyDown,
+    refCb,
+    "data-field": dataField,
 }: InlineNumberProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(String(value));
@@ -35,6 +43,12 @@ export function InlineNumber({
         }
     }, [isEditing]);
 
+    useEffect(() => {
+        if (focusSignal > 0) {
+            setIsEditing(true);
+        }
+    }, [focusSignal]);
+
     const handleSave = useCallback(() => {
         setIsEditing(false);
         const parsed = Number(editValue);
@@ -43,8 +57,16 @@ export function InlineNumber({
         }
     }, [editValue, onSave, value]);
 
+    const rootRef = useCallback(
+        (el: HTMLElement | null) => {
+            refCb?.(el);
+        },
+        [refCb],
+    );
+
     const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            onKeyDown?.(e);
             if (e.key === "Enter") {
                 handleSave();
             } else if (e.key === "Escape") {
@@ -52,7 +74,7 @@ export function InlineNumber({
                 setIsEditing(false);
             }
         },
-        [handleSave, value],
+        [handleSave, onKeyDown, value],
     );
 
     if (disabled) {
@@ -62,7 +84,11 @@ export function InlineNumber({
     if (isEditing) {
         return (
             <input
-                ref={inputRef}
+                ref={el => {
+                    inputRef.current = el;
+                    rootRef(el);
+                }}
+                data-field={dataField}
                 type="number"
                 min={min}
                 step={step}
@@ -80,6 +106,8 @@ export function InlineNumber({
 
     return (
         <span
+            ref={rootRef}
+            data-field={dataField}
             className={cn(
                 "inline-flex cursor-pointer items-center justify-end gap-0.5 rounded px-1.5 py-0.5 text-sm tabular-nums transition-colors hover:bg-primary-light hover:text-primary",
                 className,

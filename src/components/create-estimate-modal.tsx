@@ -16,6 +16,7 @@ import {
     EstimateItem,
     EstimateLineItemPayload,
     EstimateStatus,
+    InvoiceSummary,
 } from "@/types/estimate";
 import { EventItem } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
@@ -48,6 +49,18 @@ type ClientEnquirySummary = {
     clientId: string;
     clientName: string;
     enquiries: Array<{ enquiryId: string; title: string }>;
+};
+
+const GST_TYPE_OPTIONS: { label: string; value: string }[] = [
+    { label: "No GST", value: "NONE" },
+    { label: "CGST + SGST", value: "CGST_SGST" },
+    { label: "IGST", value: "IGST" },
+];
+
+const GST_LABEL_BY_TYPE: Record<string, string> = {
+    NONE: "GST",
+    CGST_SGST: "CGST + SGST",
+    IGST: "IGST",
 };
 
 const composeSelectionKey = (clientName: string, title: string) => {
@@ -153,6 +166,7 @@ const validationSchema = Yup.object({
         .required(),
     serviceCharge: Yup.number().optional().min(0, "Service charge must be 0 or more"),
     gst: Yup.number().optional().min(0, "GST must be 0 or more"),
+    gstType: Yup.string().optional(),
     discountAmount: Yup.number().optional().min(0, "Discount amount must be 0 or more"),
     billingAddress: Yup.string().optional(),
 });
@@ -703,6 +717,7 @@ export default function CreateEstimateModal({
             enquiryPoC: prefillData?.enquiryPoC ?? "",
             serviceCharge: prefillData?.serviceCharge ?? 0,
             gst: prefillData?.gst ?? 0,
+            gstType: prefillData?.gstType ?? "NONE",
             discountAmount: prefillData?.discounts ?? 0,
             billingAddress: prefillData?.billingAddress ?? "",
         }),
@@ -849,8 +864,11 @@ export default function CreateEstimateModal({
         setIsSaving(true);
         helpers.setStatus(null);
 
-        // Check if we're editing an existing estimate
-        const isEditing = prefillData?.id ? true : false;
+        // Check if we're editing an existing estimate.
+        // Additional estimates are always new records — the source estimate's
+        // `id` is only used as `lastEstimateID`, so it must not be treated as
+        // editing that estimate.
+        const isEditing = !isAdditionalEstimate && prefillData?.id ? true : false;
 
         try {
             const activeEnquiryId = selectedEnquiryId ?? prefillData?.enquiryId;
@@ -966,6 +984,24 @@ export default function CreateEstimateModal({
                 c => c.clientName === prefillData.client,
             )?.clientId;
 
+            // Build invoiceSummary from the same Cost Summary calculations shown
+            // in the modal footer (calculateEstimateSummary).
+            const discountAmount = Number(values.discountAmount) || 0;
+            const submitSummary = calculateEstimateSummary({
+                totalAmount,
+                gst: Number(values.gst) || 0,
+                serviceCharge: Number(values.serviceCharge) || 0,
+                discounts: discountAmount,
+            });
+            const invoiceSummary: InvoiceSummary = {
+                discountAmount,
+                serviceChargeAmt: Number(submitSummary.serviceChargeAmount.toFixed(2)),
+                additionalCostAmt: 0,
+                expensesTotal: Number(totalAmount.toFixed(2)),
+                gstAmount: Number(submitSummary.gstAmount.toFixed(2)),
+                netTotal: Number(submitSummary.totalWithGST.toFixed(2)),
+            };
+
             const payload: CreateEstimatePayload = {
                 title: values.title,
                 highlvelRequirement: values.highlvelRequirement,
@@ -985,19 +1021,26 @@ export default function CreateEstimateModal({
                 eventName: values.title ?? "",
                 eventID: prefillData.eventID ?? "",
                 gst: values.gst,
+                gstType: values.gstType,
                 serviceCharge: values.serviceCharge,
                 discounts: values.discountAmount,
                 billingAddress: values.billingAddress,
                 estimateStatus: "DRAFT",
+                invoiceSummary,
+                additionalEstimate: isAdditionalEstimate || undefined,
+                lastEstimateID: isAdditionalEstimate ? prefillData.lastEstimateID : undefined,
             };
 
-            // Check if we're editing an existing estimate (has an id)
-            const isEditing = prefillData.id ? true : false;
-            const body = isEditing
-                ? { ...payload, id: prefillData.id, version: prefillData.version }
-                : payload;
+            // Additional estimates are always created as new records using the
+            // source estimate only as prefill (lastEstimateID). The source estimate's
+            // `id`/`version` must NOT be sent as the new record's id.
+            const body = isAdditionalEstimate
+                ? payload
+                : prefillData.id
+                  ? { ...payload, id: prefillData.id, version: prefillData.version }
+                  : payload;
 
-            if (isAdditionalEstimate && !isEditing) {
+            if (isAdditionalEstimate) {
                 setPendingAdditionalEstimate({
                     payload: body,
                     uiItemsForFallback,
@@ -1041,12 +1084,14 @@ export default function CreateEstimateModal({
                 clientID: payload.clientID,
                 items: uiItemsForFallback,
                 gst: payload.gst,
+                gstType: payload.gstType,
                 serviceCharge: payload.serviceCharge,
                 discounts: payload.discounts,
                 billingAddress: payload.billingAddress,
                 enquiryId: payload.enquiryId,
                 eventName: payload.eventName,
                 eventID: payload.eventID,
+                invoiceSummary: payload.invoiceSummary,
             };
 
             toast.success(
@@ -1103,12 +1148,16 @@ export default function CreateEstimateModal({
                 clientID: pendingAdditionalEstimate.payload.clientID,
                 items: pendingAdditionalEstimate.uiItemsForFallback,
                 gst: pendingAdditionalEstimate.payload.gst,
+                gstType: pendingAdditionalEstimate.payload.gstType,
                 serviceCharge: pendingAdditionalEstimate.payload.serviceCharge,
                 discounts: pendingAdditionalEstimate.payload.discounts,
                 billingAddress: pendingAdditionalEstimate.payload.billingAddress,
                 enquiryId: pendingAdditionalEstimate.payload.enquiryId,
                 eventName: pendingAdditionalEstimate.payload.eventName,
                 eventID: pendingAdditionalEstimate.payload.eventID,
+                invoiceSummary: pendingAdditionalEstimate.payload.invoiceSummary,
+                // additionalEstimate: true,
+                lastEstimateID: pendingAdditionalEstimate.payload.lastEstimateID,
             };
 
             toast.success("Estimate created successfully");
@@ -1156,11 +1205,19 @@ export default function CreateEstimateModal({
                 open={isOpen}
                 onClose={() => !isSaving && onClose()}
                 size="xxl"
-                title={initialData?.id ? "Edit Estimate" : "Create Estimate"}
+                title={
+                    isAdditionalEstimate
+                        ? "Create Additional Estimate"
+                        : initialData?.id
+                          ? "Edit Estimate"
+                          : "Create Estimate"
+                }
                 description={
-                    initialData?.id
-                        ? "Update estimate details below."
-                        : "Choose an enquiry to instantly prefill the estimate details."
+                    isAdditionalEstimate
+                        ? "Add a new estimate on top of the existing finalized event items."
+                        : initialData?.id
+                          ? "Update estimate details below."
+                          : "Choose an enquiry to instantly prefill the estimate details."
                 }
             >
                 <Formik
@@ -1169,13 +1226,15 @@ export default function CreateEstimateModal({
                     validationSchema={validationSchema}
                     onSubmit={handleSubmit}
                 >
-                    {({ status, values }) => {
+                    {({ status, values, setFieldValue }) => {
                         const summary = calculateEstimateSummary({
                             totalAmount,
                             gst: Number(values.gst) || 0,
                             serviceCharge: Number(values.serviceCharge) || 0,
                             discounts: Number(values.discountAmount) || 0,
                         });
+                        const gstLabel = GST_LABEL_BY_TYPE[values.gstType] ?? "GST";
+                        const gstDisabled = values.gstType === "NONE" || !prefillData?.enquiryId;
 
                         return (
                             <Form>
@@ -1409,7 +1468,7 @@ export default function CreateEstimateModal({
                                             Billing Details
                                         </h4>
                                         <div className="mt-3 grid gap-3">
-                                            <div className="grid gap-3 md:grid-cols-3">
+                                            <div className="grid gap-3 md:grid-cols-4">
                                                 <FormikFieldInput
                                                     name="serviceCharge"
                                                     label="Service Charge  (%)"
@@ -1417,12 +1476,24 @@ export default function CreateEstimateModal({
                                                     placeholder="%"
                                                     disabled={!prefillData?.enquiryId}
                                                 />
+                                                <FormikFieldSelect
+                                                    name="gstType"
+                                                    label="Tax Type"
+                                                    options={GST_TYPE_OPTIONS}
+                                                    isDisabled={!prefillData?.enquiryId}
+                                                    onChange={() => {
+                                                        // Reset the GST percentage to its default
+                                                        // whenever the tax type changes so the
+                                                        // cost summary breakups recalculate cleanly.
+                                                        setFieldValue("gst", 0);
+                                                    }}
+                                                />
                                                 <FormikFieldInput
                                                     name="gst"
-                                                    label="GST (%)"
+                                                    label={`${gstLabel} (%)`}
                                                     type="number"
                                                     placeholder="%"
-                                                    disabled={!prefillData?.enquiryId}
+                                                    disabled={gstDisabled}
                                                 />
                                                 <FormikFieldInput
                                                     name="discountAmount"
@@ -1527,12 +1598,12 @@ export default function CreateEstimateModal({
                                             disabled={isSaving || isFetchingEnquiry}
                                         >
                                             {isSaving
-                                                ? initialData?.id
+                                                ? initialData?.id && !isAdditionalEstimate
                                                     ? "Updating..."
                                                     : "Saving..."
                                                 : isFetchingEnquiry
                                                   ? "Loading enquiry..."
-                                                  : initialData?.id
+                                                  : initialData?.id && !isAdditionalEstimate
                                                     ? "Update Estimate"
                                                     : "Save Estimate"}
                                         </Button>

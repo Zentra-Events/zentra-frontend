@@ -10,12 +10,14 @@ import { ChecklistPreviewModal } from "@/components/checklist-preview-modal";
 import { ClientDetailView } from "@/components/client-detail-view";
 import { CreatePurchaseOrderModal } from "@/components/create-purchase-order-modal";
 import { PurchaseOrderPreviewModal } from "@/components/purchase-order-preview-modal";
+import type { EstimateExpensesRow } from "@/components/purchase-order-client-details";
 import { InventoryListModal } from "@/components/inventory-list-modal";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { apiRequest } from "@/lib/api/api-client";
 import { EventResponse } from "@/types/event";
 import type { Vendor } from "@/types/vendor";
 import type { Inventory } from "@/types/inventory";
+import type { EstimateNetTotalResponse } from "@/types/estimate";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_LABELS } from "@/constants/event";
 import {
@@ -56,6 +58,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     const [inventoryList, setInventoryList] = useState<Inventory[]>([]);
     const [loadingVendors, setLoadingVendors] = useState(false);
     const [loadingInventory, setLoadingInventory] = useState(false);
+    const [estimateNetTotal, setEstimateNetTotal] = useState<EstimateNetTotalResponse[]>([]);
     const fetchPromiseRef = React.useRef<Promise<EventResponse | null> | null>(null);
 
     const fetchEventData = React.useCallback(async () => {
@@ -86,6 +89,23 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     useEffect(() => {
         fetchEventData();
     }, [fetchEventData]);
+
+    const fetchEstimateNetTotal = React.useCallback(async () => {
+        try {
+            const res = await apiRequest(
+                API_ENDPOINTS.estimates.netTotal(encodeURIComponent(String(id))),
+            );
+            if (!res.ok) return;
+            const data = (await res.json()) as EstimateNetTotalResponse[];
+            setEstimateNetTotal(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error("Failed to fetch estimate net total:", err);
+        }
+    }, [id]);
+
+    useEffect(() => {
+        fetchEstimateNetTotal();
+    }, [fetchEstimateNetTotal]);
 
     const fetchVendorsOnly = React.useCallback(async () => {
         setLoadingVendors(true);
@@ -133,15 +153,42 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
         }
     }, [isChecklistModalOpen, fetchChecklistData]);
 
-    // Calculate totals from categorySummary (provided by backend)
-    let totalEstimatedCost = 0;
+    // Only EVENT_CREATED / EVENT_MERGED estimates feed the estimate
+    // calculations below; every other estimate status is excluded.
+    const filteredEstimates = estimateNetTotal.filter(
+        estimate =>
+            estimate.estimateStatus === "EVENT_CREATED" ||
+            estimate.estimateStatus === "EVENT_MERGED",
+    );
+
+    // "Estimated Cost" tile – sum of each filtered estimate's netTotal.
+    const totalEstimatedCost = filteredEstimates.reduce(
+        (sum, estimate) => sum + (estimate.invoiceSummary?.netTotal ?? 0),
+        0,
+    );
+
+    // Sum of each filtered estimate's expensesTotal – passed to the Purchase
+    // Order preview modal to drive the profit calculation.
+    const totalEstimatedExpenses = filteredEstimates.reduce(
+        (sum, estimate) => sum + (estimate.invoiceSummary?.expensesTotal ?? 0),
+        0,
+    );
+
+    // Rows rendered in the Estimate section of the Create Purchase Order modal.
+    const estimateExpensesRows: EstimateExpensesRow[] = filteredEstimates.map(estimate => ({
+        id: estimate.id,
+        versionTitle: estimate.versionTitle,
+        estimateStatus: estimate.estimateStatus,
+        expensesTotal: estimate.invoiceSummary?.expensesTotal ?? 0,
+    }));
+
+    // Calculate pending amount from categorySummary (provided by backend)
     const totalExpense = 0;
     const totalIncome = 0;
     let totalPendingAmount = 0;
 
     if (Array.isArray(eventData?.categorySummary)) {
         eventData?.categorySummary.forEach(cat => {
-            totalEstimatedCost += cat.totalAmount || 0;
             totalPendingAmount += cat.advanceAmount || 0;
         });
     }
@@ -206,7 +253,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             icon: ClipboardCheck,
             title: "Event Checklist",
             description: "Assign tasks and track execution milestones.",
-            linkLabel: "Open Tasks",
+            linkLabel: "Open Checklist",
             onClick: () => setIsChecklistPreviewModalOpen(true),
         },
         {
@@ -655,6 +702,13 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                     checklistData={(eventData as any)?.items || (eventData as any)?.checklist || []}
                     vendorList={vendorList}
                     inventoryList={inventoryList}
+                    exportContext={{
+                        eventName: eventData.title,
+                        clientName: eventData.client,
+                        eventStartDate: eventData.eventStartDate,
+                        eventEndDate: eventData.eventEndDate,
+                        venue: eventData.venue,
+                    }}
                     onUpdate={() => {
                         setIsChecklistPreviewModalOpen(false);
                         setIsChecklistModalOpen(true);
@@ -673,6 +727,8 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                     }}
                     vendorList={vendorList}
                     eventData={eventData}
+                    totalClientEstimatedAmount={totalEstimatedExpenses}
+                    estimates={estimateExpensesRows}
                 />
             )}
 
@@ -686,6 +742,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                         name: inv.itemName,
                     }))}
                     onClose={() => setIsPurchaseOrderPreviewOpen(false)}
+                    totalEstimatedCost={totalEstimatedExpenses}
                 />
             )}
 

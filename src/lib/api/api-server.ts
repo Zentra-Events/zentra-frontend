@@ -46,6 +46,29 @@ export function getBackendUrl(): string {
 }
 
 /**
+ * Build a NextResponse that safely forwards an upstream backend response.
+ *
+ * Responses with a "null body status" (101, 204, 205, 304) must not carry a
+ * body. Passing an empty string (which is what `await res.text()` yields for a
+ * body-less 204) to the NextResponse/Response constructor throws
+ * "TypeError: Response constructor: Invalid response status code 204", so we
+ * must pass `null` instead. Without this, a successful DELETE that returns
+ * 204 would be swallowed by the surrounding try/catch and surface as a
+ * spurious 502 "Failed to proxy request" error.
+ */
+export function forwardBackendResponse(
+    body: string | null,
+    status: number,
+    headers: Record<string, string> = {}
+): NextResponse {
+    const isNullBodyStatus = status === 101 || status === 204 || status === 205 || status === 304;
+    return new NextResponse(isNullBodyStatus ? null : body, {
+        status,
+        headers,
+    });
+}
+
+/**
  * Utility to handle API requests in Next.js API routes, forwarding to the backend
  */
 export async function handleApiRequest(fn: () => Promise<Response>) {

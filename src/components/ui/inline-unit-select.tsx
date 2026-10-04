@@ -10,6 +10,10 @@ interface InlineUnitSelectProps {
     options?: readonly string[];
     className?: string;
     disabled?: boolean;
+    focusSignal?: number;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    refCb?: (el: HTMLElement | null) => void;
+    "data-field"?: string;
 }
 
 export function InlineUnitSelect({
@@ -18,6 +22,10 @@ export function InlineUnitSelect({
     options = [],
     className = "",
     disabled = false,
+    focusSignal = 0,
+    onKeyDown,
+    refCb,
+    "data-field": dataField,
 }: InlineUnitSelectProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(value);
@@ -35,6 +43,13 @@ export function InlineUnitSelect({
             inputRef.current.select();
         }
     }, [isEditing]);
+
+    useEffect(() => {
+        if (focusSignal > 0) {
+            setIsEditing(true);
+            setShowDropdown(false);
+        }
+    }, [focusSignal]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -85,8 +100,16 @@ export function InlineUnitSelect({
         }
     }, [editValue, onSave, value]);
 
+    const rootRef = useCallback(
+        (el: HTMLElement | null) => {
+            refCb?.(el);
+        },
+        [refCb],
+    );
+
     const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            onKeyDown?.(e);
             if (e.key === "Enter") {
                 if (showDropdown) {
                     handleSave();
@@ -102,7 +125,7 @@ export function InlineUnitSelect({
                 setShowDropdown(true);
             }
         },
-        [handleSave, openEditor, value, showDropdown],
+        [handleSave, onKeyDown, openEditor, value, showDropdown],
     );
 
     if (disabled) {
@@ -134,7 +157,11 @@ export function InlineUnitSelect({
         return (
             <div ref={containerRef} className="relative inline-flex items-center">
                 <input
-                    ref={inputRef}
+                    ref={el => {
+                        inputRef.current = el;
+                        rootRef(el);
+                    }}
+                    data-field={dataField}
                     value={editValue}
                     onChange={e => {
                         setEditValue(e.target.value);
@@ -191,6 +218,8 @@ export function InlineUnitSelect({
     return (
         <div ref={containerRef} className="relative inline-flex items-center">
             <span
+                ref={rootRef}
+                data-field={dataField}
                 className={cn(
                     "inline-flex cursor-pointer items-center gap-0.5 rounded px-1 py-0.5 text-xs transition-colors hover:bg-primary-light hover:text-primary",
                     className,

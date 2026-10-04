@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import Image from "next/image";
 import type {
     CategoryPurchaseRow,
@@ -11,6 +11,33 @@ import { Modal, ModalBody, ModalFooter } from "./ui";
 import { Button } from "./ui/button";
 import { formatExportCurrency, numberToWords, toRomanLower } from "@/lib/utils";
 import { purchaseOrderPreviewStyles } from "@/constants/event";
+import { ProfitSummary } from "./profit-summary";
+import { Access } from "./access";
+
+/* ------------------------------------------------------------------ */
+/*  GST Type metadata                                                */
+/* ------------------------------------------------------------------ */
+
+/** Human-readable label for each GST tax type. */
+export const GST_TYPE_LABEL: Record<string, string> = {
+    NONE: "No GST",
+    CGST_SGST: "CGST + SGST",
+    IGST: "IGST",
+};
+
+/**
+ * Render a GST percentage with its tax type (when one is applied).
+ * - No GST type (or NONE): show the percentage value as-is.
+ * - Applied type (e.g. CGST_SGST / IGST): show the percentage with the
+ *   type displayed in brackets, e.g. `18% (CGST + SGST)`.
+ */
+function formatGstWithType(gstPercent: number, gstType?: string): string {
+    const gstValue = gstPercent > 0 ? `${gstPercent}%` : "—";
+    const isNoGst = !gstType || gstType === "NONE";
+    if (isNoGst || gstValue === "—") return gstValue;
+    const typeLabel = GST_TYPE_LABEL[gstType] ?? gstType;
+    return `${gstValue} (${typeLabel})`;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -44,9 +71,11 @@ interface RawItemWithCategory {
     days?: number;
     serialNumber?: number;
     category?: string;
+    subCategory?: string;
+    unit?: string;
 }
 
-function groupItemsByCategory(
+export function groupItemsByCategory(
     items: EventResponse["items"],
     vendorList: Array<{ id?: string; name: string }> | undefined,
     inventoryList: Array<{ id?: string; name: string }> | undefined,
@@ -101,6 +130,7 @@ function groupItemsByCategory(
             itemName: item.item || "—",
             description: item.description || "",
             qty: item.quantity ?? 1,
+            unit: item.unit && item.unit.trim() ? item.unit.trim() : "nos",
             rate: item.pricePerItem ?? 0,
             days: item.days ?? 1,
             amount,
@@ -112,21 +142,44 @@ function groupItemsByCategory(
         };
     });
 
-    // Group by category
-    const grouped = new Map<string, PurchaseItemRow[]>();
+    // Group by category, then by sub-category within each category
+    const grouped = new Map<string, { item: PurchaseItemRow; sub: string }[]>();
     rawItems.forEach((item, idx) => {
         const category = item.category || "Uncategorized";
         if (!grouped.has(category)) {
             grouped.set(category, []);
         }
-        grouped.get(category)!.push(allItems[idx]);
+        grouped.get(category)!.push({
+            item: allItems[idx],
+            sub: item.subCategory?.trim() || "",
+        });
     });
 
-    return Array.from(grouped.entries()).map(([category, catItems]) => {
+    return Array.from(grouped.entries()).map(([category, catEntries]) => {
+        const catItems = catEntries.map(entry => entry.item);
         const subtotal = catItems.reduce((sum, item) => sum + item.amount, 0);
+
+        // Partition into direct items (no sub-category) and sub-category groups.
+        const directItems: PurchaseItemRow[] = [];
+        const subMap = new Map<string, PurchaseItemRow[]>();
+        const subOrder: string[] = [];
+        catEntries.forEach(({ item, sub }) => {
+            if (sub) {
+                if (!subMap.has(sub)) {
+                    subMap.set(sub, []);
+                    subOrder.push(sub);
+                }
+                subMap.get(sub)!.push(item);
+            } else {
+                directItems.push(item);
+            }
+        });
+
         return {
             category,
             items: catItems,
+            directItems,
+            subCategories: subOrder.map(name => ({ name, items: subMap.get(name)! })),
             subtotal,
         };
     });
@@ -135,7 +188,7 @@ function groupItemsByCategory(
 /**
  * Build vendor-wise financial rows from vendorSummary data
  */
-function buildVendorFinancials(
+export function buildVendorFinancials(
     vendorSummary: EventResponse["vendorSummary"],
     vendorList: Array<{ id?: string; name: string }> | undefined,
 ): VendorFinancialRow[] {
@@ -147,6 +200,7 @@ function buildVendorFinancials(
             vendorName,
             totalAmount: vs.totalAmount ?? 0,
             gstPercent: vs.gst ?? 0,
+            gstType: vs.gstType ?? "NONE",
             tdsPercent: vs.tds ?? 0,
             adjustedAmt: vs.adjustedAmt ?? 0,
             advanceAmount: vs.advanceAmount ?? 0,
@@ -293,9 +347,73 @@ function CategoryTable({
     categoryData: CategoryPurchaseRow;
     index: number;
 }) {
-    const { category, items, subtotal } = categoryData;
+    const { category, items, subtotal, directItems, subCategories } = categoryData;
 
     const netSubTotal = items.reduce((sum, item) => sum + item.netTotal, 0);
+
+    const renderItemRow = (item: PurchaseItemRow, key: string, serial: number) => (
+        <tr key={key}>
+            <td className="border border-black px-2 py-1.5 text-center align-top">{serial}</td>
+            <td className="border border-black px-2 py-1.5 align-top font-medium">
+                {item.itemName}
+            </td>
+            <td className="border border-black px-2 py-1.5 align-top whitespace-pre-wrap text-muted-foreground">
+                {item.description || "—"}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top">{item.days}</td>
+            <td className="border border-black px-2 py-1.5 text-right align-top">{item.qty}</td>
+            <td className="border border-black px-2 py-1.5 text-center align-top">
+                {item.unit || "nos"}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top">
+                {formatExportCurrency(item.rate)}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top font-medium">
+                {formatExportCurrency(item.amount)}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top text-green-700">
+                {item.gstAmount > 0 ? "+" + formatExportCurrency(item.gstAmount) : "—"}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top text-destructive">
+                {item.tdsAmount > 0 ? "-" + formatExportCurrency(item.tdsAmount) : "—"}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top font-bold">
+                {formatExportCurrency(item.netTotal)}
+            </td>
+            <td className="border border-black px-2 py-1.5 align-top">
+                <span
+                    className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        item.vendorName === "SELF"
+                            ? purchaseOrderPreviewStyles.selfBadge
+                            : purchaseOrderPreviewStyles.vendorBadge
+                    }`}
+                >
+                    {item.vendorName}
+                </span>
+            </td>
+        </tr>
+    );
+
+    // Running serial across direct items and each sub-category group.
+    let serialCounter = 1;
+    const itemRows: ReactNode[] = [];
+    directItems.forEach((item, idx) => {
+        itemRows.push(renderItemRow(item, `item-${idx}`, serialCounter));
+        serialCounter += 1;
+    });
+    subCategories.forEach(sub => {
+        itemRows.push(
+            <tr key={`sub-${sub.name}`} className={purchaseOrderPreviewStyles.subCategoryBg}>
+                <td colSpan={12} className="border border-black px-2 py-2 font-semibold text-left">
+                    Sub Category: {sub.name}
+                </td>
+            </tr>,
+        );
+        sub.items.forEach((item, idx) => {
+            itemRows.push(renderItemRow(item, `sub-${sub.name}-${idx}`, serialCounter));
+            serialCounter += 1;
+        });
+    });
 
     return (
         <div className="mb-6">
@@ -330,6 +448,9 @@ function CategoryTable({
                         <th className="border border-black px-2 py-2 text-center font-bold w-12">
                             Qty
                         </th>
+                        <th className="border border-black px-2 py-2 text-center font-bold w-16">
+                            Unit
+                        </th>
                         <th className="border border-black px-2 py-2 text-center font-bold w-20">
                             Rate
                         </th>
@@ -350,64 +471,14 @@ function CategoryTable({
                         </th>
                     </tr>
                 </thead>
-                <tbody>
-                    {items.map((item, idx) => (
-                        <tr key={`item-${idx}`}>
-                            <td className="border border-black px-2 py-1.5 text-center align-top">
-                                {idx + 1}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 align-top font-medium">
-                                {item.itemName}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 align-top whitespace-pre-wrap text-muted-foreground">
-                                {item.description || "—"}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top">
-                                {item.days}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top">
-                                {item.qty}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top">
-                                {formatExportCurrency(item.rate)}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top font-medium">
-                                {formatExportCurrency(item.amount)}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top text-green-700">
-                                {item.gstAmount > 0
-                                    ? "+" + formatExportCurrency(item.gstAmount)
-                                    : "—"}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top text-destructive">
-                                {item.tdsAmount > 0
-                                    ? "-" + formatExportCurrency(item.tdsAmount)
-                                    : "—"}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 text-right align-top font-bold">
-                                {formatExportCurrency(item.netTotal)}
-                            </td>
-                            <td className="border border-black px-2 py-1.5 align-top">
-                                <span
-                                    className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                        item.vendorName === "SELF"
-                                            ? purchaseOrderPreviewStyles.selfBadge
-                                            : purchaseOrderPreviewStyles.vendorBadge
-                                    }`}
-                                >
-                                    {item.vendorName}
-                                </span>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
+                <tbody>{itemRows}</tbody>
             </table>
 
             {/* Category Financial Summary - only Subtotal and Net SubTotal */}
             <table className="w-full border-collapse text-xs border border-black mt-0">
                 <tbody>
                     <tr className={purchaseOrderPreviewStyles.subTotalBg}>
-                        <td className="border border-black px-2 py-1.5 font-semibold" colSpan={8}>
+                        <td className="border border-black px-2 py-1.5 font-semibold" colSpan={9}>
                             Category Subtotal
                         </td>
                         <td
@@ -418,7 +489,7 @@ function CategoryTable({
                         </td>
                     </tr>
                     <tr className={purchaseOrderPreviewStyles.totalBg}>
-                        <td className="border border-black px-2 py-1.5 font-bold" colSpan={8}>
+                        <td className="border border-black px-2 py-1.5 font-bold" colSpan={9}>
                             Net SubTotal
                         </td>
                         <td
@@ -438,10 +509,18 @@ function CategoryTable({
 /*  Vendor-Wise Financial Summary                                     */
 /* ------------------------------------------------------------------ */
 
-function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinancialRow[] }) {
+export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinancialRow[] }) {
     if (vendorRows.length === 0) return null;
 
     const grandTotalAmount = vendorRows.reduce((sum, v) => sum + v.totalAmount, 0);
+    const grandGstAmount = vendorRows.reduce(
+        (sum, v) => sum + v.totalAmount * ((v.gstPercent ?? 0) / 100),
+        0,
+    );
+    const grandTdsAmount = vendorRows.reduce(
+        (sum, v) => sum + v.totalAmount * ((v.tdsPercent ?? 0) / 100),
+        0,
+    );
     const grandNetTotal = vendorRows.reduce((sum, v) => sum + v.adjustedAmt, 0);
     const grandAdvance = vendorRows.reduce((sum, v) => sum + v.advanceAmount, 0);
     const grandBalance = vendorRows.reduce((sum, v) => sum + v.balance, 0);
@@ -487,7 +566,7 @@ function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinancialRow
                                 {formatExportCurrency(v.totalAmount)}
                             </td>
                             <td className="border border-black px-2 py-1.5 text-center">
-                                {v.gstPercent > 0 ? `${v.gstPercent}%` : "—"}
+                                {formatGstWithType(v.gstPercent, v.gstType)}
                             </td>
                             <td className="border border-black px-2 py-1.5 text-center">
                                 {v.tdsPercent > 0 ? `${v.tdsPercent}%` : "—"}
@@ -510,8 +589,16 @@ function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinancialRow
                         <td className="border border-black px-2 py-1.5 text-right font-bold">
                             {formatExportCurrency(grandTotalAmount)}
                         </td>
-                        <td className="border border-black px-2 py-1.5" />
-                        <td className="border border-black px-2 py-1.5" />
+                        <td className="border border-black px-2 py-1.5 text-right font-bold text-green-700">
+                            {grandGstAmount > 0
+                                ? `+${formatExportCurrency(grandGstAmount)}`
+                                : "—"}
+                        </td>
+                        <td className="border border-black px-2 py-1.5 text-right font-bold text-destructive">
+                            {grandTdsAmount > 0
+                                ? `-${formatExportCurrency(grandTdsAmount)}`
+                                : "—"}
+                        </td>
                         <td className="border border-black px-2 py-1.5 text-right font-bold">
                             {formatExportCurrency(grandNetTotal)}
                         </td>
@@ -713,11 +800,13 @@ function PurchaseOrderPreviewContent({
     eventName,
     vendorList,
     inventoryList,
+    totalEstimatedCost,
 }: {
     eventData: EventResponse;
     eventName?: string;
     vendorList?: Array<{ id?: string; name: string }>;
     inventoryList?: Array<{ id?: string; name: string }>;
+    totalEstimatedCost: number;
 }) {
     const categories = useMemo(
         () =>
@@ -767,6 +856,16 @@ function PurchaseOrderPreviewContent({
                 </div>
                 <GrandSummary categories={categories} vendorRows={vendorFinancialRows} />
             </div>
+
+            {/* Profit Summary – internal (event management team) */}
+            <Access roles={["admin"]}>
+                <div className="mt-6">
+                    <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
+                        Profit Summary
+                    </div>
+                    <ProfitSummary eventData={eventData} totalEstimatedCost={totalEstimatedCost} />
+                </div>
+            </Access>
         </div>
     );
 }
@@ -780,6 +879,7 @@ export function PurchaseOrderPreviewModal({
     eventName,
     vendorList,
     inventoryList,
+    totalEstimatedCost,
     onClose,
 }: PurchaseOrderPreviewModalProps) {
     return (
@@ -799,6 +899,7 @@ export function PurchaseOrderPreviewModal({
                         eventName={eventName}
                         vendorList={vendorList}
                         inventoryList={inventoryList}
+                        totalEstimatedCost={totalEstimatedCost}
                     />
                 </div>
             </ModalBody>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBackendUrl, getBackendHeaders } from "@/lib/api/api-server";
+import { getBackendUrl, getBackendHeaders, forwardBackendResponse } from "@/lib/api/api-server";
 
 export async function GET(request: NextRequest) {
     const upstream = getBackendUrl();
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         const responseHeaders: Record<string, string> = {};
         const contentType = res.headers.get("content-type");
         if (contentType) responseHeaders["content-type"] = contentType;
-        return new NextResponse(body, { status: res.status, headers: responseHeaders });
+        return forwardBackendResponse(body, res.status, responseHeaders);
     } catch (err) {
         console.error("Error proxying GET /events/:id:", err);
         return NextResponse.json({ error: "Failed to proxy request" }, { status: 502 });
@@ -45,7 +45,7 @@ export async function DELETE(request: NextRequest) {
         const responseHeaders: Record<string, string> = {};
         const contentType = res.headers.get("content-type");
         if (contentType) responseHeaders["content-type"] = contentType;
-        return new NextResponse(body, { status: res.status, headers: responseHeaders });
+        return forwardBackendResponse(body, res.status, responseHeaders);
     } catch (err) {
         console.error("Error proxying DELETE /events/:id", err);
         return NextResponse.json({ error: "Failed to proxy delete" }, { status: 502 });
@@ -79,7 +79,7 @@ export async function PUT(request: NextRequest) {
         const responseHeaders: Record<string, string> = {};
         const contentType = res.headers.get("content-type");
         if (contentType) responseHeaders["content-type"] = contentType;
-        return new NextResponse(responseBody, { status: res.status, headers: responseHeaders });
+        return forwardBackendResponse(responseBody, res.status, responseHeaders);
     } catch (err) {
         console.error("Error proxying PUT /events/:id", err);
         return NextResponse.json({ error: "Failed to proxy update" }, { status: 502 });

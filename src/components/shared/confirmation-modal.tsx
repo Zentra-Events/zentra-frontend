@@ -35,7 +35,11 @@ export function ConfirmationModal({
     return (
         <Modal open={open} onClose={onClose} title={title} size="sm" className={className}>
             <ModalBody>
-                {description && <p className="text-sm text-foreground">{description}</p>}
+                {description && (
+                    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
+                        {description}
+                    </p>
+                )}
             </ModalBody>
             <ModalFooter>
                 <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>

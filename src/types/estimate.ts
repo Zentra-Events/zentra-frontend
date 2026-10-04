@@ -13,7 +13,30 @@ export type EstimateStatus =
     | "CANCELLED";
 
 // Estimate versioning status
-export type EstimateVersionStatus = "DRAFT" | "UNDER_CLIENT_REVIEW" | "FINAL" | "EVENT_CREATED";
+export type EstimateVersionStatus =
+    | "DRAFT"
+    | "UNDER_CLIENT_REVIEW"
+    | "FINAL"
+    | "EVENT_CREATED"
+    | "EVENT_MERGED";
+
+export interface InvoiceSummary {
+    additionalCostAmt: number;
+    discountAmount: number;
+    expensesTotal: number;
+    gstAmount: number;
+    netTotal: number;
+    serviceChargeAmt: number;
+}
+
+// Response item returned by GET /estimates/net-total?eventID=<eventID>
+// (one entry per estimate version of the event)
+export interface EstimateNetTotalResponse {
+    id: string;
+    versionTitle?: string;
+    estimateStatus?: EstimateVersionStatus;
+    invoiceSummary?: InvoiceSummary;
+}
 
 export interface EstimateItem {
     id: string;
@@ -66,14 +89,9 @@ export interface EstimateDto {
     serviceCharge: number;
     discounts?: number;
     billingAddress?: string;
-    invoiceSummary?: {
-        additionalCostAmt: number;
-        discountAmount: number;
-        expensesTotal: number;
-        gstAmount: number;
-        netTotal: number;
-        serviceChargeAmt: number;
-    };
+    additionalEstimate?: boolean;
+    lastEstimateID?: string;
+    invoiceSummary?: InvoiceSummary;
     categorySummary?: {
         category: string;
         subTotal: number;
@@ -125,4 +143,7 @@ export interface CreateEstimatePayload {
     discounts?: number;
     billingAddress?: string;
     estimateStatus?: string;
+    additionalEstimate?: boolean;
+    lastEstimateID?: string;
+    invoiceSummary?: InvoiceSummary;
 }

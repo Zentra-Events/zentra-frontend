@@ -117,6 +117,7 @@ export function EstimateVersionsView({
                 UNDER_CLIENT_REVIEW: "Under Client Review",
                 FINAL: "Final",
                 EVENT_CREATED: "Event Created",
+                EVENT_MERGED: "Merged",
             };
             toast.success(`Status updated to ${statusLabels[newStatus]}`);
             await fetchVersions();
@@ -143,10 +144,11 @@ export function EstimateVersionsView({
 
     const handleAdditionalEstimate = useCallback(
         (version: EstimateDto) => {
-            const { id: _id, items: _items, ...prefill } = version;
+            const { items: _items, ...prefill } = version;
             setAdditionalEstimateData({
                 ...prefill,
                 enquiryId: version.enquiryId || enquiryId,
+                lastEstimateID: version.versionTitle,
             });
             setIsCreateEstimateOpen(true);
         },
@@ -173,6 +175,10 @@ export function EstimateVersionsView({
                 return "success" as const;
             case "EVENT_CREATED":
                 return "success" as const;
+            case "EVENT_CREATED":
+                return "success" as const;
+            case "EVENT_MERGED":
+                return "warning" as const;
             default:
                 return "default" as const;
         }
@@ -188,14 +194,22 @@ export function EstimateVersionsView({
                 return "Final";
             case "EVENT_CREATED":
                 return "Event Created";
+            case "EVENT_MERGED":
+                return "Merged";
             default:
                 return "Unknown";
         }
     };
 
-    const hasEventCreatedEstimate = useMemo(() => {
-        return versions.some(v => v.estimateStatus === "EVENT_CREATED");
-    }, [versions]);
+    const eventCreatedVersion = useMemo(
+        () => versions.find(v => v.estimateStatus === "EVENT_CREATED"),
+        [versions],
+    );
+
+    const hasEventCreatedEstimate = useMemo(
+        () => Boolean(eventCreatedVersion),
+        [eventCreatedVersion],
+    );
 
     const sortedVersions = useMemo(() => {
         const parseVersion = (v: string) => parseInt(v?.replace("v", ""), 10) || 0;
@@ -244,6 +258,7 @@ export function EstimateVersionsView({
                 discounts: version.discounts,
                 serviceCharge: version.serviceCharge,
                 gst: version.gst,
+                gstType: version.gstType,
                 enquiryDate: version.enquiryDate,
                 items: flattenedItems,
                 enquiryPoc: version.enquiryPoC,
@@ -670,15 +685,10 @@ export function EstimateVersionsView({
                     <Button variant="outline" onClick={onClose}>
                         Close
                     </Button>
-                    {!isViewOnlyMode && (
+                    {!isViewOnlyMode && hasEventCreatedEstimate && eventCreatedVersion && (
                         <Button
                             variant="primary"
-                            onClick={() => {
-                                const selectedVersion = sortedVersions[0];
-                                if (selectedVersion) {
-                                    handleAdditionalEstimate(selectedVersion);
-                                }
-                            }}
+                            onClick={() => handleAdditionalEstimate(eventCreatedVersion)}
                         >
                             Additional Estimate
                         </Button>

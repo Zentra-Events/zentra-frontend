@@ -4,15 +4,29 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Table, type Column } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
+import { InlineNumber } from "@/components/ui/inline-number";
+import { InlineUnitSelect } from "@/components/ui/inline-unit-select";
+import { QUANTITY_UNITS } from "@/lib/utils/artifact-utils";
+import { ConfirmationModal } from "@/components/shared/confirmation-modal";
+import { CostSummary } from "@/components/cost-summary";
+import {
+    PurchaseOrderClientDetails,
+    ClientFinancials,
+    GST_TYPE_OPTIONS,
+    GST_LABEL_BY_TYPE,
+    type EstimateExpensesRow,
+} from "@/components/purchase-order-client-details";
 import { cn } from "@/lib/utils/cn";
 import type { EventResponse, VendorSummary } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil, Info } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { calculateEstimateSummary } from "@/lib/utils/estimate";
 
 /* ------------------------------------------------------------------ */
 /*  Raw API item type – matches EventResponse.items shape              */
@@ -27,6 +41,8 @@ interface RawEventItem {
     days?: number;
     serialNumber?: number;
     category?: string;
+    subCategory?: string;
+    unit?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -40,18 +56,33 @@ interface LineItem {
     qty: number;
     rate: number;
     days: number;
+    unit?: string;
+    /** Flat index into the editable items array, used to write edits back. */
+    srcIndex: number;
     subCategory?: string;
+}
+
+interface SubCategoryGroup {
+    id: string;
+    name: string;
+    items: LineItem[];
 }
 
 interface CategorySection {
     id: string;
     title: string;
     description: string;
+    /** Flat list of all items in the category (direct items then sub-category items). */
     items: LineItem[];
+    /** Items without a sub-category. */
+    directItems: LineItem[];
+    /** Items grouped under their respective sub-category headers. */
+    subCategories: SubCategoryGroup[];
 }
 
 interface Financials {
     subtotal: number;
+    gstType: string;
     gstPercent: number;
     tdsPercent: number;
     advance: number;
@@ -69,6 +100,18 @@ interface CreatePurchaseOrderModalProps {
     onViewPurchaseOrder?: () => void;
     vendorList?: Array<{ id?: string; name: string }>;
     eventData: EventResponse;
+    /**
+     * Pre-tax estimate base used by the Cost Summary (= sum of the filtered
+     * estimates' expensesTotal). Service charge, discount, GST and TDS are
+     * applied on top of this value, so it must NOT already include them
+     * (pass the expensesTotal sum, not the netTotal sum).
+     */
+    totalClientEstimatedAmount: number;
+    /**
+     * Filtered estimate versions (status EVENT_CREATED / EVENT_MERGED) surfaced
+     * in the Estimate section of the Client Details view.
+     */
+    estimates?: EstimateExpensesRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -76,7 +119,7 @@ interface CreatePurchaseOrderModalProps {
 /* ------------------------------------------------------------------ */
 
 /** Convert a RawEventItem into a LineItem for display in the table. */
-function toLineItem(item: RawEventItem, index: number): LineItem {
+function toLineItem(item: RawEventItem, index: number, srcIndex: number): LineItem {
     return {
         id: `item-${index}`,
         itemName: item.item ?? "",
@@ -84,48 +127,87 @@ function toLineItem(item: RawEventItem, index: number): LineItem {
         qty: item.quantity ?? 1,
         rate: item.pricePerItem ?? 0,
         days: item.days ?? 1,
+        unit: item.unit && item.unit.trim() ? item.unit.trim() : "nos",
+        srcIndex,
     };
 }
 
 /**
- * Group items from `itemList` by category for a given vendor ID.
+ * Group items from `items` by category for a given vendor ID.
  * Returns an array of CategorySection suitable for display.
+ * Each produced LineItem carries `srcIndex` so qty/rate edits can be
+ * written back to the flat editable items array used by the table editors.
  */
 function groupItemsByCategory(
     items: RawEventItem[],
     vendorId: string | undefined,
 ): CategorySection[] {
-    // Filter to items belonging to this vendor
-    const vendorItems = items.filter(eventItem => {
+    // Filter to items belonging to this vendor, remembering each flat index.
+    const vendorItems: { eventItem: RawEventItem; srcIndex: number }[] = [];
+    items.forEach((eventItem, srcIndex) => {
         const eventVendor = eventItem.vendor;
+        let matches = false;
         if (vendorId === "SELF") {
             // For SELF (inventory) items, match items with no vendor or vendor "SELF"
-            return !eventVendor || eventVendor === "SELF";
+            matches = !eventVendor || eventVendor === "SELF";
+        } else if (eventVendor) {
+            matches = vendorId ? eventVendor === vendorId : true;
         }
-        if (!eventVendor) return false;
-        if (vendorId) {
-            return eventVendor === vendorId;
+        if (matches) {
+            vendorItems.push({ eventItem, srcIndex });
         }
-        return true;
     });
 
     // Group remaining items by category
-    const grouped = new Map<string, RawEventItem[]>();
-    vendorItems.forEach(eventItem => {
+    const grouped = new Map<string, { eventItem: RawEventItem; srcIndex: number }[]>();
+    vendorItems.forEach(({ eventItem, srcIndex }) => {
         const category = eventItem.category ?? "Uncategorized";
         if (!grouped.has(category)) {
             grouped.set(category, []);
         }
-        grouped.get(category)!.push(eventItem);
+        grouped.get(category)!.push({ eventItem, srcIndex });
     });
 
-    // Convert each group to a CategorySection
-    return Array.from(grouped.entries()).map(([category, categoryItems], idx) => ({
-        id: `category-${idx}`,
-        title: category,
-        description: `Procurement for ${category}`,
-        items: categoryItems.map((item, i) => toLineItem(item, i)),
-    }));
+    // Convert each group to a CategorySection with optional subcategory grouping
+    return Array.from(grouped.entries()).map(([category, categoryItems], idx) => {
+        // Partition the category's items into direct items (no sub-category) and
+        // items grouped under their respective sub-category headers.
+        const directItems: LineItem[] = [];
+        const subMap = new Map<string, LineItem[]>();
+        const subOrder: string[] = [];
+
+        categoryItems.forEach(({ eventItem, srcIndex }, i) => {
+            const lineItem = toLineItem(eventItem, i, srcIndex);
+            const sub = eventItem.subCategory?.trim();
+            if (sub) {
+                if (!subMap.has(sub)) {
+                    subMap.set(sub, []);
+                    subOrder.push(sub);
+                }
+                subMap.get(sub)!.push(lineItem);
+            } else {
+                directItems.push(lineItem);
+            }
+        });
+
+        const subCategories: SubCategoryGroup[] = subOrder.map((name, subIdx) => ({
+            id: `sub-${idx}-${subIdx}`,
+            name,
+            items: subMap.get(name)!,
+        }));
+
+        // Flat list preserving order: direct items first, then each sub-category's items.
+        const items = [...directItems, ...subCategories.flatMap(sub => sub.items)];
+
+        return {
+            id: `category-${idx}`,
+            title: category,
+            description: `Procurement for ${category}`,
+            items,
+            directItems,
+            subCategories,
+        };
+    });
 }
 
 /** Determine the set of vendors that appear in the item list. */
@@ -155,6 +237,7 @@ function buildFinancialsFromSummary(
     if (vs) {
         return {
             subtotal: vs.totalAmount ?? computedSubtotal,
+            gstType: vs.gstType ?? "NONE",
             gstPercent: vs.gst ?? 0,
             tdsPercent: vs.tds ?? 0,
             advance: vs.advanceAmount ?? 0,
@@ -163,11 +246,34 @@ function buildFinancialsFromSummary(
     }
     return {
         subtotal: computedSubtotal,
+        gstType: "NONE",
         gstPercent: 0,
         tdsPercent: 0,
         advance: 0,
         note: "",
     };
+}
+
+/**
+ * Instructional microcopy surfaced by the info tooltip beside each category
+ * section header. Kept in a tooltip (rather than an always-on banner) so it
+ * explains the editable fields without permanently consuming modal space.
+ */
+const EDITABLE_FIELDS_HINT =
+    "Click any Qty, Unit or Rate value to edit it. Changes update the event checklist when you save the purchase order.";
+
+/**
+ * Table column header that flags the column's cells as inline-editable.
+ * Renders a small pencil glyph next to the label so users can tell at a glance
+ * which fields accept input, without having to hover every cell first.
+ */
+function EditableHeader({ label }: { label: string }) {
+    return (
+        <span className="inline-flex items-center gap-1">
+            {label}
+            <Pencil size={11} className="text-primary/70" aria-hidden="true" />
+        </span>
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -181,9 +287,19 @@ export function CreatePurchaseOrderModal({
     onViewPurchaseOrder,
     vendorList,
     eventData,
+    totalClientEstimatedAmount = 0,
+    estimates = [],
 }: CreatePurchaseOrderModalProps) {
     const itemList = eventData?.items ?? [];
     const vendorSummary = eventData?.vendorSummary ?? [];
+    // Client / event display info, populated from the existing event/estimate data.
+    const clientName = eventData?.client || "—";
+    const eventName = eventData?.title || "—";
+    const eventDescription =
+        (eventData?.highlvelRequirement as string) ||
+        eventData?.venue ||
+        eventData?.location ||
+        "—";
     // Determine which vendors to show in the sidebar: all vendors from vendorList
     // that have items in itemList
     const activeVendorIds = useMemo(() => getItemVendorIds(itemList), [itemList]);
@@ -218,6 +334,60 @@ export function CreatePurchaseOrderModal({
 
     const [activeVendorId, setActiveVendorId] = useState<string>("");
     const [showBreakdown, setShowBreakdown] = useState(false);
+    // Which sidebar tab is active: "client" renders the Client Details section,
+    // "vendor" renders the selected vendor's items & financials. Client Details
+    // is the initial standalone selection, independent of any vendor.
+    const [activeView, setActiveView] = useState<"client" | "vendor">("client");
+
+    /* ---------- Client / estimate financials ----------
+     * Editable client billing details, pre-populated from the approved/final
+     * estimate (eventData). These are purely client-side and never feed the
+     * vendor financial calculation below. */
+    const [clientFinancials, setClientFinancials] = useState<ClientFinancials>({
+        serviceCharge: 0,
+        gstType: "NONE",
+        gst: 0,
+        discount: 0,
+        billingAddress: "",
+        tds: 0,
+        receivedAmount: 0,
+    });
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setClientFinancials({
+            serviceCharge: eventData?.serviceCharge ?? 0,
+            gstType: eventData?.gstType ?? "NONE",
+            gst: eventData?.gst ?? 0,
+            discount: eventData?.discounts ?? 0,
+            billingAddress: eventData?.billingAddress ?? "",
+            tds: eventData?.tds ?? 0,
+            // Amount already received from the client. Defaults to the
+            // recorded client advance when available.
+            receivedAmount: eventData?.advanceAmt ?? 0,
+        });
+    }, [isOpen]);
+
+    /* ---------- Save / checklist-update confirmation ---------- */
+    const [isSaving, setIsSaving] = useState(false);
+    const [showChecklistConfirmation, setShowChecklistConfirmation] = useState(false);
+
+    /* ---------- Editable working copy of line items ----------
+     * Initialised from the event items each time the modal opens, and then
+     * mutated in place by the inline qty/rate/unit editors. This is the source
+     * of truth for both the table and the payload saved back to the API. */
+    const [editableItems, setEditableItems] = useState<RawEventItem[]>([]);
+    // Snapshot of the working copy taken when the modal opens; used to detect
+    // whether the user changed any editable line-item value before saving.
+    const [originalItems, setOriginalItems] = useState<RawEventItem[]>([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            const init = itemList.map(it => ({ ...it }));
+            setEditableItems(init);
+            setOriginalItems(init.map(it => ({ ...it })));
+        }
+    }, [isOpen]);
 
     // Reset active vendor when vendors change
     useEffect(() => {
@@ -232,9 +402,9 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Derive categories for active vendor ---------- */
     const categories: CategorySection[] = useMemo(() => {
-        if (!itemList || !activeVendorId) return [];
-        return groupItemsByCategory(itemList, activeVendorId);
-    }, [itemList, activeVendorId]);
+        if (!editableItems || !activeVendorId) return [];
+        return groupItemsByCategory(editableItems, activeVendorId);
+    }, [editableItems, activeVendorId]);
 
     /* ---------- Computed subtotal from items ---------- */
     const computedSubtotal = useMemo(() => {
@@ -244,8 +414,43 @@ export function CreatePurchaseOrderModal({
         );
     }, [categories]);
 
+    /* ---------- Detect whether any editable line-item value changed ---------- */
+    // Compares the working copy of line items against the snapshot taken when
+    // the modal opened. When any qty / rate / unit differs, saving will require
+    // a confirmation because the change will propagate to the event checklist.
+    const editableItemsChanged = useMemo(() => {
+        if (editableItems.length !== originalItems.length) return true;
+        return originalItems.some((orig, i) => {
+            const cur = editableItems[i];
+            if (!cur) return true;
+            const origUnit = orig.unit?.trim() || "nos";
+            const curUnit = cur.unit?.trim() || "nos";
+            return (
+                (orig.quantity ?? 1) !== (cur.quantity ?? 1) ||
+                (orig.pricePerItem ?? 0) !== (cur.pricePerItem ?? 0) ||
+                origUnit !== curUnit
+            );
+        });
+    }, [editableItems, originalItems]);
+
     /* ---------- Per‑vendor financials state so edits survive vendor switches ---------- */
     const [financialsByVendor, setFinancialsByVendor] = useState<Record<string, Financials>>({});
+    /**
+     * Tracks vendors whose TDS (%) was explicitly edited in the vendor
+     * financials form. Client Details TDS (`clientFinancials.tds`) must only
+     * update the root-level `tds` — it must never overwrite per-vendor
+     * `vendorSummary[].tds`. So on save, vendors NOT in this set keep their
+     * original `vendorSummary.tds` value verbatim.
+     */
+    const [tdsEditedVendorIds, setTdsEditedVendorIds] = useState<Record<string, boolean>>({});
+
+    // Reset per-open edit tracking so TDS edits from a previous
+    // event/modal session never leak into the next save.
+    useEffect(() => {
+        if (isOpen) {
+            setTdsEditedVendorIds({});
+        }
+    }, [isOpen]);
 
     // Initialise financials for each vendor on mount / data change
     useEffect(() => {
@@ -292,6 +497,7 @@ export function CreatePurchaseOrderModal({
         return (
             financialsByVendor[activeVendorId] ?? {
                 subtotal: computedSubtotal,
+                gstType: "NONE",
                 gstPercent: 0,
                 tdsPercent: 0,
                 advance: 0,
@@ -314,7 +520,7 @@ export function CreatePurchaseOrderModal({
         return vendors.some(v => {
             const f = financialsByVendor[v.id];
             if (!f) return false;
-            const cats = groupItemsByCategory(itemList, v.id);
+            const cats = groupItemsByCategory(editableItems, v.id);
             const computed = cats.reduce(
                 (sum, section) =>
                     sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
@@ -322,7 +528,53 @@ export function CreatePurchaseOrderModal({
             );
             return Math.abs(f.subtotal - computed) > 0.01;
         });
-    }, [vendors, financialsByVendor, itemList]);
+    }, [vendors, financialsByVendor, editableItems]);
+
+    /* ---------- Client billing field handlers ---------- */
+    const updateClientFinancial = (field: keyof ClientFinancials, value: string) => {
+        setClientFinancials(prev => {
+            if (field === "gstType" || field === "billingAddress") {
+                return { ...prev, [field]: value };
+            }
+            if (value === "") return { ...prev, [field]: 0 };
+            const parsed = parseFloat(value);
+            if (Number.isNaN(parsed)) return prev;
+            return { ...prev, [field]: parsed };
+        });
+    };
+
+    const clientSummary = useMemo(() => {
+        return calculateEstimateSummary({
+            totalAmount: totalClientEstimatedAmount,
+            gst: clientFinancials.gst,
+            serviceCharge: clientFinancials.serviceCharge,
+            discounts: clientFinancials.discount,
+        });
+    }, [
+        totalClientEstimatedAmount,
+        clientFinancials.gst,
+        clientFinancials.serviceCharge,
+        clientFinancials.discount,
+    ]);
+
+    // TDS is applied on the same base used for GST (total after service charge
+    // and discount adjustments), mirroring the vendor-side net total convention
+    // without mixing the two calculations.
+    const clientTdsAmount = useMemo(() => {
+        const base =
+            totalClientEstimatedAmount +
+            clientSummary.serviceChargeAmount -
+            clientFinancials.discount;
+        return base * (clientFinancials.tds / 100);
+    }, [
+        totalClientEstimatedAmount,
+        clientSummary.serviceChargeAmount,
+        clientFinancials.discount,
+        clientFinancials.tds,
+    ]);
+
+    const clientTotal = clientSummary.totalWithGST - clientTdsAmount;
+    const clientOutstanding = clientTotal - clientFinancials.receivedAmount;
 
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
@@ -354,12 +606,20 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Financial field handlers ---------- */
     const updateFinancial = (field: keyof Financials, value: string) => {
+        // Editing a vendor's own TDS field is the ONLY way its
+        // `vendorSummary[].tds` may change. Record it so save can
+        // preserve original vendor TDS values for untouched vendors.
+        if (field === "tdsPercent") {
+            setTdsEditedVendorIds(prev =>
+                prev[activeVendorId] ? prev : { ...prev, [activeVendorId]: true },
+            );
+        }
         setFinancialsByVendor(prev => {
             const current = prev[activeVendorId];
             if (!current) return prev;
             let updated: Financials;
-            if (field === "note") {
-                updated = { ...current, note: value };
+            if (field === "note" || field === "gstType") {
+                updated = { ...current, [field]: value };
             } else if (value === "") {
                 updated = { ...current, [field]: value };
             } else {
@@ -370,6 +630,29 @@ export function CreatePurchaseOrderModal({
             return { ...prev, [activeVendorId]: updated };
         });
     };
+
+    /* ---------- Inline edit handler for line items ---------- */
+    // Writes a qty/rate/unit edit back into the editable items working copy.
+    // Recomputing `categories`/`computedSubtotal` from `editableItems` then
+    // automatically propagates the new subtotal to balances/breakdown.
+    const updateLineItem = useCallback(
+        (srcIndex: number, field: "qty" | "rate" | "unit", value: number | string) => {
+            setEditableItems(prev => {
+                if (srcIndex < 0 || srcIndex >= prev.length) return prev;
+                const next = [...prev];
+                const current = next[srcIndex];
+                if (field === "qty") {
+                    next[srcIndex] = { ...current, quantity: value as number };
+                } else if (field === "rate") {
+                    next[srcIndex] = { ...current, pricePerItem: value as number };
+                } else if (field === "unit") {
+                    next[srcIndex] = { ...current, unit: value as string };
+                }
+                return next;
+            });
+        },
+        [],
+    );
 
     /* ---------- Line item columns (display-only) ---------- */
     const lineItemColumns: Column<LineItem>[] = [
@@ -409,19 +692,50 @@ export function CreatePurchaseOrderModal({
         },
         {
             key: "qty",
-            header: "Qty",
+            header: <EditableHeader label="Qty" />,
             align: "center",
             cellClassName: "w-16",
-            render: (item: LineItem) => <span className="text-sm">{item.qty}</span>,
+            render: (item: LineItem) => (
+                <InlineNumber
+                    value={item.qty}
+                    min={1}
+                    step={1}
+                    className="text-xs"
+                    data-field="qty"
+                    onSave={val => updateLineItem(item.srcIndex, "qty", val)}
+                />
+            ),
+        },
+        {
+            key: "unit",
+            header: <EditableHeader label="Unit" />,
+            align: "center",
+            cellClassName: "w-16",
+            render: (item: LineItem) => (
+                <InlineUnitSelect
+                    value={item.unit || "nos"}
+                    options={QUANTITY_UNITS}
+                    className="text-xs text-center"
+                    data-field="unit"
+                    onSave={val => updateLineItem(item.srcIndex, "unit", val || "nos")}
+                />
+            ),
         },
 
         {
             key: "rate",
-            header: "Rate",
+            header: <EditableHeader label="Rate" />,
             align: "right",
             cellClassName: "w-28",
             render: (item: LineItem) => (
-                <span className="text-sm">{formatCurrency(item.rate)}</span>
+                <InlineNumber
+                    value={item.rate}
+                    min={0}
+                    step={0.01}
+                    className="text-xs"
+                    data-field="rate"
+                    onSave={val => updateLineItem(item.srcIndex, "rate", val)}
+                />
             ),
         },
         {
@@ -437,7 +751,9 @@ export function CreatePurchaseOrderModal({
         },
     ];
 
+    /* ---------- Save order ---------- */
     const handleSave = async () => {
+        setIsSaving(true);
         try {
             // Validation: Warn if any vendor's subtotal doesn't match the computed total from line items
             if (hasSubtotalMismatch) {
@@ -450,12 +766,28 @@ export function CreatePurchaseOrderModal({
 
             // Build updated vendorSummary by merging original vendorSummary
             // with user-edited financials for each vendor.
+            // IMPORTANT: Client Details TDS (`clientFinancials.tds`) only
+            // updates the root-level `tds`. A vendor's `vendorSummary[].tds`
+            // changes ONLY when that vendor's own TDS (%) field was edited
+            // (tracked in `tdsEditedVendorIds`). Otherwise the original
+            // `vendorSummary[].tds` is preserved verbatim.
             const updatedVendorSummary: VendorSummary[] = vendors
                 .filter(v => financialsByVendor[v.id])
                 .map(v => {
                     const f = financialsByVendor[v.id];
+                    const originalVs = (vendorSummary ?? []).find(s => {
+                        if (v.id === "SELF") {
+                            return !s.vendor || s.vendor === "SELF";
+                        }
+                        return s.vendor === v.id;
+                    });
+                    // Keep the stored vendor TDS unless this vendor's TDS
+                    // field was explicitly edited in this session.
+                    const tdsPercentToSave = tdsEditedVendorIds[v.id]
+                        ? f.tdsPercent
+                        : (originalVs?.tds ?? f.tdsPercent);
                     const gstAmount = f.subtotal * (f.gstPercent / 100);
-                    const tdsAmount = f.subtotal * (f.tdsPercent / 100);
+                    const tdsAmount = f.subtotal * (tdsPercentToSave / 100);
                     const netTotal = f.subtotal + gstAmount - tdsAmount;
                     const bal = netTotal - f.advance;
                     return {
@@ -463,7 +795,8 @@ export function CreatePurchaseOrderModal({
                         totalAmount: f.subtotal,
                         advanceAmount: f.advance,
                         gst: f.gstPercent,
-                        tds: f.tdsPercent,
+                        gstType: f.gstType ?? "NONE",
+                        tds: tdsPercentToSave,
                         adjustedAmt: netTotal,
                         balance: bal,
                         changeSummary: f.note,
@@ -476,9 +809,22 @@ export function CreatePurchaseOrderModal({
                 vs => !vendors.some(v => v.id === vs.vendor),
             );
 
+            // Persist the editable line items (with updated qty/rate) so the
+            // updated values reach the backend together with the financials.
+            // The editable client billing details are merged in as well so the
+            // approved/final estimate billing info stays in sync. Vendor TDS /
+            // advance remain untouched (they live in `vendorSummary`).
             const updatedEvent = {
                 ...eventData,
+                items: editableItems.length > 0 ? editableItems : eventData.items,
                 vendorSummary: [...updatedVendorSummary, ...otherSummaries],
+                gst: clientFinancials.gst,
+                gstType: clientFinancials.gstType,
+                tds: clientFinancials.tds,
+                serviceCharge: clientFinancials.serviceCharge,
+                discounts: clientFinancials.discount,
+                billingAddress: clientFinancials.billingAddress,
+                receivedAmount: clientFinancials.receivedAmount,
             };
 
             // Use POST to create the event – requires the event id
@@ -505,6 +851,20 @@ export function CreatePurchaseOrderModal({
         } catch (err) {
             console.error("Error saving purchase order:", err);
             toast.error("Error saving purchase order");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    /* ---------- Save click: confirm when line-item values changed ---------- */
+    // If any editable qty / rate / unit value differs from the previously
+    // saved value, prompt the user before proceeding, since the change will
+    // trigger a checklist update. Otherwise save directly.
+    const handleSaveClick = () => {
+        if (editableItemsChanged) {
+            setShowChecklistConfirmation(true);
+        } else {
+            void handleSave();
         }
     };
 
@@ -518,50 +878,114 @@ export function CreatePurchaseOrderModal({
         >
             {/* Two-column layout */}
             <div className="flex max-h-[calc(100vh-200px)]">
-                {/* Left: Vendor Sidebar */}
-                {vendors.length > 0 && (
-                    <aside className="w-72 border-r border-border bg-surface-container-low/30 overflow-y-auto shrink-0">
-                        <nav className="p-2 space-y-2">
-                            {vendors.map(v => {
-                                const isActive = v.id === activeVendorId;
-                                return (
-                                    <button
-                                        key={v.id}
-                                        onClick={() => setActiveVendorId(v.id)}
-                                        className={cn(
-                                            "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
-                                            isActive
-                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                : "hover:bg-surface-container-high",
-                                        )}
-                                    >
-                                        <span
+                {/* Left: Client + Vendor Sidebar */}
+                <aside className="w-72 border-r border-border bg-surface-container-low/30 overflow-y-auto shrink-0">
+                    <nav className="p-2 space-y-5">
+                        {/* Client Detail section */}
+                        <div>
+                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Client Detail
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setActiveView("client")}
+                                className={cn(
+                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
+                                    activeView === "client"
+                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                        : "hover:bg-surface-container-high",
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        "text-sm font-bold truncate",
+                                        activeView === "client"
+                                            ? "text-inherit"
+                                            : "text-foreground",
+                                    )}
+                                >
+                                    Billing & settlement
+                                </span>
+                                {/* <span
+                                    className={cn(
+                                        "text-xs italic",
+                                        activeView === "client"
+                                            ? "opacity-80"
+                                            : "text-muted-foreground",
+                                    )}
+                                >
+                                    Billing & settlement
+                                </span> */}
+                            </button>
+                        </div>
+
+                        {/* Vendor Detail section */}
+                        <div className="border-t border-border pt-3">
+                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Vendor Detail
+                            </p>
+                            <div className="space-y-2">
+                                {vendors.map(v => {
+                                    const isActive =
+                                        activeView === "vendor" && v.id === activeVendorId;
+                                    return (
+                                        <button
+                                            key={v.id}
+                                            onClick={() => {
+                                                setActiveView("vendor");
+                                                setActiveVendorId(v.id);
+                                            }}
                                             className={cn(
-                                                "text-sm font-bold truncate",
-                                                isActive ? "text-inherit" : "text-foreground",
+                                                "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
+                                                isActive
+                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                    : "hover:bg-surface-container-high",
                                             )}
                                         >
-                                            {v.name}
-                                        </span>
-                                        <span
-                                            className={cn(
-                                                "text-xs italic",
-                                                isActive ? "opacity-80" : "text-muted-foreground",
-                                            )}
-                                        >
-                                            {v.status}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </nav>
-                    </aside>
-                )}
+                                            <span
+                                                className={cn(
+                                                    "text-sm font-bold truncate",
+                                                    isActive ? "text-inherit" : "text-foreground",
+                                                )}
+                                            >
+                                                {v.name}
+                                            </span>
+                                            <span
+                                                className={cn(
+                                                    "text-xs italic",
+                                                    isActive
+                                                        ? "opacity-80"
+                                                        : "text-muted-foreground",
+                                                )}
+                                            >
+                                                {v.status}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                                {vendors.length === 0 && (
+                                    <p className="px-3 text-xs italic text-muted-foreground">
+                                        No vendors assigned
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </nav>
+                </aside>
 
                 {/* Right: Main Content */}
                 <main className="flex-1 overflow-y-auto p-6">
                     <div className="max-w-4xl mx-auto space-y-8">
-                        {categories.length === 0 ? (
+                        {activeView === "client" ? (
+                            <PurchaseOrderClientDetails
+                                clientName={clientName}
+                                eventName={eventName}
+                                eventDescription={eventDescription}
+                                clientFinancials={clientFinancials}
+                                onFinancialChange={updateClientFinancial}
+                                estimates={estimates}
+                            />
+                        ) : categories.length === 0 ? (
                             <div className="text-center py-12">
                                 <p className="text-sm text-muted-foreground">
                                     {vendors.length === 0
@@ -571,7 +995,9 @@ export function CreatePurchaseOrderModal({
                             </div>
                         ) : (
                             <>
-                                {/* Category Sections – display only */}
+                                {/* Category Sections – line items with inline-editable
+                                    Qty / Unit / Rate and read-only Days / Total. The ⓘ beside
+                                    each section header explains what can be edited. */}
                                 {categories.map(section => (
                                     <section key={section.id} className="space-y-4">
                                         {/* Section header */}
@@ -584,16 +1010,42 @@ export function CreatePurchaseOrderModal({
                                                     {section.description}
                                                 </p>
                                             </div>
+                                            <Tooltip content={EDITABLE_FIELDS_HINT}>
+                                                <span className="inline-flex cursor-help items-center text-muted-foreground transition-colors hover:text-primary">
+                                                    <Info size={14} aria-hidden="true" />
+                                                </span>
+                                            </Tooltip>
                                         </div>
 
-                                        {/* Table */}
-                                        <div className="border border-border rounded-lg overflow-hidden">
-                                            <Table
-                                                data={section.items}
-                                                columns={lineItemColumns}
-                                                getKey={(item: LineItem) => item.id}
-                                            />
-                                        </div>
+                                        {/* Direct items (no sub-category) */}
+                                        {section.directItems.length > 0 && (
+                                            <div className="border border-border rounded-lg overflow-hidden">
+                                                <Table
+                                                    data={section.directItems}
+                                                    columns={lineItemColumns}
+                                                    getKey={(item: LineItem) => item.id}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Sub-category groups */}
+                                        {section.subCategories.map(sub => (
+                                            <div key={sub.id} className="space-y-2">
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <span className="inline-block w-2 h-2 rounded-full bg-primary/50" />
+                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                                        Sub Category: {sub.name}
+                                                    </p>
+                                                </div>
+                                                <div className="border border-border rounded-lg overflow-hidden">
+                                                    <Table
+                                                        data={sub.items}
+                                                        columns={lineItemColumns}
+                                                        getKey={(item: LineItem) => item.id}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
                                     </section>
                                 ))}
 
@@ -619,9 +1071,28 @@ export function CreatePurchaseOrderModal({
                                             }
                                             disabled={!hasSubtotalMismatch}
                                         />
+                                        <Select
+                                            id="financial-gst-type"
+                                            label="Tax Type"
+                                            options={GST_TYPE_OPTIONS}
+                                            value={
+                                                GST_TYPE_OPTIONS.find(
+                                                    o => o.value === (financials.gstType ?? "NONE"),
+                                                ) ?? GST_TYPE_OPTIONS[0]
+                                            }
+                                            onChange={option =>
+                                                updateFinancial(
+                                                    "gstType",
+                                                    option && option.value ? option.value : "NONE",
+                                                )
+                                            }
+                                            smallLabel
+                                        />
                                         <Input
                                             id="financial-gst"
-                                            label="GST (%)"
+                                            label={`${
+                                                GST_LABEL_BY_TYPE[financials.gstType] ?? "GST"
+                                            } (%)`}
                                             type="number"
                                             min="0"
                                             max="100"
@@ -631,6 +1102,7 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("gstPercent", e.target.value)
                                             }
                                             smallLabel
+                                            disabled={financials.gstType === "NONE"}
                                         />
                                         <Input
                                             id="financial-tds"
@@ -689,92 +1161,188 @@ export function CreatePurchaseOrderModal({
                 </main>
             </div>
 
-            {/* Footer */}
-            {categories.length > 0 && (
-                <ModalFooter className="justify-between">
-                    <div className="flex items-center gap-4 bg-primary/[0.04] rounded-xl px-5 py-3 border border-primary/10">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                                Outstanding Balance
-                            </p>
-                            <p className="text-xs text-muted-foreground">Final vendor settlement</p>
-                        </div>
-                        <span className="text-xl font-extrabold text-primary tracking-tight">
-                            {formatCurrency(balance())}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setShowBreakdown(!showBreakdown)}
-                            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                            aria-label="Toggle balance breakdown"
-                        >
-                            {showBreakdown ? (
-                                <ChevronUp className="w-4 h-4" />
-                            ) : (
-                                <ChevronDown className="w-4 h-4" />
-                            )}
-                        </button>
-                    </div>
-                    {showBreakdown && (
-                        <div className="absolute bottom-20 left-5 bg-surface border border-border rounded-xl shadow-xl p-4 z-50 w-72">
-                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-                                Balance Breakdown
-                            </p>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Subtotal</span>
-                                    <span className="font-medium">
-                                        {formatCurrency(breakdownDetails.subtotal)}
-                                    </span>
+            {/* Footer – Client view shows COST SUMMARY; vendor view shows OUTSTANDING BALANCE */}
+            <ModalFooter className="relative justify-between flex-wrap">
+                <div className="flex items-center gap-4 flex-wrap">
+                    {activeView === "client" ? (
+                        <>
+                            {/* COST SUMMARY – client / estimate financial position.
+                        Shown ONLY when the Client Details selection is active. */}
+                            <CostSummary
+                                title="Cost Summary"
+                                subtitle="Client / estimate settlement"
+                                amount={clientOutstanding}
+                                breakdownTitle="Cost Breakdown"
+                                items={[
+                                    {
+                                        label: "Estimate/Subtotal",
+                                        amount: totalClientEstimatedAmount,
+                                    },
+                                    ...(clientSummary.serviceChargeAmount > 0
+                                        ? [
+                                              {
+                                                  label: `Service Charge (${clientFinancials.serviceCharge}%)`,
+                                                  amount: clientSummary.serviceChargeAmount,
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientFinancials.discount > 0
+                                        ? [
+                                              {
+                                                  label: "Discount",
+                                                  amount: clientFinancials.discount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientSummary.gstAmount > 0
+                                        ? [
+                                              {
+                                                  label: `GST (${clientFinancials.gst}%)`,
+                                                  amount: clientSummary.gstAmount,
+                                                  tone: "positive" as const,
+                                                  prefix: "+",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientTdsAmount > 0
+                                        ? [
+                                              {
+                                                  label: `TDS (${clientFinancials.tds}%)`,
+                                                  amount: clientTdsAmount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientFinancials.receivedAmount > 0
+                                        ? [
+                                              {
+                                                  label: "Received Amount",
+                                                  amount: clientFinancials.receivedAmount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                ]}
+                                totalItem={{
+                                    label: "Client Outstanding",
+                                    amount: clientOutstanding,
+                                }}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            {/* OUTSTANDING BALANCE – vendor settlement amount.
+                        Shown ONLY when a vendor selection is active. */}
+                            <div className="flex items-center gap-4 bg-primary/[0.04] rounded-xl px-5 py-3 border border-primary/10">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                                        Outstanding Balance
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Final vendor settlement
+                                    </p>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">
-                                        GST ({breakdownDetails.gstPercent}%)
-                                    </span>
-                                    <span className="font-medium text-success">
-                                        +{formatCurrency(breakdownDetails.gstAmount)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">
-                                        TDS ({breakdownDetails.tdsPercent}%)
-                                    </span>
-                                    <span className="font-medium text-destructive">
-                                        -{formatCurrency(breakdownDetails.tdsAmount)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Net Total</span>
-                                    <span className="font-medium">
-                                        {formatCurrency(breakdownDetails.netTotal)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Advance Paid</span>
-                                    <span className="font-medium text-destructive">
-                                        -{formatCurrency(breakdownDetails.advance)}
-                                    </span>
-                                </div>
-                                <div className="border-t border-border pt-2 flex justify-between font-bold text-primary">
-                                    <span>Outstanding Balance</span>
-                                    <span>{formatCurrency(breakdownDetails.balance)}</span>
-                                </div>
+                                <span className="text-xl font-extrabold text-primary tracking-tight">
+                                    {formatCurrency(balance())}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBreakdown(!showBreakdown)}
+                                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                                    aria-label="Toggle balance breakdown"
+                                >
+                                    {showBreakdown ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                    )}
+                                </button>
                             </div>
-                        </div>
+                            {showBreakdown && (
+                                <div className="absolute bottom-20 left-5 bg-surface border border-border rounded-xl shadow-xl p-4 z-50 w-72">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                                        Balance Breakdown
+                                    </p>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Subtotal</span>
+                                            <span className="font-medium">
+                                                {formatCurrency(breakdownDetails.subtotal)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">
+                                                GST ({breakdownDetails.gstPercent}%)
+                                            </span>
+                                            <span className="font-medium text-success">
+                                                +{formatCurrency(breakdownDetails.gstAmount)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">
+                                                TDS ({breakdownDetails.tdsPercent}%)
+                                            </span>
+                                            <span className="font-medium text-destructive">
+                                                -{formatCurrency(breakdownDetails.tdsAmount)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Net Total</span>
+                                            <span className="font-medium">
+                                                {formatCurrency(breakdownDetails.netTotal)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">
+                                                Advance Paid
+                                            </span>
+                                            <span className="font-medium text-destructive">
+                                                -{formatCurrency(breakdownDetails.advance)}
+                                            </span>
+                                        </div>
+                                        <div className="border-t border-border pt-2 flex justify-between font-bold text-primary">
+                                            <span>Outstanding Balance</span>
+                                            <span>{formatCurrency(breakdownDetails.balance)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
-                    <div className="flex items-center gap-3">
-                        <Button variant="ghost" onClick={onClose}>
-                            Cancel
-                        </Button>
-                        <Button variant="outline" onClick={onViewPurchaseOrder}>
-                            Preview Order
-                        </Button>
-                        <Button className="shadow-lg shadow-primary/30" onClick={handleSave}>
-                            Save Purchase Order
-                        </Button>
-                    </div>
-                </ModalFooter>
-            )}
+                </div>
+                <div className="flex items-center gap-3">
+                    <Button variant="ghost" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button variant="outline" onClick={onViewPurchaseOrder}>
+                        Preview Order
+                    </Button>
+                    <Button className="shadow-lg shadow-primary/30" onClick={handleSaveClick}>
+                        Save Purchase Order
+                    </Button>
+                </div>
+            </ModalFooter>
+            <ConfirmationModal
+                open={showChecklistConfirmation}
+                onClose={() => setShowChecklistConfirmation(false)}
+                onConfirm={() => {
+                    setShowChecklistConfirmation(false);
+                    void handleSave();
+                }}
+                title="Confirm Checklist Update"
+                description={
+                    "The changes you have made to one or more line items (Qty, Rate, or Unit) " +
+                    "will cause the checklist to update. Are you sure you want to continue with this action?"
+                }
+                confirmText="Continue"
+                cancelText="Cancel"
+                variant="primary"
+                isLoading={isSaving}
+            />
         </Modal>
     );
 }

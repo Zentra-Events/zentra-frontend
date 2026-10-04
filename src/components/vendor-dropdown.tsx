@@ -35,6 +35,8 @@ export interface VendorDropdownProps {
     isClearable?: boolean;
     /** Custom placeholder text */
     placeholder?: string;
+    /** Optional inline validation error message (shown under the field). */
+    error?: string;
 }
 
 /**
@@ -55,6 +57,7 @@ export function VendorDropdown({
     wrapperClassName,
     isClearable = true,
     placeholder,
+    error,
 }: VendorDropdownProps) {
     const [isCreating, setIsCreating] = useState(false);
     const pendingCreateRef = useRef(false);
@@ -133,6 +136,8 @@ export function VendorDropdown({
             isClearable={isClearable}
             isDisabled={isDisabled || isCreating}
             wrapperClassName={wrapperClassName}
+            errorMessage={error}
+            showError={!!error}
         />
     );
 }

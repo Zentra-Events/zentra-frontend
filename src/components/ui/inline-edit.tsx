@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { focusAndScrollIntoView } from "@/lib/category-editor/utils/focus";
 
 interface InlineEditProps {
     value: string;
@@ -9,6 +10,11 @@ interface InlineEditProps {
     placeholder?: string;
     className?: string;
     disabled?: boolean;
+    focusSignal?: number;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    refCb?: (el: HTMLElement | null) => void;
+    onEditingChange?: (editing: boolean) => void;
+    "data-field"?: string;
 }
 
 export function InlineEdit({
@@ -17,6 +23,11 @@ export function InlineEdit({
     placeholder = "",
     className = "",
     disabled = false,
+    focusSignal = 0,
+    onKeyDown,
+    refCb,
+    onEditingChange,
+    "data-field": dataField,
 }: InlineEditProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(value);
@@ -25,13 +36,24 @@ export function InlineEdit({
     useEffect(() => {
         setEditValue(value);
     }, [value]);
-
+    
     useEffect(() => {
         if (isEditing && inputRef.current) {
-            inputRef.current.focus();
+            focusAndScrollIntoView(inputRef.current);
             inputRef.current.select();
         }
     }, [isEditing]);
+
+    useEffect(() => {
+        if (focusSignal > 0) {
+            setIsEditing(true);
+        }
+        }, [focusSignal]);
+
+    // Notify parent when editing state changes (e.g., to clear focus signals)
+    useEffect(() => {
+        onEditingChange?.(isEditing);
+    }, [isEditing, onEditingChange]);
 
     const handleSave = useCallback(() => {
         setIsEditing(false);
@@ -42,7 +64,8 @@ export function InlineEdit({
     }, [editValue, onSave, value]);
 
     const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            onKeyDown?.(e);
             if (e.key === "Enter") {
                 handleSave();
             } else if (e.key === "Escape") {
@@ -50,7 +73,14 @@ export function InlineEdit({
                 setIsEditing(false);
             }
         },
-        [handleSave, value],
+        [handleSave, onKeyDown, value],
+    );
+
+    const rootRef = useCallback(
+        (el: HTMLElement | null) => {
+            refCb?.(el);
+        },
+        [refCb],
     );
 
     if (disabled) {
@@ -62,7 +92,11 @@ export function InlineEdit({
     if (isEditing) {
         return (
             <input
-                ref={inputRef}
+                ref={el => {
+                    inputRef.current = el;
+                    rootRef(el);
+                }}
+                data-field={dataField}
                 value={editValue}
                 onChange={e => setEditValue(e.target.value)}
                 onBlur={handleSave}
@@ -78,6 +112,8 @@ export function InlineEdit({
 
     return (
         <span
+            ref={rootRef}
+            data-field={dataField}
             className={cn(
                 "cursor-pointer rounded py-0.5 text-sm transition-colors hover:bg-primary-light hover:text-primary",
                 !value && "italic text-gray-400",

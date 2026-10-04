@@ -219,3 +219,21 @@ export function formatExportCurrency(value: number): string {
         maximumFractionDigits: 2,
     });
 }
+
+/* ------------------------------------------------------------------ */
+/*  Grouping utilities (Category / Sub Category)                       */
+/* ------------------------------------------------------------------ */
+
+export {
+    groupByCategory,
+    groupItemsByCategory,
+    flattenCategoryGroups,
+    flattenItemsByCategory,
+} from "./grouping";
+
+export type {
+    Groupable,
+    CategoryGroup,
+    SubCategoryGroup,
+    GroupingOptions,
+} from "./grouping";

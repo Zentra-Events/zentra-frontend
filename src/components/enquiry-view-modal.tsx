@@ -28,6 +28,7 @@ import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import { Enquiry } from "@/types/enquiry";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
+import { formatScheduleRange, formatShortDateTime } from "@/lib/utils/date";
 import { FilePlus2Icon } from "lucide-react";
 import { useEstimatePrefill } from "@/context/estimate-prefill";
 
@@ -39,34 +40,6 @@ interface EnquiryViewModalProps {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr?: string): string {
-    if (!dateStr) return "";
-    try {
-        return new Date(dateStr).toLocaleDateString("en-IN", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-        });
-    } catch {
-        return dateStr;
-    }
-}
-
-function formatDateTime(dateStr?: string): string {
-    if (!dateStr) return "";
-    try {
-        return new Date(dateStr).toLocaleString("en-IN", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-    } catch {
-        return dateStr;
-    }
-}
 
 function getStatusVariant(status: string): "default" | "success" | "warning" | "danger" | "info" {
     const s = status.toUpperCase();
@@ -91,6 +64,12 @@ function isEventCreated(statusFlag: string): boolean {
 
 function isEstimateCreated(statusFlag: string): boolean {
     return statusFlag === "ESTIMATE_CREATED";
+}
+
+function getEnquiryAssignee(enquiry: Enquiry): string {
+    const assignedTo = enquiry.assignedTo?.trim() || "";
+    if (assignedTo && assignedTo !== "Unassigned") return assignedTo;
+    return enquiry.assignee?.trim() || "";
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -169,7 +148,7 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
                 enquiryDate: enquiry.date || new Date().toISOString(),
                 fromDate: enquiry.fromDate || enquiry.date || new Date().toISOString(),
                 toDate: enquiry.toDate || enquiry.date || new Date().toISOString(),
-                assignedTo: enquiry.assignee,
+                assignedTo: getEnquiryAssignee(enquiry),
                 eventID: enquiry.eventID,
                 venue: enquiry.venue || "",
                 eventName: enquiry.eventName || enquiry.title || "Event",
@@ -309,11 +288,11 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
 
     const title = enquiry.eventName || enquiry.title || "Untitled Enquiry";
     const clientDisplay = enquiry.clientName || enquiry.client || "";
-    const schedule =
-        enquiry.fromDate || enquiry.toDate
-            ? `${formatDate(enquiry.fromDate)} – ${formatDate(enquiry.toDate)}`
-            : "";
-    const hasSchedule = !!enquiry.fromDate || !!enquiry.toDate;
+    // Build the schedule string with the shared formatter so the enquiry list
+    // and view modal render dates identically. Times are shown only when both
+    // the start and end date-times are available.
+    const schedule = formatScheduleRange(enquiry.fromDate, enquiry.toDate);
+    const hasSchedule = !!schedule;
     const highLevelReq = enquiry.highlvelRequirement || "";
 
     const isDeletingOrCloning = deleting || cloning;
@@ -323,20 +302,14 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
             <ModalBody className="space-y-5">
                 {/* ── Header Summary ─────────────────────────────────────── */}
                 <Card variant="elevated" className="overflow-hidden">
-                    <div className="relative bg-gradient-to-br from-primary/5 via-primary/[0.02] to-transparent px-5 py-5 sm:px-6 sm:py-6">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            {/* Left: title + client + badges */}
-                            <div className="min-w-0 flex-1 space-y-2">
-                                <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl truncate">
-                                    {title}
-                                </h2>
-                                {clientDisplay && (
-                                    <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                                        <UserIcon size={14} />
-                                        <span>{clientDisplay}</span>
-                                    </p>
-                                )}
-                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="relative bg-gradient-to-br from-primary/5 via-primary/[0.02] to-transparent px-5 py-4 sm:px-6">
+                        <div className="flex items-start justify-between gap-3">
+                            {/* Left: title + badges + client */}
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h2 className="min-w-0 flex-1 truncate text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                                        {title}
+                                    </h2>
                                     {enquiry.eventType && (
                                         <Badge variant={getEventTypeVariant(enquiry.eventType)}>
                                             {enquiry.eventType}
@@ -348,66 +321,56 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
                                         </Badge>
                                     )}
                                 </div>
+                                {clientDisplay && (
+                                    <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                                        <UserIcon size={14} className="shrink-0" />
+                                        <span className="truncate">{clientDisplay}</span>
+                                    </p>
+                                )}
                             </div>
 
-                            {/* Right: date range + venue + action icons */}
-                            <div className="flex flex-col gap-2 text-sm text-muted-foreground shrink-0">
-                                {hasSchedule && (
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <CalendarDaysIcon size={14} />
-                                        <span className="truncate max-w-[220px]">{schedule}</span>
-                                    </span>
-                                )}
-                                {enquiry.venue && (
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <MapPinIcon size={14} />
-                                        <span className="truncate max-w-[220px]">
-                                            {enquiry.venue}
-                                        </span>
-                                    </span>
-                                )}
-                                <div className="flex items-center gap-1 mt-1 justify-end">
-                                    {onEdit && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 w-8 p-0"
-                                            onClick={handleEditClick}
-                                            disabled={isDeletingOrCloning}
-                                            title="Edit Enquiry"
-                                        >
-                                            <PencilIcon size={16} />
-                                        </Button>
-                                    )}
+                            {/* Right: actions, aligned with the title row */}
+                            <div className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground -mr-1">
+                                {onEdit && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
                                         className="h-8 w-8 p-0"
-                                        onClick={handleClone}
-                                        disabled={isDeletingOrCloning || cloning}
-                                        title="Clone Enquiry"
-                                    >
-                                        {cloning ? (
-                                            <span className="animate-spin h-4 w-4 border-2 border-foreground border-t-transparent rounded-full" />
-                                        ) : (
-                                            <Copy size={16} />
-                                        )}
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                        onClick={handleDeleteClick}
+                                        onClick={handleEditClick}
                                         disabled={isDeletingOrCloning}
-                                        title="Delete Enquiry"
+                                        title="Edit Enquiry"
                                     >
-                                        {deleting ? (
-                                            <span className="animate-spin h-4 w-4 border-2 border-destructive border-t-transparent rounded-full" />
-                                        ) : (
-                                            <Trash2 size={16} />
-                                        )}
+                                        <PencilIcon size={16} />
                                     </Button>
-                                </div>
+                                )}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={handleClone}
+                                    disabled={isDeletingOrCloning || cloning}
+                                    title="Clone Enquiry"
+                                >
+                                    {cloning ? (
+                                        <span className="animate-spin h-4 w-4 border-2 border-foreground border-t-transparent rounded-full" />
+                                    ) : (
+                                        <Copy size={16} />
+                                    )}
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                    onClick={handleDeleteClick}
+                                    disabled={isDeletingOrCloning}
+                                    title="Delete Enquiry"
+                                >
+                                    {deleting ? (
+                                        <span className="animate-spin h-4 w-4 border-2 border-destructive border-t-transparent rounded-full" />
+                                    ) : (
+                                        <Trash2 size={16} />
+                                    )}
+                                </Button>
                             </div>
                         </div>
                     </div>
@@ -487,9 +450,9 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
                             icon={<PhoneIcon size={14} />}
                         />
                         <InfoRow
-                            label="Assignee"
-                            value={enquiry.assignee}
-                            icon={<UserIcon size={14} />}
+                            label="Assigned To"
+                            value={getEnquiryAssignee(enquiry)}
+                            icon={<BriefcaseIcon size={14} />}
                         />
                     </InfoCard>
 
@@ -512,7 +475,7 @@ export function EnquiryViewModal({ open, onClose, enquiry, onEdit }: EnquiryView
                         {enquiry.date && (
                             <InfoRow
                                 label="Enquiry Date"
-                                value={formatDateTime(enquiry.date)}
+                                value={formatShortDateTime(enquiry.date)}
                                 icon={<CalendarIcon size={14} />}
                             />
                         )}

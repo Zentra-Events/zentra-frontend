@@ -30,6 +30,7 @@ export interface Enquiry {
     poc: string;
     status: string;
     assignee: string;
+    assignedTo?: string;
     highlvelRequirement?: string;
     enquiryDate?: string;
     fromDate?: string;

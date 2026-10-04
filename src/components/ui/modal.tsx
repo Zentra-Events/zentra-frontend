@@ -17,7 +17,10 @@ interface ModalProps {
     icon?: ReactNode;
     className?: string;
     closeOnBackdrop?: boolean;
+    closeOnEscape?: boolean;
     showCloseIcon?: boolean;
+    /** Optional right-aligned actions rendered in the header (before the close icon). */
+    headerActions?: ReactNode;
 }
 
 const sizeStyles: Record<ModalSize, string> = {
@@ -38,7 +41,9 @@ export function Modal({
     icon,
     className,
     closeOnBackdrop = false,
+    closeOnEscape = false,
     showCloseIcon = false,
+    headerActions,
 }: ModalProps) {
     const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -51,13 +56,15 @@ export function Modal({
         function handleKeyDown(e: KeyboardEvent) {
             if (e.key === "Escape") onClose();
         }
-        document.addEventListener("keydown", handleKeyDown);
+        if (closeOnEscape) {
+            document.addEventListener("keydown", handleKeyDown);
+        }
 
         return () => {
             document.body.style.overflow = prev;
             document.removeEventListener("keydown", handleKeyDown);
         };
-    }, [open, onClose]);
+    }, [open, onClose, closeOnEscape]);
 
     useEffect(() => {
         if (open && dialogRef.current) {
@@ -118,6 +125,11 @@ export function Modal({
                                 </p>
                             )}
                         </div>
+                        {headerActions && (
+                            <div className="flex items-center gap-2">
+                                {headerActions}
+                            </div>
+                        )}
                         {showCloseIcon && (
                             <button
                                 onClick={onClose}
