@@ -31,7 +31,7 @@ export function FormikFieldInput({
     const inputId = id ?? name;
 
     return (
-        <div className={cn("grid gap-2", wrapperClassName)}>
+        <div className={cn("flex flex-col gap-1.5", wrapperClassName)}>
             <Field name={name}>
                 {({ field, meta }: FieldProps<string>) => {
                     const showError = !!meta.touched && !!meta.error;

@@ -12,6 +12,8 @@ export interface EnquiryFormData {
     clientType?: "corporate" | "individual"; // deprecated in favor of eventType
     clientPoC: string;
     enquiryPoCNumber: string;
+    alternateClientPoC?: string;
+    alternateEnquiryPocNumber?: string;
     eventPoCNumber?: string;
     eventPoC?: string;
     enquiryPoC?: string;
@@ -42,6 +44,8 @@ export interface Enquiry {
     enquiryPoC?: string;
     eventPoC?: string;
     eventPoCNumber?: string;
+    alternateClientPoC?: string;
+    alternateEnquiryPocNumber?: string;
     location?: string;
     title?: string;
     clientPoC?: string;

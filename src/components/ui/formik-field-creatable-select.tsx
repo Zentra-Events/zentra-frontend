@@ -1,9 +1,11 @@
 "use client";
 
-import { Field, FieldProps } from "formik";
-import { CreatableSelectField, type SelectOption } from "./creatable-select";
+import { Field } from "formik";
+import type { FieldProps } from "formik";
+import { CreatableSelectField } from "./creatable-select";
+import type { SelectOption } from "./select-option";
 
-export { type SelectOption };
+export type { SelectOption } from "./select-option";
 
 export interface FormikFieldCreatableSelectProps {
     name: string;

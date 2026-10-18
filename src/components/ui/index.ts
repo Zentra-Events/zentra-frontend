@@ -13,15 +13,21 @@ export { FormikFieldSelect } from "./formik-field-select";
 export { FormikFieldInput } from "./formik-field-input";
 export { Card, CardHeader, CardContent, CardFooter } from "./card";
 export { Badge } from "./badge";
-export { CreatableSelectField, type SelectOption } from "./creatable-select";
+// `CreatableSelectField` is dependency-free (no react-select), so it is safe
+// to re-export through the barrel.
+export { CreatableSelectField } from "./creatable-select";
+export type { SelectOption } from "./select-option";
 export { DatePickerField } from "./date-picker";
 export { Switch } from "./switch";
 export { LinkText } from "./link-text";
-export { DataTable, type Column } from "./data-table";
-export { Pagination, type PaginationInfo } from "./pagination";
+export { DataTable } from "./data-table";
+export type { Column } from "./data-table";
+export { Pagination } from "./pagination";
+export type { PaginationInfo } from "./pagination";
 export { PageHeader } from "./page-header";
 export { Modal, ModalBody, ModalFooter } from "./modal";
-export { MenuList, type MenuListProps } from "./menu-list";
+export { MenuList } from "./menu-list";
+export type { MenuListProps } from "./menu-list";
 export { Table } from "./table";
 export { Tooltip } from "./tooltip";
 export * from "./icons";

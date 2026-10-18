@@ -1,4 +1,4 @@
-import { PaginationInfo } from "@/components/ui";
+import type { PaginationInfo } from "@/components/ui";
 import { useMemo, useState } from "react";
 
 export function usePagination({

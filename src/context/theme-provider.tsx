@@ -42,7 +42,7 @@ function getServerSnapshot(): boolean {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-    const [theme, setThemeState] = useState<Theme>("system");
+    const [theme, setThemeState] = useState<Theme>("light");
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -90,6 +90,6 @@ export function useTheme() {
  * Rendered inside <head> so it executes before paint.
  */
 export function ThemeScript() {
-    const script = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="dark"?"dark":t==="light"?"light":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",r)}catch(e){}})()`;
+    const script = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="dark"?"dark":t==="system"?(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"):"light";document.documentElement.setAttribute("data-theme",r)}catch(e){document.documentElement.setAttribute("data-theme","light")}})()`;
     return <script dangerouslySetInnerHTML={{ __html: script }} />;
 }

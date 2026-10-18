@@ -113,7 +113,7 @@ export function DatePickerField({
                 <label
                     htmlFor={pickerId}
                     className={cn(
-                        "font-medium text-foreground",
+                        "flex min-h-5 flex-wrap items-center gap-1.5 font-medium text-foreground",
                         smallLabel ? "text-xs font-semibold text-muted-foreground" : "text-sm",
                     )}
                 >

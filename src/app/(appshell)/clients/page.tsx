@@ -1,12 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import { useRequestApi } from "@/hooks/useRequestApi";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { MenuList } from "@/components/ui";
-import { MoreVerticalIcon, TrashIcon, FileTextIcon, UserPlusIcon } from "@/components/ui/icons";
+import {
+    MoreVerticalIcon,
+    TrashIcon,
+    FileTextIcon,
+    PencilIcon,
+    UserPlusIcon,
+} from "@/components/ui/icons";
 import CreateClientModal from "@/components/create-client-modal";
 import { PageHeader } from "@/components/ui";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -19,39 +29,73 @@ import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { downloadCSV } from "@/lib/utils/file";
 import { MenuItem } from "@/types";
 import { AccessButton } from "@/components/shared/access-button";
-import { Download } from "lucide-react";
+import { usePagination } from "@/hooks/usePagination";
+import { DEFAULT_PAGE_SIZE } from "@/constants";
+import { clientTypeOptions } from "@/constants/client";
+import { Download, Search, RefreshCw } from "lucide-react";
+
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+
+const clientTypeLabelMap: Record<string, string> = Object.fromEntries(
+    clientTypeOptions.map(o => [o.value, o.label]),
+);
+
+const typeFilterOptions = [
+    { label: "All Types", value: "" },
+    ...clientTypeOptions,
+];
 
 const columns = (
     onView: (row: Client) => void,
+    onEdit: (row: Client) => void,
     onDelete: (row: Client) => void,
 ): Column<Client>[] => [
     {
         key: "name",
         header: "Name",
-        render: row => row.name,
-    },
-    {
-        key: "email",
-        header: "Email",
-        render: row => row.email,
-        className: "text-muted-foreground",
+        render: row => (
+            <div className="flex items-center gap-3 min-w-0">
+                <Avatar name={row.name || "-"} />
+                <div className="flex min-w-0 flex-col">
+                    <span className="max-w-[220px] truncate font-medium">{row.name}</span>
+                    <span className="max-w-[220px] truncate text-xs text-muted-foreground">
+                        {row.email}
+                    </span>
+                </div>
+            </div>
+        ),
     },
     {
         key: "phone",
         header: "Phone",
-        render: row => row.phone,
+        render: row => <span className="whitespace-nowrap">{row.phone}</span>,
         className: "text-muted-foreground",
     },
     {
         key: "poc",
         header: "Point of Contact",
-        render: row => row.poc,
+        render: row => (
+            <span className="block max-w-[160px] truncate" title={row.poc}>
+                {row.poc}
+            </span>
+        ),
         className: "text-muted-foreground",
+    },
+    {
+        key: "clientType",
+        header: "Type",
+        render: row => (
+            <Badge variant="info">{clientTypeLabelMap[row.clientType] ?? row.clientType ?? "-"}</Badge>
+        ),
     },
     {
         key: "gst",
         header: "GST",
-        render: row => row.gst || "-",
+        render: row => (
+            <span className="block max-w-[140px] truncate text-muted-foreground" title={row.gst || "-"}>
+                {row.gst || "-"}
+            </span>
+        ),
         className: "text-muted-foreground",
     },
     {
@@ -65,6 +109,13 @@ const columns = (
                     label: "View",
                     icon: <FileTextIcon size={16} />,
                     onClick: () => onView(row),
+                },
+                {
+                    key: "edit",
+                    label: "Edit",
+                    icon: <PencilIcon size={16} />,
+                    onClick: () => onEdit(row),
+                    scopes: ["w:clients"],
                 },
                 {
                     key: "delete",
@@ -97,10 +148,13 @@ export default function ClientsPage() {
     const { request, loading } = useRequestApi<Client[]>();
     const [clients, setClients] = useState<Client[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
+    const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+    const [search, setSearch] = useState("");
+    const [typeFilter, setTypeFilter] = useState("");
 
     const fetchClients = useCallback(async () => {
         try {
@@ -108,7 +162,7 @@ export default function ClientsPage() {
                 method: "GET",
             });
             if (res !== null) {
-                setClients(res);
+                setClients(Array.isArray(res) ? res : []);
             }
         } catch (_err) {
             toast.error("Failed to fetch clients. Please try again.");
@@ -119,8 +173,56 @@ export default function ClientsPage() {
         fetchClients();
     }, [fetchClients]);
 
+    const filteredClients = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return clients.filter(client => {
+            const matchesType = !typeFilter || client.clientType === typeFilter;
+            if (!matchesType) return false;
+            if (!q) return true;
+            return [client.name, client.email, client.phone, client.poc, client.address]
+                .filter(Boolean)
+                .some(v => String(v).toLowerCase().includes(q));
+        });
+    }, [clients, search, typeFilter]);
+
+    const totalElements = filteredClients.length;
+    const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
+    const { currentPage, handlePageChange, pagination, setCurrentPage } = usePagination({
+        totalPages,
+        pageSize: PAGE_SIZE,
+        totalElements,
+        itemName: "client",
+    });
+
+    // Keep current page valid when filtering shrinks the list.
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, totalPages, setCurrentPage]);
+
+    const pagedClients = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return filteredClients.slice(start, start + PAGE_SIZE);
+    }, [filteredClients, currentPage]);
+
+    const handleResetFilters = useCallback(() => {
+        setSearch("");
+        setTypeFilter("");
+        setCurrentPage(1);
+    }, [setCurrentPage]);
+
     const handleCreate = () => {
+        setEditingClient(null);
         setModalOpen(true);
+    };
+
+    const handleEdit = (client: Client) => {
+        setEditingClient(client);
+        setModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setModalOpen(false);
+        setEditingClient(null);
     };
 
     const handleView = (client: Client) => {
@@ -156,8 +258,9 @@ export default function ClientsPage() {
     };
 
     const handleExport = () => {
-        const exportData = clients.map(client => ({
+        const exportData = filteredClients.map(client => ({
             Name: client.name,
+            Type: client.clientType || "",
             Email: client.email,
             Phone: client.phone,
             "Point of Contact": client.poc,
@@ -196,23 +299,71 @@ export default function ClientsPage() {
                 }
             />
             <div className="flex flex-col gap-4 sm:gap-1">
+                <div className="rounded-lg bg-surface p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                type="text"
+                                placeholder="Search by name, email, phone or POC..."
+                                value={search}
+                                onChange={e => {
+                                    setSearch(e.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className="h-10 pl-9"
+                            />
+                        </div>
+                        <div className="sm:w-[180px]">
+                            <Select
+                                options={typeFilterOptions}
+                                value={typeFilterOptions.find(o => o.value === typeFilter) || null}
+                                onChange={option => {
+                                    setTypeFilter(option?.value || "");
+                                    setCurrentPage(1);
+                                }}
+                                placeholder="All Types"
+                                isClearable={false}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                            title="Reset Filters"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
                 <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
                     <DataTable
-                        columns={columns(handleView, handleDeleteClick)}
-                        data={clients}
+                        columns={columns(handleView, handleEdit, handleDeleteClick)}
+                        data={pagedClients}
                         rowKey={row => row.id}
-                        emptyMessage="No clients found."
+                        emptyMessage={
+                            clients.length === 0
+                                ? "No clients found."
+                                : "No clients match your search."
+                        }
                         hoverable
+                        pagination={pagination}
+                        onPageChange={handlePageChange}
                         isLoading={loading}
                     />
                 </div>
                 <MobileCardList
                     className="flex flex-col gap-4 md:hidden"
-                    items={clients.map(client => ({ id: client.id, data: client }))}
+                    items={pagedClients.map(client => ({ id: client.id, data: client }))}
                     renderHeader={client => (
-                        <div className="flex items-center justify-between">
-                            <div className="font-bold text-lg">{client.name}</div>
-                            <div className="text-xs text-muted-foreground">{client.email}</div>
+                        <div className="flex items-center gap-3">
+                            <Avatar name={client.name || "-"} />
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate font-bold text-base">{client.name}</div>
+                                <div className="truncate text-xs text-muted-foreground">
+                                    {client.email}
+                                </div>
+                            </div>
                         </div>
                     )}
                     renderContent={client => (
@@ -236,6 +387,9 @@ export default function ClientsPage() {
                             <Button variant="outline" size="sm" onClick={() => handleView(client)}>
                                 View
                             </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(client)}>
+                                Edit
+                            </Button>
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -245,13 +399,22 @@ export default function ClientsPage() {
                             </Button>
                         </div>
                     )}
-                    emptyMessage="No clients found."
+                    emptyMessage={
+                        clients.length === 0
+                            ? "No clients found."
+                            : "No clients match your search."
+                    }
+                    pagination={pagination}
+                    onPageChange={handlePageChange}
                     isLoading={loading}
                 />
                 <CreateClientModal
+                    key={editingClient?.id ?? "create"}
                     open={modalOpen}
-                    onClose={() => setModalOpen(false)}
+                    onClose={handleCloseModal}
                     onSuccess={fetchClients}
+                    editData={editingClient}
+                    mode={editingClient ? "edit" : "create"}
                 />
                 <ConfirmationModal
                     open={deleteModalOpen}
@@ -281,6 +444,7 @@ export default function ClientsPage() {
                             <KeyValueDisplay
                                 items={[
                                     { key: "Name", value: selectedClient.name },
+                                    { key: "Type", value: selectedClient.clientType || "-" },
                                     { key: "Email", value: selectedClient.email },
                                     { key: "Phone", value: selectedClient.phone },
                                     { key: "Point of Contact", value: selectedClient.poc },

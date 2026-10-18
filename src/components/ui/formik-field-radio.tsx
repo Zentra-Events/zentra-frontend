@@ -38,8 +38,12 @@ export function FormikFieldRadio({
     const radioId = id ?? name;
 
     return (
-        <div className={cn("flex flex-col gap-2", wrapperClassName)}>
-            {label && <label className="text-sm font-medium text-foreground">{label}</label>}
+        <div className={cn("flex flex-col gap-1.5", wrapperClassName)}>
+            {label && (
+                <label className="flex min-h-5 flex-wrap items-center gap-1.5 text-sm font-medium leading-5 text-foreground">
+                    {label}
+                </label>
+            )}
             <Field name={name}>
                 {({ field, meta }: FieldProps<string>) => {
                     const showError = !!meta.touched && !!meta.error;
@@ -48,14 +52,16 @@ export function FormikFieldRadio({
                         <div
                             className={cn(
                                 "flex gap-6",
-                                orientation === "vertical" ? "flex-col gap-3" : "flex-row",
+                                orientation === "vertical"
+                                    ? "flex-col gap-3"
+                                    : "min-h-10 flex-row flex-wrap items-center",
                                 radioClassName,
                             )}
                         >
                             {options.map(option => (
                                 <label
                                     key={option.value}
-                                    className="flex items-center gap-2 cursor-pointer"
+                                    className="flex cursor-pointer items-center gap-2"
                                 >
                                     <input
                                         type="radio"
@@ -70,7 +76,7 @@ export function FormikFieldRadio({
                                         checked={field.value === option.value}
                                         disabled={disabled}
                                         className={cn(
-                                            "w-4 h-4 cursor-pointer",
+                                            "h-4 w-4 cursor-pointer",
                                             "accent-primary",
                                             "disabled:cursor-not-allowed disabled:opacity-50",
                                             showError &&

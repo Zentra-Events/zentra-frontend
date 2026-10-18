@@ -1,3 +1,5 @@
+export type ClientType = "CORPORATE" | "PERSONAL" | "OTHER";
+
 export interface ClientFormData {
     name: string;
     email: string;
@@ -7,6 +9,7 @@ export interface ClientFormData {
     gst: string;
     pan: string;
     gstCertificate: string;
+    clientType: ClientType;
 }
 
 export interface Client extends ClientFormData {
