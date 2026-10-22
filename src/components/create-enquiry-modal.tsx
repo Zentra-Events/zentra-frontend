@@ -19,12 +19,20 @@ import { useClients } from "@/hooks/useClients";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api/api-client";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
+import { Select } from "@/components/ui/select";
+import {
+    DEFAULT_ENQUIRY_STATUS,
+    ENQUIRY_PRIORITY_OPTIONS,
+    normalizeEnquiryPriority,
+    type EnquiryPriorityValue,
+} from "@/constants/enquiry";
 import {
     Briefcase,
     Building2,
     CalendarDays,
     CircleAlert,
     ClipboardList,
+    Flag,
     Loader2,
     MapPin,
     Minus,
@@ -82,7 +90,19 @@ const validationSchema = Yup.object({
     //     excludeEmptyString: true,
     // }),
     assignedTo: Yup.string().optional(),
+    priority: Yup.string().optional(),
 });
+
+const DEFAULT_PRIORITY: EnquiryPriorityValue = "MEDIUM";
+
+const PRIORITY_OPTIONS = ENQUIRY_PRIORITY_OPTIONS.map(o => ({
+    label: o.label,
+    value: o.value as string,
+}));
+
+function normalizePriority(value?: string | null): EnquiryPriorityValue {
+    return normalizeEnquiryPriority(value) ?? DEFAULT_PRIORITY;
+}
 
 function RequiredMark() {
     return (
@@ -198,6 +218,7 @@ export default function CreateEnquiryModal({
               toDate: normalizeDateForForm(editData.toDate || "") || "",
               eventType: editData.eventType || "CORPORATE",
               assignedTo: normalizeAssignedTo(editData.assignedTo),
+              priority: normalizePriority(editData.priority),
               alternateClientPoC: editData.alternateClientPoC ?? "",
               alternateEnquiryPocNumber: editData.alternateEnquiryPocNumber ?? "",
           }
@@ -219,6 +240,7 @@ export default function CreateEnquiryModal({
               eventPoC: "",
               eventPoCNumber: "",
               assignedTo: "",
+              priority: DEFAULT_PRIORITY,
           };
 
     const isEdit = mode === "edit" || !!editData?.id;
@@ -279,8 +301,33 @@ export default function CreateEnquiryModal({
             if (formattedFromDate) requestBody.fromDate = formattedFromDate;
             if (formattedToDate) requestBody.toDate = formattedToDate;
 
+            // Status handling:
+            // - create: the new pipeline status always starts at NEW_LEAD.
+            // - edit:   both status fields are kept as they are, so the legacy
+            //            `status` (estimate / event flows) and the new
+            //            `ennquiryStatus` (pipeline tracker) are never dropped.
+            if (isEdit) {
+                const legacyStatus = (values.status || "").trim();
+                const pipelineStatus = (values.ennquiryStatus || "").trim();
+                if (legacyStatus) requestBody.status = legacyStatus;
+                if (pipelineStatus) requestBody.ennquiryStatus = pipelineStatus;
+            } else {
+                requestBody.ennquiryStatus = DEFAULT_ENQUIRY_STATUS;
+            }
+
             if (isEdit && editData?.id) {
                 requestBody.id = editData.id;
+            }
+
+            // Follow-up notes: a new enquiry starts with an empty list, an edit
+            // keeps the notes that already exist on the enquiry. When the notes
+            // are unknown the field is omitted so the API keeps the stored ones.
+            if (!isEdit) {
+                requestBody.notes = [];
+            } else if (Array.isArray(values.notes)) {
+                requestBody.notes = values.notes;
+            } else {
+                delete requestBody.notes;
             }
 
             const response = await apiRequest(API_ENDPOINTS.enquiries.list, {
@@ -396,7 +443,10 @@ export default function CreateEnquiryModal({
                 validationSchema={validationSchema}
                 onSubmit={handleSubmit}
             >
-                {({ isSubmitting, status, values, setFieldValue, setValues, submitForm }) => (
+                {({ isSubmitting, status, values, setFieldValue, setValues, submitForm }) => {
+                    const selectedPriority =
+                        PRIORITY_OPTIONS.find(o => o.value === values.priority) ?? null;
+                    return (
                     <Form noValidate>
                         <ModalBody className="space-y-5">
                             {status && (
@@ -413,16 +463,18 @@ export default function CreateEnquiryModal({
                                     </div>
                                 </div>
                             )}
-                            {/* Assignee strip (unnumbered) — first in visual + tab order. */}
+                            {/* Assignee + Priority (unnumbered) — first in visual + tab order.
+                                Uses the same grid template and gap as the section grid below so
+                                the fields line up exactly with the inputs in those sections. */}
                             <div className="rounded-xl border border-border bg-background p-4 sm:p-5">
-                                <div className="w-full sm:max-w-[320px]">
+                                <div className="grid items-start gap-5 xl:grid-cols-[1.05fr_0.95fr]">
                                     <UserSelectDropdown
                                         value={values.assignedTo ?? ""}
                                         onChange={assignedTo =>
                                             setFieldValue("assignedTo", assignedTo)
                                         }
                                         label={
-                                            <span className="inline-flex items-center gap-1.5">
+                                            <span className="flex flex-wrap items-center gap-1.5">
                                                 <Briefcase
                                                     size={14}
                                                     className="text-muted-foreground"
@@ -433,6 +485,32 @@ export default function CreateEnquiryModal({
                                             </span>
                                         }
                                         placeholder="Search or enter assignee name"
+                                    />
+                                    <Select
+                                        inputId="enquiry-modal-priority-select"
+                                        aria-label="Enquiry priority"
+                                        label={
+                                            <span className="flex flex-wrap items-center gap-1.5">
+                                                <Flag
+                                                    size={14}
+                                                    className="text-muted-foreground"
+                                                    aria-hidden="true"
+                                                />
+                                                Priority
+                                                <OptionalBadge />
+                                            </span>
+                                        }
+                                        options={PRIORITY_OPTIONS}
+                                        value={selectedPriority}
+                                        isSearchable={false}
+                                        placeholder="Select priority"
+                                        onChange={(opt: unknown) => {
+                                            const next = (
+                                                opt as { value?: EnquiryPriorityValue } | null
+                                            )?.value;
+                                            if (!next) return;
+                                            setFieldValue("priority", next);
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -893,7 +971,8 @@ export default function CreateEnquiryModal({
                             </div>
                         </ModalFooter>
                     </Form>
-                )}
+                );
+                }}
             </Formik>
         </Modal>
     );

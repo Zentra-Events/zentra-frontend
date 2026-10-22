@@ -1,9 +1,12 @@
 "use client";
 import { ReactNode } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import ReactSelect, {
     components,
     ControlProps,
+    DropdownIndicatorProps,
+    LoadingIndicatorProps,
     MenuProps,
     OptionProps,
     Props as ReactSelectProps,
@@ -35,6 +38,22 @@ const CustomMenu = ({ children, ...props }: MenuProps<SelectOption>) => (
 const CustomOption = ({ children, ...props }: OptionProps<SelectOption>) => (
     <components.Option {...props}>{children}</components.Option>
 );
+
+// Spinner shown on the right side of the control while `isLoading` is true.
+const CustomLoadingIndicator = (props: LoadingIndicatorProps<SelectOption>) => (
+    <div
+        {...props.innerProps}
+        className="flex items-center pr-2.5 text-muted-foreground"
+    >
+        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+    </div>
+);
+
+// The chevron is replaced by the loading spinner while a request is pending.
+const CustomDropdownIndicator = (props: DropdownIndicatorProps<SelectOption>) => {
+    if (props.selectProps.isLoading) return null;
+    return <components.DropdownIndicator {...props} />;
+};
 
 export const Select = ({
     label,
@@ -145,7 +164,9 @@ export const Select = ({
             {label && (
                 <label
                     className={cn(
-                        "font-medium text-foreground",
+                        // Matches the label box used by CreatableSelectField so
+                        // fields rendered side by side stay vertically aligned.
+                        "flex min-h-5 flex-wrap items-center gap-1.5 font-medium text-foreground",
                         smallLabel ? "text-xs font-semibold text-muted-foreground" : "text-sm",
                     )}
                 >
@@ -159,6 +180,8 @@ export const Select = ({
                     Control: CustomControl,
                     Menu: CustomMenu,
                     Option: CustomOption,
+                    LoadingIndicator: CustomLoadingIndicator,
+                    DropdownIndicator: CustomDropdownIndicator,
                 }}
                 menuPosition="fixed"
                 styles={customStyles}

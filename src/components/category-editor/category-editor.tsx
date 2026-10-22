@@ -1,6 +1,12 @@
 "use client";
 
-import { DEFAULT_CURRENCY_SYMBOL, DEFAULT_GENERAL_CATEGORY, DEFAULT_ITEM_COLUMNS, DEFAULT_LABELS, DEFAULT_UNIT_OPTIONS } from "@/lib/category-editor";
+import {
+    DEFAULT_CURRENCY_SYMBOL,
+    // DEFAULT_GENERAL_CATEGORY,
+    DEFAULT_ITEM_COLUMNS,
+    DEFAULT_LABELS,
+    DEFAULT_UNIT_OPTIONS,
+} from "@/lib/category-editor";
 import type {
     CategoryEditorItemColumnSpec,
     CategoryEditorLine,
@@ -9,7 +15,7 @@ import type {
 } from "@/lib/category-editor";
 import type { UseCategoryEditorOptions } from "@/lib/category-editor";
 import { useCategoryEditor } from "@/lib/category-editor";
-import { AddCategoryButton, AddItemButton } from "./add-actions";
+import { AddCategoryButton } from "./add-actions";
 import { CategoryGroupCard } from "./category-group-card";
 
 export interface CategoryEditorProps<L extends CategoryEditorLine> {
@@ -50,9 +56,9 @@ export function CategoryEditor<L extends CategoryEditorLine>({
 }: CategoryEditorProps<L>) {
     const controller = useCategoryEditor(lines, onLinesChange, options);
     const strings: CategoryEditorStrings = { ...DEFAULT_LABELS, ...stringsProp };
-    const hasGeneralGroup = controller.groups.some(
-        group => group.name === DEFAULT_GENERAL_CATEGORY,
-    );
+    // const hasGeneralGroup = controller.groups.some(
+    //     group => group.name === DEFAULT_GENERAL_CATEGORY,
+    // );
 
     /* ---- empty state ---- */
     if (controller.groups.length === 0) {
@@ -66,12 +72,12 @@ export function CategoryEditor<L extends CategoryEditorLine>({
                         onClick={controller.addCategory}
                         className="gap-1.5 border-dashed"
                     />
-                    <AddItemButton
+                    {/* <AddItemButton
                         label={strings.addUngroupedItem}
                         disabled={disabled}
                         onClick={controller.addItemWithoutCategory}
                         className="gap-1.5"
-                    />
+                    /> */}
                 </div>
             </div>
         );
@@ -111,14 +117,14 @@ export function CategoryEditor<L extends CategoryEditorLine>({
                 />
             ))}
             <div className="flex flex-wrap justify-center gap-2 pt-1">
-                {!hasGeneralGroup && (
+                {/* {!hasGeneralGroup && (
                     <AddItemButton
                         label={strings.addUngroupedItem}
                         disabled={disabled}
                         onClick={controller.addItemWithoutCategory}
                         className="gap-1.5 text-xs"
                     />
-                )}
+                )} */}
                 <AddCategoryButton
                     label={strings.addCategory}
                     disabled={disabled}

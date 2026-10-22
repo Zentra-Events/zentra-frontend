@@ -7,6 +7,7 @@ export { Input } from "./input";
 export { Textarea } from "./textarea";
 export { Select } from "./select";
 export { InlineEdit } from "./inline-edit";
+export { InlineEditableField } from "./inline-editable-field";
 export { InlineUnitSelect } from "./inline-unit-select";
 export { InlineNumber } from "./inline-number";
 export { FormikFieldSelect } from "./formik-field-select";

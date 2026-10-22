@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
 import { toast } from "sonner";
 
@@ -13,6 +14,7 @@ import CreateEnquiryModal from "@/components/create-enquiry-modal";
 import { EnquiriesTableFilters } from "@/components/enquiries-table-filters";
 import { EnquiryViewModal } from "@/components/enquiry-view-modal";
 import { Enquiry, EnquiryFormData, EnquiriesTableFiltersFormValues } from "@/types/enquiry";
+import { normalizeEnquiryPriority } from "@/constants/enquiry";
 import { DEFAULT_PAGE_SIZE } from "@/constants";
 import { APIResponse } from "@/types";
 import { usePagination } from "@/hooks/usePagination";
@@ -32,7 +34,7 @@ const enquiryFiltersInitialValues: EnquiriesTableFiltersFormValues = {
     sortOrder: "desc",
 };
 
-const columns = (onView: (enquiry: Enquiry) => void): Column<Enquiry>[] => [
+const columns = (): Column<Enquiry>[] => [
     {
         key: "eventName",
         header: "Event Details",
@@ -130,6 +132,7 @@ const columns = (onView: (enquiry: Enquiry) => void): Column<Enquiry>[] => [
 ];
 
 export default function EnquiriesPage() {
+    const router = useRouter();
     const { request, loading } = useRequestApi<APIResponse<Enquiry[]>>();
     const [result, setResult] = useState<APIResponse<Enquiry[]>>();
     const [modalOpen, setModalOpen] = useState(false);
@@ -228,14 +231,19 @@ export default function EnquiriesPage() {
                     : enquiry.assignee && enquiry.assignee !== "Unassigned"
                       ? enquiry.assignee
                       : "",
+            priority: normalizeEnquiryPriority(enquiry.priority),
+            // Keep both status fields so editing never drops them: the legacy
+            // `status` drives the estimate / event flows, `ennquiryStatus` the
+            // pipeline tracker.
+            status: enquiry.status,
+            ennquiryStatus: enquiry.ennquiryStatus || undefined,
         };
         setEditEnquiry(editData);
         setModalOpen(true);
     };
 
     const handleView = (enquiry: Enquiry) => {
-        setSelectedEnquiry(enquiry);
-        setViewModalOpen(true);
+        router.push(`/enquiries/${enquiry.id}`);
     };
 
     const handleEditFromView = (enquiry: Enquiry) => {
@@ -293,7 +301,7 @@ export default function EnquiriesPage() {
                 <EnquiriesTableFilters formik={formik} onReset={handleResetFilters} />
                 <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
                     <DataTable
-                        columns={columns(handleView)}
+                        columns={columns()}
                         data={enquiries}
                         rowKey={row => String(row.id)}
                         emptyMessage="No enquiries found."
