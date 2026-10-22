@@ -62,10 +62,30 @@ export const API_ENDPOINTS = {
     bills: {
         list: "/api/bills",
         detail: (id: string | number) => `/api/bills/${id}`,
+        // The backend exposes client and vendor bills on separate collections
+        // (`/api/client-bills` and `/api/vendor-bills`).
+        client: {
+            list: "/api/client-bills",
+            detail: (id: string | number) => `/api/client-bills/${id}`,
+            // Bills of a single event, filtered on the backend by `eventID`.
+            event: (eventID: string | number) =>
+                `/api/client-bills/event?eventID=${encodeURIComponent(String(eventID))}`,
+        },
+        vendor: {
+            list: "/api/vendor-bills",
+            detail: (id: string | number) => `/api/vendor-bills/${id}`,
+            // Bills of a single event, filtered on the backend by `eventID`.
+            event: (eventID: string | number) =>
+                `/api/vendor-bills/event?eventID=${encodeURIComponent(String(eventID))}`,
+        },
     },
     expenses: {
         list: "/api/expenses",
-        detail: (id: string | number) => `/api/expenses/${id}`,
+        byEvent: (eventID: string | number) =>
+            `/api/expenses/event?eventID=${encodeURIComponent(String(eventID))}`,
+        detail: (id: string | number) => `/api/expenses/by-id?id=${encodeURIComponent(String(id))}`,
+        update: (id: string | number) => `/api/expenses?id=${encodeURIComponent(String(id))}`,
+        delete: (id: string | number) => `/api/expenses?id=${encodeURIComponent(String(id))}`,
     },
     reports: {
         summary: "/api/reports/summary",

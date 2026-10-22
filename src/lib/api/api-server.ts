@@ -69,6 +69,56 @@ export function forwardBackendResponse(
 }
 
 /**
+ * Proxy an event scoped list endpoint to the backend.
+ *
+ * The backend exposes the event scoped lookups of the bills under different
+ * paths depending on the deployed version (`/byevent` and `/event`). A path
+ * that the running backend does not know is answered by the `/{id}` route,
+ * which resolves to `null` for the unknown id instead of failing, so a
+ * response is only accepted when it is a JSON array. The first candidate that
+ * returns a list wins, the remaining ones are not called.
+ */
+export async function proxyEventScopedList(
+    request: NextRequest | Request,
+    backendPaths: string[],
+): Promise<NextResponse> {
+    const backendUrl = getBackendUrl();
+    const search = new URL(request.url).search || "";
+    const headers = getBackendHeaders(request);
+
+    let fallback: { body: string; status: number; contentType: string | null } | null = null;
+
+    for (const path of backendPaths) {
+        const res = await fetch(`${backendUrl}${path}${search}`, { headers });
+        const body = await res.text();
+        const contentType = res.headers.get("content-type");
+
+        let isList = false;
+        try {
+            isList = Array.isArray(JSON.parse(body));
+        } catch {
+            isList = false;
+        }
+
+        if (res.ok && isList) {
+            return new NextResponse(body, {
+                status: res.status,
+                headers: contentType ? { "content-type": contentType } : {},
+            });
+        }
+
+        if (!fallback) {
+            fallback = { body, status: res.status, contentType };
+        }
+    }
+
+    return new NextResponse(fallback?.body ?? "", {
+        status: fallback?.status ?? 502,
+        headers: fallback?.contentType ? { "content-type": fallback.contentType } : {},
+    });
+}
+
+/**
  * Utility to handle API requests in Next.js API routes, forwarding to the backend
  */
 export async function handleApiRequest(fn: () => Promise<Response>) {

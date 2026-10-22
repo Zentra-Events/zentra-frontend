@@ -332,11 +332,6 @@ export function buildEstimateDocumentModel(estimate: EstimateDto, eventName?: st
     };
 }
 
-export function formatExportCurrency(value: number): string {
-    return value.toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
-}
-
 export { getItemAmount, getItemRate, getItemName, getItemDetails };
+
+export { formatExportCurrency } from "@/lib/utils";

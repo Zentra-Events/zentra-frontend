@@ -29,6 +29,7 @@ export const roleScopeMap: Record<Exclude<Role, "super_admin">, Scope[]> = {
         "w:dashboard",
         "r:expenses",
         "w:expenses",
+        "a:expenses",
         "r:checklists",
         "w:checklists",
         "r:clients",

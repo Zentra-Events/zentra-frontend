@@ -89,6 +89,27 @@ export function formatDisplayTime(timestamp: string | Date): string {
 }
 
 /**
+ * Date part (`YYYY-MM-DD`) of an ISO timestamp.
+ *
+ * The backend stores naive `LocalDateTime` values, so the date is read from
+ * the beginning of the value.
+ */
+export function toDatePart(value?: string | null): string {
+    if (!value) return "";
+    return value.slice(0, 10);
+}
+
+/**
+ * Converts a date of a form (`YYYY-MM-DD`) into the local date time the
+ * backend stores (`YYYY-MM-DDT00:00:00`).
+ */
+export function toLocalDateTime(value?: string | null): string | null {
+    const trimmed = (value ?? "").trim();
+    if (!trimmed) return null;
+    return `${trimmed}T00:00:00`;
+}
+
+/**
  * Format a date/datetime for display in the shared short format,
  * e.g. "4 Oct 2026". Timezone-less API datetimes are parsed as UTC first so the
  * value is not shifted by the browser timezone offset.
