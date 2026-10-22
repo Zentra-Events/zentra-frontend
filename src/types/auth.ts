@@ -44,6 +44,7 @@ export type Scope =
     | "w:dashboard"
     | "r:expenses"
     | "w:expenses"
+    | "a:expenses"
     | "r:checklists"
     | "w:checklists"
     | "r:clients"

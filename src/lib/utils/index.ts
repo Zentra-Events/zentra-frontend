@@ -1,6 +1,59 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+/**
+ * Normalize a list payload into an array.
+ *
+ * Backends in this project are inconsistent: some endpoints return the
+ * collection directly as an array, others wrap it in a common envelope
+ * (`data` / `content` / `items` / `<entityName>`) and paginated ones nest the
+ * array one level deeper (`{ data: { content: [...] } }`).
+ *
+ * This helper walks the payload and returns the first array it finds so the
+ * UI keeps working regardless of which shape the deployment uses.
+ */
+export function toList<T>(payload: unknown, extraKeys: string[] = []): T[] {
+    if (Array.isArray(payload)) {
+        return payload as T[];
+    }
+
+    if (payload && typeof payload === "object") {
+        const record = payload as Record<string, unknown>;
+        const keys = ["data", "content", "items", "results", "records", ...extraKeys];
+
+        for (const key of keys) {
+            const candidate = record[key];
+            if (Array.isArray(candidate)) {
+                return candidate as T[];
+            }
+            // Paginated payloads nest the array one level deeper.
+            if (candidate && typeof candidate === "object") {
+                const nested = (candidate as Record<string, unknown>).content;
+                if (Array.isArray(nested)) {
+                    return nested as T[];
+                }
+            }
+        }
+    }
+
+    return [];
+}
+
+/**
+ * Extract the first defined value among the given keys.
+ */
+export function pickFirst<T>(source: unknown, keys: string[]): T | undefined {
+    if (!source || typeof source !== "object") return undefined;
+    const record = source as Record<string, unknown>;
+    for (const key of keys) {
+        const value = record[key];
+        if (value !== undefined && value !== null && value !== "") {
+            return value as T;
+        }
+    }
+    return undefined;
+}
+
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
