@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { ProjectPlanningModal } from "@/components/project-planning-modal";
 import { EstimateVersionsView } from "@/components/estimate-versions-view";
-import { ExpensesModal } from "@/components/expenses-modal";
-import { BillingExpenseModal } from "@/components/billing-expense-modal";
+import { ExpensesListModal } from "@/components/expenses-list-modal";
+import { ManageBillingModal } from "@/components/billing/manage-billing-modal";
 import { ChecklistModal } from "@/components/checklist-modal";
 import { ChecklistPreviewModal } from "@/components/checklist-preview-modal";
 import { ClientDetailView } from "@/components/client-detail-view";
@@ -46,7 +46,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     const [eventData, setEventData] = useState<EventResponse | null>(null);
     const [isProjectPlanningModalOpen, setIsProjectPlanningModalOpen] = useState(false);
     const [isEstimateHistoryModalOpen, setIsEstimateHistoryModalOpen] = useState(false);
-    const [isExpensesModalOpen, setIsExpensesModalOpen] = useState(false);
+    const [isExpensesListModalOpen, setIsExpensesListModalOpen] = useState(false);
     const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
     const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
     const [isChecklistPreviewModalOpen, setIsChecklistPreviewModalOpen] = useState(false);
@@ -281,13 +281,13 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             title: "Expenses",
             description: "Track invoices, vendor payments, and overheads.",
             linkLabel: "Manage Expenses",
-            onClick: () => setIsExpensesModalOpen(true),
+            onClick: () => setIsExpensesListModalOpen(true),
         },
         {
             id: "billing",
             icon: Receipt,
             title: "Billing & Tax",
-            description: "Manage ledger and tax billing info.",
+            description: "Generate and manage client and vendor bills.",
             linkLabel: "Manage Billing",
             onClick: () => setIsBillingModalOpen(true),
         },
@@ -322,7 +322,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                             </p>
                         )}
                     </div>
-                    <div className="flex gap-3 flex-shrink-0">
+                    {/* <div className="flex gap-3 flex-shrink-0">
                         <Button
                             onClick={() => setIsProjectPlanningModalOpen(true)}
                             icon={<Edit3 size={16} />}
@@ -331,7 +331,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                             Edit Project
                         </Button>
                         <Button icon={<CheckCircle2 size={16} />}>Approve Event</Button>
-                    </div>
+                    </div> */}
                 </div>
             </section>
 
@@ -652,25 +652,19 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                 />
             )}
 
-            <ExpensesModal
-                isOpen={isExpensesModalOpen}
-                onClose={() => setIsExpensesModalOpen(false)}
-                eventData={eventData || {}}
-                onSave={() => {
-                    setIsExpensesModalOpen(false);
-                    fetchEventData();
-                }}
+            <ExpensesListModal
+                isOpen={isExpensesListModalOpen}
+                onClose={() => setIsExpensesListModalOpen(false)}
+                eventData={eventData}
+                eventID={eventData?.eventID || id}
+                onSaved={fetchEventData}
             />
 
-            <BillingExpenseModal
-                isOpen={isBillingModalOpen}
+            <ManageBillingModal
+                open={isBillingModalOpen}
                 onClose={() => setIsBillingModalOpen(false)}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                eventData={(eventData as any) || {}}
-                onSave={() => {
-                    setIsBillingModalOpen(false);
-                    fetchEventData();
-                }}
+                event={eventData}
+                onSaved={fetchEventData}
             />
 
             <ChecklistModal
