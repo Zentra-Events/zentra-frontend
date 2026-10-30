@@ -67,7 +67,7 @@ export function formatRelativeTime(date: string | Date): string {
  */
 export function formatApiTimestamp(timestamp: string | Date): string {
     const date = new Date(timestamp);
-    return date.toISOString().slice(0, 19);
+    return date?.toISOString().slice(0, 19);
 }
 
 /**
@@ -164,4 +164,3 @@ export function formatScheduleRange(
     if (toDate) return formatShortDate(toDate);
     return "";
 }
-

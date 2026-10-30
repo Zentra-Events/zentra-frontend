@@ -62,6 +62,9 @@ export const routePermissions: Record<string, RoutePermission> = {
     "/enquiries": {
         scopes: ["r:enquiries"],
     },
+    "/enquiries/:id": {
+        scopes: ["r:enquiries"],
+    },
     "/estimates": {
         scopes: ["r:estimates"],
     },

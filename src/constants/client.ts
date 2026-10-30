@@ -9,7 +9,14 @@ export const clientFormInitialValues: ClientFormData = {
     gst: "",
     pan: "",
     gstCertificate: "",
+    clientType: "CORPORATE",
 };
+
+export const clientTypeOptions = [
+    { label: "Corporate", value: "CORPORATE" },
+    { label: "Individual", value: "PERSONAL" },
+    { label: "Other", value: "OTHER" },
+];
 
 export const clientSortOptions = [
     { label: "Created At", value: "createdAt" },

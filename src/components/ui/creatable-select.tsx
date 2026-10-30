@@ -1,13 +1,9 @@
 "use client";
 
-import CreatableSelect from "react-select/creatable";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { components, ControlProps, MenuProps, OptionProps } from "react-select";
-
-export interface SelectOption {
-    label: string;
-    value: string;
-}
+import type { SelectOption } from "./select-option";
 
 export interface CreatableSelectProps {
     label?: React.ReactNode;
@@ -24,19 +20,14 @@ export interface CreatableSelectProps {
     errorMessage?: string;
     showError?: boolean;
     smallLabel?: boolean;
+    /** Controlled search text. Leave undefined for uncontrolled behaviour. */
+    inputValue?: string;
+    /** Fires on every keystroke in the search input. */
+    onInputChange?: (newValue: string, actionMeta: { action: string }) => void;
+    onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
+    onFocus?: (event: React.FocusEvent<HTMLElement>) => void;
+    isLoading?: boolean;
 }
-
-const CustomControl = ({ children, ...props }: ControlProps<SelectOption>) => (
-    <components.Control {...props}>{children}</components.Control>
-);
-
-const CustomMenu = ({ children, ...props }: MenuProps<SelectOption>) => (
-    <components.Menu {...props}>{children}</components.Menu>
-);
-
-const CustomOption = ({ children, ...props }: OptionProps<SelectOption>) => (
-    <components.Option {...props}>{children}</components.Option>
-);
 
 /**
  * Standalone CreatableSelect component with theme styling.
@@ -58,161 +49,232 @@ export function CreatableSelectField({
     errorMessage,
     showError: externalShowError,
     smallLabel,
+    inputValue,
+    onInputChange,
+    onBlur,
+    onFocus,
+    isLoading,
 }: CreatableSelectProps) {
     const selectId = id ?? "creatable-select";
+    const listId = `${selectId}-listbox`;
     const showError = externalShowError || !!errorMessage;
+    const [internalInput, setInternalInput] = useState("");
+    const [open, setOpen] = useState(false);
+    const [focused, setFocused] = useState(false);
+    const [highlight, setHighlight] = useState(0);
+    const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const isControlled = inputValue !== undefined;
+    const inputText = isControlled ? (inputValue as string) : internalInput;
+
+    // Keep the visible text in sync with the committed value when idle.
+    useEffect(() => {
+        if (!focused && !isControlled) {
+            setInternalInput(value?.label ?? "");
+        }
+    }, [value, focused, isControlled]);
+
+    useEffect(() => {
+        return () => {
+            if (blurTimer.current) clearTimeout(blurTimer.current);
+        };
+    }, []);
+
+    const query = inputText.trim().toLowerCase();
+    const filtered = useMemo(() => {
+        if (!query) return options;
+        return options.filter(opt => opt.label.toLowerCase().includes(query));
+    }, [options, query]);
+
+    const exactMatch = useMemo(() => {
+        if (!query) return true;
+        return options.some(opt => opt.label.toLowerCase() === query);
+    }, [options, query]);
+
+    const showCreateRow = !!onCreateOption && query.length > 0 && !exactMatch && !isDisabled;
+
+    const setText = (next: string) => {
+        if (!isControlled) setInternalInput(next);
+        onInputChange?.(next, { action: "input-change" });
+    };
+
+    const commitSelect = (opt: SelectOption) => {
+        if (!isControlled) setInternalInput(opt.label);
+        onInputChange?.(opt.label, { action: "select-option" });
+        onChange?.(opt.value);
+        setOpen(false);
+        setHighlight(0);
+    };
+
+    const commitCreate = () => {
+        const trimmed = inputText.trim();
+        if (!trimmed) return;
+        onCreateOption?.(trimmed);
+        // Also treat creation as a selection so Formik state updates even if
+        // the caller only listens to onChange.
+        onChange?.(trimmed);
+        setOpen(false);
+        setHighlight(0);
+    };
+
+    const handleClear = () => {
+        setText("");
+        onChange?.("");
+        setOpen(false);
+    };
+
+    const totalRows = filtered.length + (showCreateRow ? 1 : 0);
 
     return (
         <div className={cn("flex flex-col gap-1.5", wrapperClassName)}>
             {label && (
                 <label
+                    htmlFor={selectId}
                     className={cn(
-                        "font-medium text-foreground",
+                        "flex min-h-5 flex-wrap items-center gap-1.5 font-medium text-foreground",
                         smallLabel ? "text-xs font-semibold text-muted-foreground" : "text-sm",
                     )}
                 >
                     {typeof label === "string" && smallLabel ? label.toUpperCase() : label}
                 </label>
             )}
-            <CreatableSelect
-                inputId={selectId}
-                value={value || null}
-                onChange={selected => {
-                    const selectedValue =
-                        selected && !Array.isArray(selected)
-                            ? (selected as SelectOption).value
-                            : "";
-                    onChange?.(selectedValue);
-                }}
-                onCreateOption={inputValue => {
-                    onCreateOption?.(inputValue);
-                }}
-                options={options}
-                placeholder={placeholder}
-                isDisabled={isDisabled}
-                isClearable={isClearable}
-                menuPosition="fixed"
-                className={cn(selectClassName)}
-                styles={{
-                    container: (provided, _state) => ({
-                        ...provided,
-                        width: "100%",
-                    }),
-                    control: (provided, state) => ({
-                        ...provided,
-                        minHeight: "40px",
-                        backgroundColor: "var(--surface)",
-                        borderColor: showError
-                            ? "var(--error)"
-                            : state.isFocused
-                              ? "var(--accent)"
-                              : "var(--border)",
-                        boxShadow: state.isFocused
-                            ? `0 0 0 2px ${showError ? "var(--input-error-ring)" : "var(--input-focus-ring)"}`
-                            : "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        "&:hover": {
-                            borderColor: showError
-                                ? "var(--error)"
-                                : state.isFocused
-                                  ? "var(--accent)"
-                                  : "var(--border-hover)",
-                        },
-                    }),
-                    singleValue: (provided, _state) => ({
-                        ...provided,
-                        color: "var(--foreground)",
-                        fontSize: "12px",
-                    }),
-                    placeholder: (provided, _state) => ({
-                        ...provided,
-                        color: "var(--muted-foreground)",
-                        fontSize: "12px",
-                    }),
-                    input: (provided, _state) => ({
-                        ...provided,
-                        color: "var(--foreground)",
-                        margin: 0,
-                        padding: 0,
-                    }),
-                    dropdownIndicator: (provided, _state) => ({
-                        ...provided,
-                        color: "var(--muted-foreground)",
-                        "&:hover": {
-                            color: "var(--accent)",
-                        },
-                    }),
-                    indicatorSeparator: (provided, _state) => ({
-                        ...provided,
-                        display: "none",
-                    }),
-                    menu: (provided, _state) => ({
-                        ...provided,
-                        backgroundColor: "var(--surface-elevated)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-                        zIndex: 9999,
-                    }),
-                    menuList: (provided, _state) => ({
-                        ...provided,
-                        padding: "4px",
-                    }),
-                    option: (provided, state) => ({
-                        ...provided,
-                        backgroundColor: state.isSelected
-                            ? "var(--primary)"
-                            : state.isFocused
-                              ? "var(--muted)"
-                              : "var(--surface-elevated)",
-                        color: state.isSelected ? "var(--primary-foreground)" : "var(--foreground)",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        padding: "8px 12px",
-                        borderRadius: "4px",
-                        transition: "all 0.15s ease",
-                        "&:active": {
-                            backgroundColor: "var(--primary)",
-                            color: "var(--primary-foreground)",
-                        },
-                    }),
-                    noOptionsMessage: (provided, _state) => ({
-                        ...provided,
-                        color: "var(--muted-foreground)",
-                        fontSize: "14px",
-                    }),
-                }}
-                theme={theme => ({
-                    ...theme,
-                    colors: {
-                        ...theme.colors,
-                        primary: "var(--primary)",
-                        primary75: "var(--primary-hover)",
-                        primary50: "var(--primary-light)",
-                        primary25: "var(--primary-light)",
-                        danger: "var(--error)",
-                        dangerLight: "var(--error-light)",
-                        neutral0: "var(--surface)",
-                        neutral5: "var(--surface-elevated)",
-                        neutral10: "var(--border)",
-                        neutral20: "var(--border)",
-                        neutral30: "var(--border-hover)",
-                        neutral40: "var(--muted-foreground)",
-                        neutral50: "var(--muted-foreground)",
-                        neutral60: "var(--muted-foreground)",
-                        neutral70: "var(--foreground)",
-                        neutral80: "var(--foreground)",
-                        neutral90: "var(--foreground)",
-                    },
-                })}
-                aria-invalid={showError}
-                components={{
-                    Control: CustomControl,
-                    Menu: CustomMenu,
-                    Option: CustomOption,
-                }}
-            />
+            <div className="relative">
+                <input
+                    id={selectId}
+                    type="text"
+                    role="combobox"
+                    aria-expanded={open}
+                    aria-controls={listId}
+                    aria-autocomplete="list"
+                    autoComplete="off"
+                    disabled={isDisabled}
+                    value={inputText}
+                    placeholder={isLoading ? "Loading..." : placeholder}
+                    onChange={e => {
+                        setText(e.target.value);
+                        setOpen(true);
+                        setHighlight(0);
+                    }}
+                    onFocus={e => {
+                        setFocused(true);
+                        setOpen(true);
+                        onFocus?.(e as unknown as React.FocusEvent<HTMLElement>);
+                    }}
+                    onBlur={e => {
+                        // Delay closing so option clicks register first.
+                        if (blurTimer.current) clearTimeout(blurTimer.current);
+                        blurTimer.current = setTimeout(() => {
+                            setFocused(false);
+                            setOpen(false);
+                            onBlur?.(e as unknown as React.FocusEvent<HTMLElement>);
+                        }, 120);
+                    }}
+                    onKeyDown={e => {
+                        if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setOpen(true);
+                            setHighlight(h => Math.min(h + 1, Math.max(totalRows - 1, 0)));
+                        } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setHighlight(h => Math.max(h - 1, 0));
+                        } else if (e.key === "Enter") {
+                            if (open && totalRows > 0) {
+                                e.preventDefault();
+                                if (highlight < filtered.length) {
+                                    commitSelect(filtered[highlight]);
+                                } else {
+                                    commitCreate();
+                                }
+                            }
+                        } else if (e.key === "Escape") {
+                            setOpen(false);
+                        }
+                    }}
+                    aria-invalid={showError}
+                    className={cn(
+                        "flex h-10 w-full rounded-md border border-input bg-surface py-2 pl-3 pr-9 text-sm text-foreground transition-colors",
+                        "placeholder:text-muted-foreground",
+                        "focus:border-accent focus:outline-none focus:ring-2 focus:ring-input-ring",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
+                        showError &&
+                            "border-error focus:border-error focus:ring-[var(--input-error-ring)]",
+                        selectClassName,
+                        "placeholder:text-xs",
+                    )}
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground">
+                    {isLoading ? (
+                        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                        <ChevronDown size={16} aria-hidden="true" />
+                    )}
+                </span>
+                {isClearable && !isDisabled && inputText && (
+                    <button
+                        type="button"
+                        aria-label="Clear selection"
+                        onClick={handleClear}
+                        className="absolute inset-y-0 right-8 flex items-center rounded px-1 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                        <X size={14} aria-hidden="true" />
+                    </button>
+                )}
+                {open && !isDisabled && (
+                    <ul
+                        id={listId}
+                        role="listbox"
+                        className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-surface-elevated p-1 shadow-lg"
+                    >
+                        {filtered.map((opt, idx) => (
+                            <li
+                                key={`${opt.value}-${idx}`}
+                                role="option"
+                                aria-selected={value?.value === opt.value}
+                            >
+                                <button
+                                    type="button"
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={() => commitSelect(opt)}
+                                    onMouseEnter={() => setHighlight(idx)}
+                                    className={cn(
+                                        "flex w-full items-center rounded px-2.5 py-2 text-left text-sm text-foreground transition-colors",
+                                        highlight === idx
+                                            ? "bg-muted"
+                                            : value?.value === opt.value
+                                              ? "bg-primary-light"
+                                              : "bg-transparent hover:bg-muted",
+                                    )}
+                                >
+                                    {opt.label}
+                                </button>
+                            </li>
+                        ))}
+                        {showCreateRow && (
+                            <li role="option" aria-selected={false}>
+                                <button
+                                    type="button"
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={commitCreate}
+                                    onMouseEnter={() => setHighlight(filtered.length)}
+                                    className={cn(
+                                        "flex w-full items-center rounded px-2.5 py-2 text-left text-sm font-medium text-primary transition-colors",
+                                        highlight === filtered.length
+                                            ? "bg-primary-light"
+                                            : "bg-transparent hover:bg-primary-light",
+                                    )}
+                                >
+                                    Create &quot;{inputText.trim()}&quot;
+                                </button>
+                            </li>
+                        )}
+                        {filtered.length === 0 && !showCreateRow && (
+                            <li className="px-2.5 py-2 text-sm text-muted-foreground">
+                                {isLoading ? "Loading..." : "No options found"}
+                            </li>
+                        )}
+                    </ul>
+                )}
+            </div>
             {showError && errorMessage && <p className="text-xs text-error">{errorMessage}</p>}
         </div>
     );

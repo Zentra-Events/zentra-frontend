@@ -1469,13 +1469,6 @@ export default function CreateEstimateModal({
                                         </h4>
                                         <div className="mt-3 grid gap-3">
                                             <div className="grid gap-3 md:grid-cols-4">
-                                                <FormikFieldInput
-                                                    name="serviceCharge"
-                                                    label="Service Charge  (%)"
-                                                    type="number"
-                                                    placeholder="%"
-                                                    disabled={!prefillData?.enquiryId}
-                                                />
                                                 <FormikFieldSelect
                                                     name="gstType"
                                                     label="Tax Type"
@@ -1494,6 +1487,13 @@ export default function CreateEstimateModal({
                                                     type="number"
                                                     placeholder="%"
                                                     disabled={gstDisabled}
+                                                />
+                                                <FormikFieldInput
+                                                    name="serviceCharge"
+                                                    label="Service Charge  (%)"
+                                                    type="number"
+                                                    placeholder="%"
+                                                    disabled={!prefillData?.enquiryId}
                                                 />
                                                 <FormikFieldInput
                                                     name="discountAmount"

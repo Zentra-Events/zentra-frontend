@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { User } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -9,10 +10,15 @@ import { generateId } from "@/lib/utils/id";
 import { groupByCategory } from "@/lib/utils";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
+import { UserSelectDropdown } from "@/components/user-select-dropdown";
 import { ChecklistHierarchy, type ChecklistHierarchyActions } from "./checklist-hierarchy";
 import { ChecklistItemEditor } from "./checklist-item-editor";
 import { ChecklistFooter } from "./checklist-footer";
-import { validateChecklistItem, hasVendorOrInventory, type ChecklistItemValidation } from "./validation";
+import {
+    validateChecklistItem,
+    hasVendorOrInventory,
+    type ChecklistItemValidation,
+} from "./validation";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import type { ChecklistItem, ChecklistModalProps, ChecklistSummary, EventItem } from "./types";
 
@@ -32,6 +38,7 @@ export function ExecutionChecklistModal({
     inventoryList,
     loadingVendors = false,
     loadingInventory = false,
+    checklistAssignee: initialChecklistAssignee = "",
 }: ChecklistModalProps) {
     const [checklistData, setChecklistData] = useState<ChecklistItem[]>([]);
     const [saving, setSaving] = useState(false);
@@ -49,6 +56,9 @@ export function ExecutionChecklistModal({
     // and hierarchy highlights become visible and update live as values change.
     // Until then nothing is validated (friendly initial-load experience).
     const [validationTriggered, setValidationTriggered] = useState(false);
+    // Global checklist assignee (one per checklist). Initialized from the API
+    // response and persisted back to the backend on save.
+    const [checklistAssignee, setChecklistAssignee] = useState<string>(initialChecklistAssignee);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -80,6 +90,7 @@ export function ExecutionChecklistModal({
         });
         setExpandedCategories(cats);
         setExpandedSubCategories(subs);
+        setChecklistAssignee(initialChecklistAssignee);
     }, [isOpen, eventData]);
 
     const filteredItems = useMemo(() => {
@@ -429,6 +440,7 @@ export function ExecutionChecklistModal({
             const updatedEvent = {
                 ...eventData,
                 checkListCompleted: true,
+                checklistAssignee,
                 items: payload,
             };
 
@@ -481,48 +493,50 @@ export function ExecutionChecklistModal({
     };
 
     const modalContent = (
-        <ModalBody className={cn("flex max-h-[calc(100vh-230px)] overflow-hidden")}>
+        <ModalBody className={cn("flex flex-col max-h-[calc(100vh-230px)] overflow-hidden")}>
             {/* Left panel: hierarchical tree */}
-            <div className="w-80 shrink-0 overflow-hidden border-r border-border">
-                <ChecklistHierarchy
-                    groups={groups}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    expandedCategories={resolvedExpandedCategories}
-                    expandedSubCategories={resolvedExpandedSubCategories}
-                    selectedUid={selectedUid}
-                    actions={actions}
-                    disabled={saving}
-                    invalidUids={validationTriggered ? invalidUids : undefined}
-                    focusTarget={focusTarget}
-                    onFocused={handleFocused}
-                />
-            </div>
-
-            {/* Right panel: item editor */}
-            <div className="flex-1 overflow-hidden">
-                {selectedItem ? (
-                    <ChecklistItemEditor
-                        item={selectedItem}
-                        vendorList={vendorList}
-                        inventoryList={inventoryList}
-                        loadingVendors={loadingVendors}
-                        loadingInventory={loadingInventory}
-                        onUpdate={handleUpdateItem}
-                        onCheckboxChange={handleCheckboxChange}
-                        errors={validationTriggered ? selectedItemErrors : undefined}
+            <div className="flex-1 flex overflow-hidden">
+                <div className="w-80 shrink-0 overflow-hidden border-r border-border">
+                    <ChecklistHierarchy
+                        groups={groups}
+                        searchQuery={searchQuery}
+                        onSearchChange={setSearchQuery}
+                        expandedCategories={resolvedExpandedCategories}
+                        expandedSubCategories={resolvedExpandedSubCategories}
+                        selectedUid={selectedUid}
+                        actions={actions}
+                        disabled={saving}
+                        invalidUids={validationTriggered ? invalidUids : undefined}
                         focusTarget={focusTarget}
                         onFocused={handleFocused}
                     />
-                ) : (
-                    <div className="flex h-full items-center justify-center">
-                        <p className="max-w-xs text-center text-sm text-muted-foreground">
-                            {checklistData.length === 0
-                                ? "Add a category or item to get started."
-                                : "Select an item to view and edit its details."}
-                        </p>
-                    </div>
-                )}
+                </div>
+
+                {/* Right panel: item editor */}
+                <div className="flex-1 overflow-hidden">
+                    {selectedItem ? (
+                        <ChecklistItemEditor
+                            item={selectedItem}
+                            vendorList={vendorList}
+                            inventoryList={inventoryList}
+                            loadingVendors={loadingVendors}
+                            loadingInventory={loadingInventory}
+                            onUpdate={handleUpdateItem}
+                            onCheckboxChange={handleCheckboxChange}
+                            errors={validationTriggered ? selectedItemErrors : undefined}
+                            focusTarget={focusTarget}
+                            onFocused={handleFocused}
+                        />
+                    ) : (
+                        <div className="flex h-full items-center justify-center">
+                            <p className="max-w-xs text-center text-sm text-muted-foreground">
+                                {checklistData.length === 0
+                                    ? "Add a category or item to get started."
+                                    : "Select an item to view and edit its details."}
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
         </ModalBody>
     );
@@ -535,7 +549,14 @@ export function ExecutionChecklistModal({
                 size="xxl"
                 title="Execution Checklist"
                 description={`Manage execution tasks for ${eventData.title || "this event"}`}
-                showCloseIcon
+                autoFocus={false}
+                headerActions={
+                    <UserSelectDropdown
+                        value={checklistAssignee}
+                        onChange={setChecklistAssignee}
+                        placeholder="Assigned To"
+                    />
+                }
             >
                 {modalContent}
                 <ChecklistFooter

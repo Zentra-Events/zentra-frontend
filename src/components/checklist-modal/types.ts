@@ -73,6 +73,8 @@ export interface ChecklistModalProps {
         checklist?: ChecklistItem[];
         [key: string]: string | EventItem[] | ChecklistItem[] | undefined;
     };
+    /** Global checklist assignee (one per checklist), mapped from the API response. */
+    checklistAssignee?: string;
     onSave: () => void;
     onCancel?: () => void;
     vendorList: Vendor[];

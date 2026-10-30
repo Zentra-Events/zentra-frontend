@@ -6,6 +6,7 @@ export const API_ENDPOINTS = {
         detail: (id: string | number) => `/api/enquiries/${id}`,
         clientSummary: "/api/enquiries/client-enquiry-summary",
         clone: "/api/enquiries/clone",
+        notes: (id: string | number) => `/api/enquiries/${id}/notes`,
     },
     events: {
         list: "/api/events",

@@ -21,6 +21,8 @@ interface ModalProps {
     showCloseIcon?: boolean;
     /** Optional right-aligned actions rendered in the header (before the close icon). */
     headerActions?: ReactNode;
+    /** When false, the first focusable element is not automatically focused on open. Default true. */
+    autoFocus?: boolean;
 }
 
 const sizeStyles: Record<ModalSize, string> = {
@@ -43,6 +45,7 @@ export function Modal({
     closeOnBackdrop = false,
     closeOnEscape = false,
     showCloseIcon = false,
+    autoFocus = true,
     headerActions,
 }: ModalProps) {
     const dialogRef = useRef<HTMLDivElement>(null);
@@ -67,13 +70,13 @@ export function Modal({
     }, [open, onClose, closeOnEscape]);
 
     useEffect(() => {
-        if (open && dialogRef.current) {
-            const focusable = dialogRef.current.querySelector<HTMLElement>(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-            );
-            focusable?.focus();
-        }
-    }, [open]);
+        if (!open || !autoFocus || !dialogRef.current) return;
+
+        const focusable = dialogRef.current.querySelector<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        focusable?.focus();
+    }, [open, autoFocus]);
 
     if (!open) return null;
 

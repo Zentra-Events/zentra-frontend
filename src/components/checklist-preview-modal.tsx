@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, User } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -19,6 +19,8 @@ interface ChecklistPreviewModalProps {
     inventoryList: { id?: string | number; itemName?: string }[];
     exportContext?: ChecklistExportContext;
     onUpdate?: () => void;
+    /** Global checklist assignee (one per checklist), mapped from the API response. */
+    checklistAssignee?: string;
 }
 
 const checkPastDate = (dateStr?: string) => {
@@ -36,6 +38,7 @@ export function ChecklistPreviewModal({
     inventoryList,
     exportContext,
     onUpdate,
+    checklistAssignee,
 }: ChecklistPreviewModalProps) {
     const [isExportPreviewOpen, setIsExportPreviewOpen] = useState(false);
 
@@ -130,9 +133,7 @@ export function ChecklistPreviewModal({
                     {item.deadlineDate ? (
                         <span
                             className={
-                                checkPastDate(item.deadlineDate)
-                                    ? "text-red-500 font-medium"
-                                    : ""
+                                checkPastDate(item.deadlineDate) ? "text-red-500 font-medium" : ""
                             }
                         >
                             {item.deadlineDate}
@@ -157,7 +158,6 @@ export function ChecklistPreviewModal({
             size="xxl"
             title="Checklist Preview"
             description="Review all checklist items before saving"
-            showCloseIcon={true}
         >
             <ModalBody className="max-h-[calc(100vh-300px)] overflow-y-auto">
                 {/* Summary Stats */}
@@ -294,23 +294,36 @@ export function ChecklistPreviewModal({
                 </div>
             </ModalBody>
 
-            <ModalFooter>
-                <Button variant="outline" onClick={onClose}>
-                    Close
-                </Button>
-                <Button
-                    variant="outline"
-                    onClick={() => setIsExportPreviewOpen(true)}
-                    className="flex items-center gap-2"
-                    icon={<Eye size={16} />}
-                >
-                    Preview
-                </Button>
-                {onUpdate && (
-                    <Button onClick={onUpdate} variant="primary">
-                        Update Checklist
+            <ModalFooter className="flex items-center justify-between gap-4 px-6 py-3">
+                <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                    <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Assigned To
+                        </span>
+                    </div>
+                    <span className="text-sm font-medium text-foreground">
+                        {checklistAssignee || "—"}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={onClose}>
+                        Close
                     </Button>
-                )}
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsExportPreviewOpen(true)}
+                        className="flex items-center gap-2"
+                        icon={<Eye size={16} />}
+                    >
+                        Preview
+                    </Button>
+                    {onUpdate && (
+                        <Button onClick={onUpdate} variant="primary">
+                            Update Checklist
+                        </Button>
+                    )}
+                </div>
             </ModalFooter>
 
             {isExportPreviewOpen && (

@@ -672,6 +672,8 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                 onClose={() => setIsChecklistModalOpen(false)}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 eventData={(eventData as any) || {}}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                checklistAssignee={(eventData as any)?.checklistAssignee}
                 onSave={() => {
                     setIsChecklistModalOpen(false);
                     fetchEventData();
@@ -694,6 +696,8 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                     onClose={() => setIsChecklistPreviewModalOpen(false)}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     checklistData={(eventData as any)?.items || (eventData as any)?.checklist || []}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    checklistAssignee={(eventData as any)?.checklistAssignee}
                     vendorList={vendorList}
                     inventoryList={inventoryList}
                     exportContext={{
