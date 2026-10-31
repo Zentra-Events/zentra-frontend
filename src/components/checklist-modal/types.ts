@@ -17,7 +17,7 @@ export type ChecklistItemStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED";
 /** Options for the Status select. */
 export const statusOptions = [
     { value: "PENDING", label: "Pending" },
-    { value: "IN_PROGRESS", label: "In Progress" },
+    { value: "IN_PROGRESS", label: "Progress" },
     { value: "COMPLETED", label: "Completed" },
 ];
 
@@ -57,9 +57,9 @@ export interface EventItem {
     count?: number;
     unit?: string;
     vendor?: string;
-    starDate?: string;
     startDate?: string;
     endDate?: string;
+    status?: string;
     [key: string]: string | number | undefined;
 }
 
@@ -74,7 +74,7 @@ export interface ChecklistModalProps {
         [key: string]: string | EventItem[] | ChecklistItem[] | undefined;
     };
     /** Global checklist assignee (one per checklist), mapped from the API response. */
-    checklistAssignee?: string;
+    checklistAssignedTo?: string;
     onSave: () => void;
     onCancel?: () => void;
     vendorList: Vendor[];

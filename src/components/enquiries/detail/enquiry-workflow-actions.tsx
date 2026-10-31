@@ -65,6 +65,11 @@ export function EnquiryWorkflowActions({
                     eventName: enquiry.eventName || enquiry.title || "Event",
                     location: enquiry.location || "",
                     client: enquiry.client,
+                    clientPoC: enquiry.clientPoC || "",
+                    pocContactNumber: enquiry.enquiryPoCNumber || "",
+                    eventPoCNumber: enquiry.eventPoCNumber || "",
+                    eventPoC: enquiry.eventPoC || "",
+                    enquiryPoC: enquiry.enquiryPoC || "",
                     enquiryId: String(enquiry.id ?? ""),
                     eventType: enquiry.eventType || "CORPORATE",
                     highlvelRequirement: enquiry.highlvelRequirement || "",
@@ -74,7 +79,7 @@ export function EnquiryWorkflowActions({
             if (!res.ok) throw new Error(`Failed to create estimate (${res.status})`);
             const created = await res.json();
             toast.success("Estimate created from enquiry");
-            setPrefill({ ...created, title: created.title || enquiry.eventName || "Event" });
+            setPrefill({ ...created, location: created.location || enquiry.location || "", title: created.title || enquiry.eventName || "Event" });
             router.push("/estimates");
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Failed to create estimate");

@@ -5,8 +5,9 @@ import { Eye, User } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Access } from "@/components/access";
 import { groupByCategory } from "@/lib/utils";
+import { formatShortDateTime } from "@/lib/utils/date";
+import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
 import type { ChecklistItem } from "@/components/checklist-modal/types";
 import type { ChecklistExportContext } from "@/lib/checklist-export/checklist-document";
 import { ChecklistExportPreviewModal } from "@/components/checklist-export-preview-modal";
@@ -20,7 +21,7 @@ interface ChecklistPreviewModalProps {
     exportContext?: ChecklistExportContext;
     onUpdate?: () => void;
     /** Global checklist assignee (one per checklist), mapped from the API response. */
-    checklistAssignee?: string;
+    checklistAssignedTo?: string;
 }
 
 const checkPastDate = (dateStr?: string) => {
@@ -38,7 +39,7 @@ export function ChecklistPreviewModal({
     inventoryList,
     exportContext,
     onUpdate,
-    checklistAssignee,
+    checklistAssignedTo,
 }: ChecklistPreviewModalProps) {
     const [isExportPreviewOpen, setIsExportPreviewOpen] = useState(false);
 
@@ -49,6 +50,9 @@ export function ChecklistPreviewModal({
         completed: checklistData.filter(i => i.status === "COMPLETED").length,
         pending: checklistData.filter(i => i.status === "PENDING").length,
         inProgress: checklistData.filter(i => i.status === "IN_PROGRESS").length,
+        pastDeadline: checklistData.filter(
+            i => i.deadlineDate && checkPastDate(i.deadlineDate),
+        ).length,
         totalValue: checklistData.reduce(
             (sum, item) => sum + (item.pricePerItem || 0) * (item.quantity || 1),
             0,
@@ -118,13 +122,14 @@ export function ChecklistPreviewModal({
                             COMPLETED:
                                 "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
                         };
+                        const normalizedStatus = (item.status || "PENDING").trim().toUpperCase();
                         const statusClass =
-                            statusStyles[item.status || "PENDING"] || statusStyles.PENDING;
+                            statusStyles[normalizedStatus] || statusStyles.PENDING;
                         return (
                             <span
                                 className={`px-2 py-1 rounded text-xs font-medium ${statusClass}`}
                             >
-                                {item.status || "PENDING"}
+                                {getChecklistStatusLabel(normalizedStatus)}
                             </span>
                         );
                     })()}
@@ -136,17 +141,12 @@ export function ChecklistPreviewModal({
                                 checkPastDate(item.deadlineDate) ? "text-red-500 font-medium" : ""
                             }
                         >
-                            {item.deadlineDate}
+                            {formatShortDateTime(item.deadlineDate)}
                         </span>
                     ) : (
                         "-"
                     )}
                 </td>
-                <Access roles={["super_admin"]}>
-                    <td className="py-3 px-3 align-middle text-right">
-                        {item.pricePerItem ? `₹${item.pricePerItem}` : "-"}
-                    </td>
-                </Access>
             </tr>
         );
     };
@@ -193,9 +193,11 @@ export function ChecklistPreviewModal({
                         </p>
                     </div>
                     <div className="text-center">
-                        <p className="text-2xl font-bold text-primary">₹{summary.totalValue}</p>
+                        <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                            {summary.pastDeadline}
+                        </p>
                         <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                            Total Value
+                            Deadline Reached
                         </p>
                     </div>
                 </div>
@@ -215,9 +217,6 @@ export function ChecklistPreviewModal({
                                 <th className="py-3 px-3 font-medium">Vendor / Inventory</th>
                                 <th className="py-3 px-3 font-medium text-center w-24">Status</th>
                                 <th className="py-3 px-3 font-medium text-center">Deadline</th>
-                                <Access roles={["super_admin"]}>
-                                    <th className="py-3 px-3 font-medium text-right w-20">Rate</th>
-                                </Access>
                             </tr>
                         </thead>
                         <tbody>
@@ -233,7 +232,7 @@ export function ChecklistPreviewModal({
                                             className="bg-muted/50 border-b border-border"
                                         >
                                             <td
-                                                colSpan={9}
+                                                colSpan={8}
                                                 className="px-4 py-2 text-sm font-semibold text-foreground uppercase tracking-wide"
                                             >
                                                 {group.name}
@@ -264,7 +263,7 @@ export function ChecklistPreviewModal({
                                                 className="bg-muted/30 border-b border-border"
                                             >
                                                 <td
-                                                    colSpan={9}
+                                                    colSpan={8}
                                                     className="px-6 py-1.5 text-xs font-medium text-muted-foreground"
                                                 >
                                                     {sub.name}
@@ -298,12 +297,12 @@ export function ChecklistPreviewModal({
                 <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
                     <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            Assigned To
+                        <span className="text-xs font-semibold text-muted-foreground tracking-wider">
+                            Assigned To :
                         </span>
                     </div>
                     <span className="text-sm font-medium text-foreground">
-                        {checklistAssignee || "—"}
+                        {checklistAssignedTo || "—"}
                     </span>
                 </div>
                 <div className="flex items-center gap-2">

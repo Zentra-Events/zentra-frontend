@@ -105,7 +105,7 @@ export function ChecklistItemEditor({
                                 <div>
                                     <Select
                                         value={
-                                            statusOptions.find(opt => opt.value === item.status) ||
+                                           statusOptions.find(opt => opt.value === item.status) ||
                                             null
                                         }
                                         onChange={e => onUpdate("status", e?.value ?? "")}
@@ -269,48 +269,35 @@ export function ChecklistItemEditor({
                             <SectionHeader>Timeline</SectionHeader>
                             <div className="grid grid-cols-1 gap-3 rounded-md border border-border/40 bg-muted/50 p-2 sm:grid-cols-3">
                                 <DatePickerField
-                                    value={
-                                        item.startDate
-                                            ? new Date(item.startDate + "T00:00:00")
-                                            : null
-                                    }
+                                    value={item.startDate ? new Date(item.startDate) : null}
                                     onChange={date => {
-                                        const value = date ? date.toISOString().split("T")[0] : "";
+                                        const value = date ? date.toISOString() : "";
                                         onUpdate("startDate", value);
                                     }}
-                                    placeholderText="Select"
-                                    dateFormat="MMM d, yyyy"
-                                    showTimeSelect={false}
+                                    placeholderText="Start date & time"
+                                    dateFormat="MMM d, yyyy h:mm aa"
                                     smallLabel
                                     label="Start Date"
                                 />
                                 <DatePickerField
-                                    value={
-                                        item.endDate ? new Date(item.endDate + "T00:00:00") : null
-                                    }
+                                    value={item.endDate ? new Date(item.endDate) : null}
                                     onChange={date => {
-                                        const value = date ? date.toISOString().split("T")[0] : "";
+                                        const value = date ? date.toISOString() : "";
                                         onUpdate("endDate", value);
                                     }}
-                                    placeholderText="Select"
-                                    dateFormat="MMM d, yyyy"
-                                    showTimeSelect={false}
+                                    placeholderText="End date & time"
+                                    dateFormat="MMM d, yyyy h:mm aa"
                                     smallLabel
                                     label="End Date"
                                 />
                                 <DatePickerField
-                                    value={
-                                        item.deadlineDate
-                                            ? new Date(item.deadlineDate + "T00:00:00")
-                                            : null
-                                    }
+                                    value={item.deadlineDate ? new Date(item.deadlineDate) : null}
                                     onChange={date => {
-                                        const value = date ? date.toISOString().split("T")[0] : "";
+                                        const value = date ? date.toISOString() : "";
                                         onUpdate("deadlineDate", value);
                                     }}
-                                    placeholderText="Select"
-                                    dateFormat="MMM d, yyyy"
-                                    showTimeSelect={false}
+                                    placeholderText="Deadline date & time"
+                                    dateFormat="MMM d, yyyy h:mm aa"
                                     smallLabel
                                     label="Deadline"
                                 />

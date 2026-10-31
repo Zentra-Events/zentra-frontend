@@ -12,7 +12,6 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { MobileCardList } from "@/components/shared/mobile-card-list";
 import CreateEnquiryModal from "@/components/create-enquiry-modal";
 import { EnquiriesTableFilters } from "@/components/enquiries-table-filters";
-import { EnquiryViewModal } from "@/components/enquiry-view-modal";
 import { Enquiry, EnquiryFormData, EnquiriesTableFiltersFormValues } from "@/types/enquiry";
 import { normalizeEnquiryPriority } from "@/constants/enquiry";
 import { DEFAULT_PAGE_SIZE } from "@/constants";
@@ -138,8 +137,6 @@ export default function EnquiriesPage() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editEnquiry, setEditEnquiry] = useState<EnquiryFormData | null>(null);
     const [modalMode, setModalMode] = useState<"create" | "edit">("create");
-    const [viewModalOpen, setViewModalOpen] = useState(false);
-    const [selectedEnquiry, setSelectedEnquiry] = useState<Enquiry | null>(null);
 
     const enquiries = result?.content || [];
     const totalElements = result?.totalElements || 0;
@@ -225,6 +222,8 @@ export default function EnquiriesPage() {
             title: enquiry.eventName || "",
             enquiryPoC: enquiry.enquiryPoC || "",
             eventPoCNumber: enquiry.eventPoCNumber || "",
+            alternatePoC: enquiry.alternatePoC || "",
+            alternatePoCNumber: enquiry.alternatePoCNumber || "",
             assignedTo:
                 enquiry.assignedTo && enquiry.assignedTo !== "Unassigned"
                     ? enquiry.assignedTo
@@ -246,11 +245,6 @@ export default function EnquiriesPage() {
         router.push(`/enquiries/${enquiry.id}`);
     };
 
-    const handleEditFromView = (enquiry: Enquiry) => {
-        setSelectedEnquiry(null);
-        handleEdit(enquiry);
-    };
-
     const handleExport = () => {
         const exportData = enquiries.map(enquiry => ({
             "Event Name": enquiry.eventName || "-",
@@ -262,13 +256,6 @@ export default function EnquiriesPage() {
             Location: enquiry.venue || enquiry.location || "-",
         }));
         downloadCSV(exportData, "enquiries-export.csv");
-    };
-
-    const handleViewModalClose = () => {
-        setViewModalOpen(false);
-        setSelectedEnquiry(null);
-        // Refresh list in case of delete/clone
-        fetchEnquiries();
     };
 
     return (
@@ -363,21 +350,15 @@ export default function EnquiriesPage() {
                     editData={editEnquiry}
                     mode={modalMode}
                     onSaveSuccess={enquiry => {
-                        // Re-fetch to get updated data, then open view modal
+                        // Re-fetch list, then navigate to the enquiry detail page
                         fetchEnquiries().then(() => {
-                            setSelectedEnquiry(enquiry);
-                            setViewModalOpen(true);
+                            if (enquiry?.id != null) {
+                                router.push(`/enquiries/${enquiry.id}`);
+                            }
                         });
                     }}
                 />
             </div>
-
-            <EnquiryViewModal
-                open={viewModalOpen}
-                onClose={handleViewModalClose}
-                enquiry={selectedEnquiry}
-                onEdit={handleEditFromView}
-            />
         </div>
     );
 }

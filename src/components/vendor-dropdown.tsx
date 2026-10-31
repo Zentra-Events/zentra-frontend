@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api/api-client";
+import { fetchVendors } from "@/lib/api/vendor";
 import type { Vendor } from "@/types/vendor";
 
 const CreatableSelectField = dynamic(
@@ -62,6 +63,7 @@ export function VendorDropdown({
     const [isCreating, setIsCreating] = useState(false);
     const pendingCreateRef = useRef(false);
     const createdVendorsRef = useRef<Record<string, string>>({});
+    const [vendors, setVendors] = useState<Vendor[]>(vendorList);
 
     const resolvedPlaceholder = isCreating
         ? "Creating vendor..."
@@ -94,6 +96,12 @@ export function VendorDropdown({
                     createdVendorsRef.current[String(vendorId)] = inputValue;
                     onChange(String(vendorId));
                     toast.success(`Vendor "${inputValue}" created successfully`);
+                    try {
+                        const fresh = await fetchVendors();
+                        setVendors(fresh);
+                    } catch (_err) {
+                        // ignore refresh failures; the created vendor remains selected
+                    }
                 } else {
                     throw new Error("No vendor ID returned from API");
                 }
@@ -113,7 +121,7 @@ export function VendorDropdown({
         <CreatableSelectField
             smallLabel={smallLabel}
             label={label}
-            options={vendorList.map(v => ({
+            options={vendors.map(v => ({
                 value: String(v.id || ""),
                 label: v.name as string,
             }))}
@@ -121,10 +129,10 @@ export function VendorDropdown({
                 value
                     ? {
                           value,
-                          label:
-                              vendorList.find(v => String(v.id) === value)?.name ||
-                              createdVendorsRef.current[value] ||
-                              value,
+                              label:
+                                  vendors.find(v => String(v.id) === value)?.name ||
+                                  createdVendorsRef.current[value] ||
+                                  value,
                       }
                     : null
             }

@@ -12,10 +12,10 @@ export function DetailContacts({ e }: { e: Enquiry }) {
             phone: e.enquiryPoCNumber || poc || "",
         },
         {
-            name: e.alternateClientPoC || "",
+            name: e.alternatePoC || "",
             role: "Alternate Client Contact",
             sub: "Secondary Decision Maker",
-            phone: e.alternateEnquiryPocNumber || "",
+            phone: e.alternatePoCNumber || "",
         },
         {
             name: e.eventPoC || "",

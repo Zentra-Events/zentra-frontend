@@ -164,6 +164,9 @@ export default function CreateEnquiryModal({
                                                 classNamePrefix="react-select"
                                                 isClearable
                                                 placeholder="Search or create client..."
+                                                filterOption={(option, inputValue) =>
+                                                    option.label.toLowerCase().includes(inputValue.toLowerCase())
+                                                }
                                                 value={(() => {
                                                     const option = clients.find(
                                                         c => c.id === values.client

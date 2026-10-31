@@ -35,6 +35,8 @@ export interface EnquiryStatusTrackerProps {
     status?: string | null;
     /** Whether the current user is allowed to change the status. */
     canWrite?: boolean;
+    /** Optional per-outcome write permission check. Defaults to `canWrite`. */
+    canWriteOutcome?: (value: string) => boolean;
     /** Disables every interaction while another mutation is running. */
     busy?: boolean;
     /** Persists a new status. Resolves to `true` when the update succeeded. */
@@ -91,12 +93,21 @@ export function EnquiryStatusTracker({
     busy = false,
     onStatusChange,
     className,
+    canWriteOutcome,
 }: EnquiryStatusTrackerProps) {
     const progress = useMemo(() => getTrackerProgress(status), [status]);
     const [pending, setPending] = useState<PendingChange | null>(null);
     const [saving, setSaving] = useState(false);
 
     const locked = busy || saving;
+
+    const canWriteOutcomeValue = useCallback(
+        (value: string) => {
+            if (canWriteOutcome) return canWriteOutcome(value);
+            return canWrite;
+        },
+        [canWrite, canWriteOutcome],
+    );
 
     const runChange = useCallback(
         async (next: string): Promise<boolean> => {
@@ -125,7 +136,7 @@ export function EnquiryStatusTracker({
 
     const requestOutcome = useCallback(
         (outcome: EnquiryExceptionalStatus) => {
-            if (!canWrite || locked) return;
+            if (!canWriteOutcomeValue(outcome.value) || locked) return;
             if (outcome.value === progress.status) return;
             setPending({
                 value: outcome.value,
@@ -282,7 +293,7 @@ export function EnquiryStatusTracker({
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                disabled={!canWrite || locked || active}
+                                disabled={!canWriteOutcomeValue(e.value) || locked || active}
                                 onClick={() => requestOutcome(e)}
                                 title={
                                     active

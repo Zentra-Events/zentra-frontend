@@ -79,8 +79,8 @@ const validationSchema = Yup.object({
     // .min(10, "Please provide more detailed requirements (at least 10 characters)"),
     clientPoC: Yup.string().optional(),
     enquiryPoCNumber: Yup.string().required("Contact number is required"),
-    alternateClientPoC: Yup.string().optional(),
-    alternateEnquiryPocNumber: Yup.string().optional(),
+    alternatePoC: Yup.string().optional(),
+    alternatePoCNumber: Yup.string().optional(),
     // .matches(/^\d{10}$/, "Phone number must be exactly 10 digits"),
     eventPoC: Yup.string().optional(),
     enquiryPoC: Yup.string().optional(),
@@ -176,7 +176,7 @@ export default function CreateEnquiryModal({
     const formikRef = useRef<FormikProps<EnquiryFormData> | null>(null);
     const [saveProcessing, setSaveProcessing] = useState(false);
     const [showAlternateContact, setShowAlternateContact] = useState(
-        Boolean(editData?.alternateClientPoC || editData?.alternateEnquiryPocNumber),
+        Boolean(editData?.alternatePoC || editData?.alternatePoCNumber),
     );
 
     // Normalize dates coming from the API into a full ISO string (with timezone).
@@ -201,9 +201,9 @@ export default function CreateEnquiryModal({
     // create mode and editing an enquiry that already has alternate values.
     useEffect(() => {
         setShowAlternateContact(
-            Boolean(editData?.alternateClientPoC || editData?.alternateEnquiryPocNumber),
+            Boolean(editData?.alternatePoC || editData?.alternatePoCNumber),
         );
-    }, [editData?.alternateClientPoC, editData?.alternateEnquiryPocNumber, isOpen]);
+    }, [editData?.alternatePoC, editData?.alternatePoCNumber, isOpen]);
 
     const normalizeAssignedTo = (value?: string) => {
         const normalized = value?.trim() || "";
@@ -219,8 +219,8 @@ export default function CreateEnquiryModal({
               eventType: editData.eventType || "CORPORATE",
               assignedTo: normalizeAssignedTo(editData.assignedTo),
               priority: normalizePriority(editData.priority),
-              alternateClientPoC: editData.alternateClientPoC ?? "",
-              alternateEnquiryPocNumber: editData.alternateEnquiryPocNumber ?? "",
+              alternatePoC: editData.alternatePoC ?? "",
+              alternatePoCNumber: editData.alternatePoCNumber ?? "",
           }
         : {
               highlvelRequirement: "",
@@ -231,8 +231,8 @@ export default function CreateEnquiryModal({
               venue: "",
               clientPoC: "",
               enquiryPoCNumber: "",
-              alternateClientPoC: "",
-              alternateEnquiryPocNumber: "",
+              alternatePoC: "",
+              alternatePoCNumber: "",
               client: "",
               clientName: "",
               eventType: "CORPORATE",
@@ -679,14 +679,22 @@ export default function CreateEnquiryModal({
                                                         // form against stale values, so the second call
                                                         // (clientName = "") re-triggers "Please select a
                                                         // client" even though the client id was just set.
-                                                        if (selectedValue === "__new__") {
+                                                        if (
+                                                            selectedValue === "__new__" ||
+                                                            (selectedValue !== "" &&
+                                                                !selectedOption)
+                                                        ) {
+                                                            const newName =
+                                                                selectedValue === "__new__"
+                                                                    ? values.clientName
+                                                                    : selectedValue;
                                                             setValues({
                                                                 ...values,
                                                                 client: "",
+                                                                clientName: newName,
                                                                 ...(personal
                                                                     ? {
-                                                                          clientPoC:
-                                                                              values.clientName,
+                                                                          clientPoC: newName,
                                                                       }
                                                                     : {}),
                                                             });
@@ -774,12 +782,12 @@ export default function CreateEnquiryModal({
                                         {showAlternateContact && (
                                             <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
                                                 <FormikFieldInput
-                                                    name="alternateClientPoC"
+                                                    name="alternatePoC"
                                                     type="text"
                                                     placeholder="Alternate contact name"
                                                 />
                                                 <FormikFieldInput
-                                                    name="alternateEnquiryPocNumber"
+                                                    name="alternatePoCNumber"
                                                     type="tel"
                                                     inputMode="tel"
                                                     autoComplete="tel"
@@ -790,7 +798,7 @@ export default function CreateEnquiryModal({
                                                             .replace(/\D/g, "")
                                                             .slice(0, 10);
                                                         setFieldValue(
-                                                            "alternateEnquiryPocNumber",
+                                                            "alternatePoCNumber",
                                                             value,
                                                         );
                                                     }}
@@ -802,9 +810,9 @@ export default function CreateEnquiryModal({
                                                 type="button"
                                                 onClick={() => {
                                                     if (showAlternateContact) {
-                                                        setFieldValue("alternateClientPoC", "");
+                                                        setFieldValue("alternatePoC", "");
                                                         setFieldValue(
-                                                            "alternateEnquiryPocNumber",
+                                                            "alternatePoCNumber",
                                                             "",
                                                         );
                                                     }

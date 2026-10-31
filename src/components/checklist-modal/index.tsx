@@ -38,7 +38,7 @@ export function ExecutionChecklistModal({
     inventoryList,
     loadingVendors = false,
     loadingInventory = false,
-    checklistAssignee: initialChecklistAssignee = "",
+    checklistAssignedTo: initialchecklistAssignedTo = "",
 }: ChecklistModalProps) {
     const [checklistData, setChecklistData] = useState<ChecklistItem[]>([]);
     const [saving, setSaving] = useState(false);
@@ -58,7 +58,7 @@ export function ExecutionChecklistModal({
     const [validationTriggered, setValidationTriggered] = useState(false);
     // Global checklist assignee (one per checklist). Initialized from the API
     // response and persisted back to the backend on save.
-    const [checklistAssignee, setChecklistAssignee] = useState<string>(initialChecklistAssignee);
+    const [checklistAssignedTo, setchecklistAssignedTo] = useState<string>(initialchecklistAssignedTo);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -90,7 +90,7 @@ export function ExecutionChecklistModal({
         });
         setExpandedCategories(cats);
         setExpandedSubCategories(subs);
-        setChecklistAssignee(initialChecklistAssignee);
+        setchecklistAssignedTo(initialchecklistAssignedTo);
     }, [isOpen, eventData]);
 
     const filteredItems = useMemo(() => {
@@ -440,7 +440,7 @@ export function ExecutionChecklistModal({
             const updatedEvent = {
                 ...eventData,
                 checkListCompleted: true,
-                checklistAssignee,
+                checklistAssignedTo,
                 items: payload,
             };
 
@@ -552,8 +552,8 @@ export function ExecutionChecklistModal({
                 autoFocus={false}
                 headerActions={
                     <UserSelectDropdown
-                        value={checklistAssignee}
-                        onChange={setChecklistAssignee}
+                        value={checklistAssignedTo}
+                        onChange={setchecklistAssignedTo}
                         placeholder="Assigned To"
                     />
                 }
@@ -644,12 +644,9 @@ function mapEventItemToChecklistItem(item: EventItem): ChecklistItem {
         unit: item.unit || "nos",
         vendor: item.vendor || "",
         inventoryID: item.inventoryID != null ? String(item.inventoryID) : "",
-        status: "PENDING",
-        startDate:
-            item.startDate || item.starDate
-                ? String(item.startDate || item.starDate).split("T")[0]
-                : "",
-        endDate: item.endDate ? String(item.endDate).split("T")[0] : "",
+        status: item.status ?? "PENDING",
+        startDate: item.startDate ?? "",
+        endDate: item.endDate || "",
         days: Number(item.days) || 1,
         pricePerItem: Number(item.pricePerItem) || 0,
         deadlineDate: String(item.deadlineDate || ""),

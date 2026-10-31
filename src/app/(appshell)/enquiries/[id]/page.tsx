@@ -42,6 +42,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
     const { user } = useAuth();
     const { setPrefill } = useEstimatePrefill();
     const canWrite = hasPermission(user, undefined, ["w:enquiries"]);
+    const isSuperAdmin = user?.role === "super_admin";
     const detail = useEnquiryDetail(id);
     const {
         enquiry,
@@ -136,6 +137,16 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
             return await updateFields({ assignedTo: assignee, assignee } as Partial<Enquiry>);
         },
         [updateFields],
+    );
+
+    const canWriteOutcome = useCallback(
+        (value: string): boolean => {
+            // CANCELLED is restricted to super_admin; LOST / DNP are open to any
+            // role holding the w:enquiries write scope.
+            if (value === "CANCELLED") return isSuperAdmin;
+            return canWrite;
+        },
+        [canWrite, isSuperAdmin],
     );
 
     // Notes live on the enquiry itself: the full array (existing notes plus the
@@ -292,6 +303,8 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
         enquiryPoCNumber: enquiry.enquiryPoCNumber || "",
         eventPoC: enquiry.eventPoC || "",
         eventPoCNumber: enquiry.eventPoCNumber || "",
+        alternatePoC: enquiry.alternatePoC || "",
+        alternatePoCNumber: enquiry.alternatePoCNumber || "",
         assignedTo: getAssigneeName(enquiry),
         priority: normalizeEnquiryPriority(priority),
         // Both status fields are carried over so editing never drops them.
@@ -320,6 +333,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
                 canWrite={canWrite}
                 busy={statusSaving || updating}
                 onStatusChange={handleStatusChange}
+                canWriteOutcome={canWriteOutcome}
             />
             <div className="mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
                 <div className="min-w-0 space-y-3">

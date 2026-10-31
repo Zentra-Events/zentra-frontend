@@ -131,7 +131,7 @@ export function ProjectPlanningModal({
                     quantity: item.quantity || 1,
                     pricePerItem: item.pricePerItem || 0,
                     days: item.days || 0,
-                    startDate: item.startDate || item.starDate || eventData?.eventStartDate || "",
+                    startDate: item.startDate || eventData?.eventStartDate || "",
                     endDate: item.endDate || eventData?.eventEndDate || "",
                     deadlineDate: item.deadlineDate || "",
                     description: item.description || "",
@@ -830,14 +830,17 @@ export function ProjectPlanningModal({
                                                                                     : ""
                                                                             )
                                                                         }
-                                                                        placeholder={
-                                                                            loadingVendors
-                                                                                ? "Loading..."
-                                                                                : "Select or Create..."
-                                                                        }
-                                                                        className="text-sm mt-1"
-                                                                        classNamePrefix="react-select"
-                                                                        isClearable
+                                                                    placeholder={
+                                                                        loadingVendors
+                                                                            ? "Loading..."
+                                                                            : "Select or Create..."
+                                                                    }
+                                                                    className="text-sm mt-1"
+                                                                    classNamePrefix="react-select"
+                                                                    filterOption={(option, inputValue) =>
+                                                                        option.label.toLowerCase().includes(inputValue.toLowerCase())
+                                                                    }
+                                                                    isClearable
                                                                     />
                                                                 </div>
                                                             )}
