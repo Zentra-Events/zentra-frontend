@@ -110,12 +110,19 @@ export default function CreateUserModal({ open, onClose, user, onSuccess }: Crea
                                 type="email"
                                 placeholder="Email"
                             />
+                            {/* Super admin role cannot be changed */}
                             <FormikFieldSelect
                                 name="role"
                                 label="Role"
                                 options={userRoleOptions}
                                 placeholder="Select role"
+                                isDisabled={user?.role?.toLowerCase() === "super_admin"}
                             />
+                            {user?.role?.toLowerCase() === "super_admin" && (
+                                <p className="text-xs text-muted-foreground">
+                                    Super admin role cannot be changed.
+                                </p>
+                            )}
                         </ModalBody>
                         <ModalFooter>
                             <Button type="button" variant="outline" onClick={onClose}>

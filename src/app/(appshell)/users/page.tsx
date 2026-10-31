@@ -23,12 +23,13 @@ import { downloadCSV } from "@/lib/utils/file";
 import { buildQueryUrl } from "@/lib/api/query-params";
 import { userFiltersInitialValues, rolesLabelMap, statusLabelMap } from "@/constants/user";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
+import { useAuth } from "@/context/auth";
 import { AccessButton } from "@/components/shared/access-button";
 import { Download } from "lucide-react";
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
-const columns = (onEdit: (user: User) => void, onDelete: (row: User) => void): Column<User>[] => [
+const columns = (onEdit: (user: User) => void, onDelete: (row: User) => void, canEdit: boolean = false): Column<User>[] => [
     {
         key: "name",
         header: "Name",
@@ -68,7 +69,7 @@ const columns = (onEdit: (user: User) => void, onDelete: (row: User) => void): C
                             isActive ? "bg-success" : "bg-muted-foreground"
                         }`}
                     />
-                    {isActive ? statusLabelMap.active : statusLabelMap.inactive}
+                    {isActive ? statusLabelMap.active : statusLabelMap.active}
                 </Badge>
             );
         },
@@ -85,23 +86,24 @@ const columns = (onEdit: (user: User) => void, onDelete: (row: User) => void): C
         header: "",
         className: "text-right",
         render: row => {
-            const items: MenuItem[] = [
-                {
+            const items: MenuItem[] = [];
+            if (canEdit) {
+                items.push({
                     key: "edit",
                     label: "Edit",
                     icon: <PencilIcon size={16} />,
                     onClick: () => onEdit(row),
                     scopes: ["w:users"],
-                },
-                {
-                    key: "delete",
-                    label: "Delete",
-                    icon: <TrashIcon size={16} />,
-                    onClick: () => onDelete(row),
-                    className: "text-destructive focus:text-destructive",
-                    scopes: ["w:users"],
-                },
-            ];
+                });
+            }
+            items.push({
+                key: "delete",
+                label: "Delete",
+                icon: <TrashIcon size={16} />,
+                onClick: () => onDelete(row),
+                className: "text-destructive focus:text-destructive",
+                scopes: ["w:users"],
+            });
 
             return (
                 <div className="flex justify-center">
@@ -121,6 +123,8 @@ const columns = (onEdit: (user: User) => void, onDelete: (row: User) => void): C
 ];
 
 export default function UsersPage() {
+    const { user: currentUser } = useAuth();
+    const canEditUsers = currentUser?.role === "admin" || currentUser?.role === "super_admin";
     const { request, loading } = useRequestApi<APIResponse<User[]>>();
     const [result, setResult] = useState<APIResponse<User[]>>();
     const [modalOpen, setModalOpen] = useState(false);
@@ -265,7 +269,7 @@ export default function UsersPage() {
                 <UsersTableFilters formik={formik} onReset={handleResetFilters} />
                 <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
                     <DataTable
-                        columns={columns(handleEdit, handleDeleteClick)}
+                        columns={columns(handleEdit, handleDeleteClick, canEditUsers)}
                         data={users}
                         rowKey={row => row.id}
                         emptyMessage="No users found."
@@ -301,9 +305,11 @@ export default function UsersPage() {
                     )}
                     renderActions={user => (
                         <div className="flex gap-2 justify-end">
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(user)}>
-                                Edit
-                            </Button>
+                            {canEditUsers && (
+                                <Button variant="outline" size="sm" onClick={() => handleEdit(user)}>
+                                    Edit
+                                </Button>
+                            )}
                             <Button
                                 variant="outline"
                                 size="sm"

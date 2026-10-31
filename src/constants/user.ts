@@ -14,6 +14,7 @@ export const rolesLabelMap: Record<string, string> = {
     admin: "ADMIN",
     user: "USER",
     customer: "CUSTOMER",
+    super_admin: "SUPER ADMIN"
 };
 
 export const statusLabelMap: Record<string, string> = {
