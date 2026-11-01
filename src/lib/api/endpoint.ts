@@ -50,6 +50,7 @@ export const API_ENDPOINTS = {
     },
     notifications: {
         list: "/api/notifications",
+        sendEmail: "/api/notifications/send-email",
     },
     users: "/api/users",
     dashboard: {
@@ -87,6 +88,19 @@ export const API_ENDPOINTS = {
         detail: (id: string | number) => `/api/expenses/by-id?id=${encodeURIComponent(String(id))}`,
         update: (id: string | number) => `/api/expenses?id=${encodeURIComponent(String(id))}`,
         delete: (id: string | number) => `/api/expenses?id=${encodeURIComponent(String(id))}`,
+        receipt: (id: string | number) =>
+            `/api/expenses/receipt?id=${encodeURIComponent(String(id))}`,
+    },
+    fundAllocations: {
+        list: (eventID: string | number) =>
+            `/api/fund-allocations?eventId=${encodeURIComponent(String(eventID))}`,
+        byId: (id: string | number) =>
+            `/api/fund-allocations/by-id?id=${encodeURIComponent(String(id))}`,
+        create: "/api/fund-allocations",
+        update: (id: string | number) =>
+            `/api/fund-allocations?id=${encodeURIComponent(String(id))}`,
+        delete: (id: string | number) =>
+            `/api/fund-allocations?id=${encodeURIComponent(String(id))}`,
     },
     reports: {
         summary: "/api/reports/summary",

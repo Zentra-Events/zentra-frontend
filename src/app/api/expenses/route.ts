@@ -29,6 +29,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     const BACKEND_URL = getBackendUrl();
     try {
+        const contentType = request.headers.get("content-type") || "";
+        if (contentType.startsWith("multipart/form-data")) {
+            return NextResponse.json(
+                { error: "Expense details must be sent as JSON; upload receipts through the receipt endpoint." },
+                { status: 415 },
+            );
+        }
+
         const body = await request.text();
         const headers = addContentType(getBackendHeaders(request));
         const res = await fetch(`${BACKEND_URL}/api/expenses`, {
@@ -39,8 +47,8 @@ export async function POST(request: NextRequest) {
 
         const text = await res.text();
         const responseHeaders: Record<string, string> = {};
-        const contentType = res.headers.get("content-type");
-        if (contentType) responseHeaders["content-type"] = contentType;
+        const resContentType = res.headers.get("content-type");
+        if (resContentType) responseHeaders["content-type"] = resContentType;
         return new NextResponse(text, { status: res.status, headers: responseHeaders });
     } catch (error) {
         console.error("Failed to proxy expenses POST:", error);
@@ -52,6 +60,14 @@ export async function PUT(request: NextRequest) {
     const BACKEND_URL = getBackendUrl();
     try {
         const url = new URL(request.url);
+        const contentType = request.headers.get("content-type") || "";
+        if (contentType.startsWith("multipart/form-data")) {
+            return NextResponse.json(
+                { error: "Expense details must be sent as JSON; upload receipts through the receipt endpoint." },
+                { status: 415 },
+            );
+        }
+
         const body = await request.text();
         const headers = addContentType(getBackendHeaders(request));
         const backendUrl = `${BACKEND_URL}/api/expenses${url.search}`;
@@ -63,8 +79,8 @@ export async function PUT(request: NextRequest) {
 
         const text = await res.text();
         const responseHeaders: Record<string, string> = {};
-        const contentType = res.headers.get("content-type");
-        if (contentType) responseHeaders["content-type"] = contentType;
+        const resContentType = res.headers.get("content-type");
+        if (resContentType) responseHeaders["content-type"] = resContentType;
         return new NextResponse(text, { status: res.status, headers: responseHeaders });
     } catch (error) {
         console.error("Failed to proxy expenses PUT:", error);

@@ -29,7 +29,10 @@ export interface Expense {
     createdDate?: string | null;
     lastUpdateddDate?: string | null;
     expenseStatus?: ExpenseStatus | string;
-    receipt?: unknown;
+    /** Base64-encoded file data or file reference returned by the backend. */
+    receipt?: string | null;
+    /** Original file name of the uploaded receipt. */
     receiptFileName?: string | null;
+    /** MIME type of the uploaded receipt (e.g. image/jpeg, application/pdf). */
     receiptContentType?: string | null;
 }

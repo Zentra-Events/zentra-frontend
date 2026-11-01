@@ -3,7 +3,8 @@
 import { useCallback, useMemo } from "react";
 import { Badge, Button, MenuList, Table, Tooltip } from "@/components/ui";
 import { MoreVerticalIcon, PencilIcon, TrashIcon } from "@/components/ui/icons";
-import { formatCurrency } from "@/lib/utils";
+import { FileText } from "lucide-react";
+import { formatCurrency, truncate } from "@/lib/utils";
 import { formatShortDate } from "@/lib/utils/date";
 import type { Column } from "@/components/ui/table";
 import type { Expense } from "@/types/expense";
@@ -45,14 +46,14 @@ const DEFAULT_COLUMNS: Column<Expense>[] = [
         header: "Comments",
         render: item => (
             <Tooltip content={item.comments || ""}>
-                <span>{item.comments || "—"}</span>
+                <span>{truncate(item.comments ?? "", 10) || "—"}</span>
             </Tooltip>
         ),
         maxWidth: "240px",
     },
     {
         key: "poc",
-        header: "POC",
+        header: "Spent By",
         render: item => item.poc || "—",
     },
     {
@@ -85,6 +86,8 @@ interface ExpensesTableProps {
     onEdit?: (expense: Expense) => void;
     /** Callback when a user chooses Delete on a row. */
     onDelete?: (expense: Expense) => void;
+    /** Callback when a user chooses View Receipt on a row. */
+    onViewReceipt?: (expense: Expense) => void;
     /** Message shown when there are no rows. */
     emptyMessage?: string;
     className?: string;
@@ -95,9 +98,34 @@ export function ExpensesTable({
     extraColumns = [],
     onEdit,
     onDelete,
+    onViewReceipt,
     emptyMessage = "No expenses found.",
     className,
 }: ExpensesTableProps) {
+    const receiptColumn: Column<Expense> = {
+        key: "receipt",
+        header: "Receipt",
+        align: "center",
+        maxWidth: "120px",
+        render: item => {
+            const hasReceipt = Boolean(item.receipt && item.receiptFileName);
+            if (!hasReceipt) {
+                return <span className="text-muted-foreground">—</span>;
+            }
+            return (
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onViewReceipt?.(item)}
+                    className="h-8 w-8 p-0 text-xs"
+                >
+                    <FileText size={12} />
+                </Button>
+            );
+        },
+    };
+
     const renderActions = useCallback(
         (item: Expense) => {
             if (!item.id) {
@@ -134,6 +162,15 @@ export function ExpensesTable({
                 },
             ];
 
+            if (Boolean(item.receipt && item.receiptFileName)) {
+                items.push({
+                    key: "view-receipt",
+                    label: "View Receipt",
+                    icon: <FileText size={16} />,
+                    onClick: () => onViewReceipt?.(item),
+                });
+            }
+
             return (
                 <div className="flex justify-end">
                     <MenuList
@@ -148,7 +185,7 @@ export function ExpensesTable({
                 </div>
             );
         },
-        [onEdit, onDelete],
+        [onEdit, onDelete, onViewReceipt],
     );
 
     const columns: Column<Expense>[] = useMemo(() => {
@@ -158,8 +195,8 @@ export function ExpensesTable({
             align: "right",
             render: item => renderActions(item),
         };
-        return [...extraColumns, ...DEFAULT_COLUMNS, actionsColumn];
-    }, [extraColumns, renderActions]);
+        return [...extraColumns, ...DEFAULT_COLUMNS, receiptColumn, actionsColumn];
+    }, [extraColumns, renderActions, receiptColumn]);
 
     return (
         <Table

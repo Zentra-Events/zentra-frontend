@@ -9,6 +9,7 @@ import { useExpenses, EXPENSE_TYPE_LABELS, EXPENSE_STATUS_META } from "@/hooks/u
 import { DEFAULT_PAGE_SIZE } from "@/constants";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
+import { fetchExpenseReceipt } from "@/lib/api/expense";
 import { downloadCSV } from "@/lib/utils/file";
 import { formatShortDate } from "@/lib/utils/date";
 import { pickFirst, toList } from "@/lib/utils";
@@ -18,9 +19,10 @@ import { Loading } from "@/components/ui/loading";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { ExpensesTable } from "@/components/expenses-table";
 import { ExpensesModal } from "@/components/expenses-modal";
+import { ReceiptViewer } from "@/components/receipt-viewer";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import { AccessButton } from "@/components/shared/access-button";
-import { UserPlusIcon } from "@/components/ui/icons";
+import { ReceiptIcon, UserPlusIcon } from "@/components/ui/icons";
 
 import type { Column } from "@/components/ui/table";
 import type { Event } from "@/types/event";
@@ -32,6 +34,13 @@ export default function ExpensesPage() {
     /* ------------------------------------------------------------------ */
     /*  Data                                                               */
     /* ------------------------------------------------------------------ */
+
+    const [viewReceiptOpen, setViewReceiptOpen] = useState(false);
+    const [viewReceiptData, setViewReceiptData] = useState<{
+        receipt: string | null;
+        receiptFileName: string | null;
+        receiptContentType: string | null;
+    } | null>(null);
 
     const {
         expenses,
@@ -229,6 +238,42 @@ export default function ExpensesPage() {
         openForm();
     };
 
+    /** Fetch receipt data on demand and open the viewer modal. */
+    const handleViewReceipt = useCallback(
+        async (expense: Expense) => {
+            if (!expense.id) {
+                toast.error("Cannot view receipt: expense ID is missing.");
+                return;
+            }
+            try {
+                const res = await fetchExpenseReceipt(expense.id);
+                if (!res.ok) {
+                    toast.error("Failed to load receipt.");
+                    return;
+                }
+                const arrayBuffer = await res.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = "";
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const base64 = btoa(binary);
+                const contentType =
+                    res.headers.get("content-type") || expense.receiptContentType || null;
+                setViewReceiptData({
+                    receipt: base64,
+                    receiptFileName: expense.receiptFileName ?? null,
+                    receiptContentType: contentType,
+                });
+                setViewReceiptOpen(true);
+            } catch (err) {
+                console.error("Failed to load receipt:", err);
+                toast.error("Failed to load receipt.");
+            }
+        },
+        [fetchExpenseReceipt],
+    );
+
     /** The event the form will attach the new expense to. */
     const formEventID = editingExpense?.eventID || pickerEventID;
     /* ------------------------------------------------------------------ */
@@ -275,7 +320,7 @@ export default function ExpensesPage() {
                             scope={["w:expenses"]}
                             className="w-full sm:w-auto"
                             onClick={handleCreateClick}
-                            icon={<UserPlusIcon size={16} />}
+                            icon={<ReceiptIcon size={16} />}
                         >
                             Add Expense
                         </AccessButton>
@@ -345,6 +390,7 @@ export default function ExpensesPage() {
                                 extraColumns={eventColumn}
                                 onEdit={openForm}
                                 onDelete={selectForDelete}
+                                onViewReceipt={handleViewReceipt}
                                 emptyMessage={
                                     expenses.length === 0
                                         ? "No expenses found."
@@ -403,7 +449,6 @@ export default function ExpensesPage() {
                     <Button
                         onClick={handleEventConfirm}
                         disabled={!pickerEventID}
-                        icon={<UserPlusIcon size={16} />}
                     >
                         Continue
                     </Button>
@@ -436,6 +481,17 @@ export default function ExpensesPage() {
                 cancelText="Cancel"
                 variant="destructive"
                 isLoading={deleting}
+            />
+
+            <ReceiptViewer
+                open={viewReceiptOpen}
+                onClose={() => {
+                    setViewReceiptOpen(false);
+                    setViewReceiptData(null);
+                }}
+                receipt={viewReceiptData?.receipt ?? null}
+                receiptFileName={viewReceiptData?.receiptFileName ?? null}
+                receiptContentType={viewReceiptData?.receiptContentType ?? null}
             />
         </div>
     );

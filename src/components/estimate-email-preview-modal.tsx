@@ -3,10 +3,11 @@
 import { useState, useCallback } from "react";
 import { FileText, Eye } from "lucide-react";
 import type { EstimateDto } from "@/types/estimate";
-import { Button, Modal, ModalBody, ModalFooter, Input, Textarea } from "./ui";
+import { Button, Modal, ModalBody, ModalFooter, Input, Textarea, EmailTagInput } from "./ui";
 import { generateEstimatePdfBlob } from "@/lib/estimate-export/estimate-pdf";
 import { buildEstimateDocumentModel } from "@/lib/estimate-export/estimate-document";
 import { apiRequest } from "@/lib/api/api-client";
+import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toast } from "sonner";
 import { EstimatePreviewModal } from "./estimate-preview-modal";
 
@@ -24,7 +25,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function parseEmailList(value: string): string[] {
     return value
         .split(/[,;]/)
-        .map(e => e.trim())
+        .map(e => e.trim().replace(/^mailto:/i, ""))
         .filter(e => e.length > 0);
 }
 
@@ -36,6 +37,27 @@ function validateEmailList(emails: string[], fieldLabel: string): string | null 
         }
     }
     return null;
+}
+
+function formatSendEmailError(raw: string, status: number): string {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        return status === 404
+            ? "Email service is unavailable. Please try again later."
+            : "Failed to send email";
+    }
+    if (trimmed.startsWith("{")) {
+        try {
+            const parsed = JSON.parse(trimmed) as { message?: string; error?: string };
+            return parsed.message || parsed.error || "Failed to send email";
+        } catch {
+            // Fall through to HTML / plain-text handling
+        }
+    }
+    if (/<html|<!doctype/i.test(trimmed)) {
+        return "Failed to send email. The email service could not be reached.";
+    }
+    return trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
 }
 
 export function EstimateEmailPreviewModal({
@@ -114,38 +136,49 @@ export function EstimateEmailPreviewModal({
     }, [to, cc, subject, body]);
 
     const handleSend = useCallback(async () => {
+        if (sending) return;
         if (!validate()) return;
 
         setSending(true);
         try {
-            // Step 1: Generate the estimate PDF
-            const pdfBlob = await generateEstimatePdfBlob(estimate, eventName);
+            let pdfBlob: Blob;
+            try {
+                pdfBlob = await generateEstimatePdfBlob(estimate, eventName);
+            } catch (pdfError) {
+                console.error("Failed to generate estimate PDF:", pdfError);
+                throw new Error("Failed to generate the estimate PDF. Please try again.");
+            }
 
-            // Step 2: Build FormData for the API
+            if (!pdfBlob || pdfBlob.size === 0) {
+                throw new Error("Generated estimate PDF is empty");
+            }
+
+            const pdfFile = new File([pdfBlob], `${model.filenameBase}.pdf`, {
+                type: pdfBlob.type || "application/pdf",
+            });
+
             const formData = new FormData();
-
             const toList = parseEmailList(to);
             const ccList = parseEmailList(cc);
 
+            // One address per part. Do not join with commas: Spring's mail helper
+            // treats a comma-separated string as an illegal single address.
             toList.forEach(email => formData.append("to", email));
             ccList.forEach(email => formData.append("cc", email));
             formData.append("subject", subject.trim());
             formData.append("body", body.trim());
-            formData.append("pdfFile", pdfBlob, `${model.filenameBase}.pdf`);
+            formData.append("pdfFile", pdfFile);
 
-            // Step 3: Send the email
-            const endpoint = "/api/notifications/send-email";
-            const res = await apiRequest(endpoint, {
+            const res = await apiRequest(API_ENDPOINTS.notifications.sendEmail, {
                 method: "POST",
                 body: formData,
             });
 
             if (!res.ok) {
-                const errorText = await res.text().catch(() => "Unknown error");
-                throw new Error(errorText);
+                const errorText = await res.text().catch(() => "");
+                throw new Error(formatSendEmailError(errorText, res.status));
             }
 
-            // Step 4: Success flow - close modal, show toast, update status
             toast.success("Estimate sent to client successfully");
             onSuccess();
             onClose();
@@ -153,7 +186,6 @@ export function EstimateEmailPreviewModal({
             console.error("Failed to send estimate email:", error);
             const message = error instanceof Error ? error.message : "Failed to send email";
             toast.error(message);
-            // Keep modal open on failure
         } finally {
             setSending(false);
         }
@@ -166,6 +198,7 @@ export function EstimateEmailPreviewModal({
         body,
         model.filenameBase,
         validate,
+        sending,
         onSuccess,
         onClose,
     ]);
@@ -206,29 +239,26 @@ export function EstimateEmailPreviewModal({
                 <ModalBody>
                     <div className="space-y-4">
                         {/* To field */}
-                        <Input
-                            label={
-                                <span>
-                                    To <span className="text-error">*</span>
-                                </span>
-                            }
+                        <EmailTagInput
+                            label="To"
                             placeholder="client@example.com"
-                            value={to}
-                            onChange={e => {
-                                setTo(e.target.value);
+                            value={parseEmailList(to)}
+                            onChange={tags => {
+                                setTo(tags.join(", "));
                                 if (toError) setToError(null);
                             }}
                             error={toError ?? undefined}
                             disabled={sending}
+                            required
                         />
 
                         {/* CC field */}
-                        <Input
+                        <EmailTagInput
                             label="CC"
                             placeholder="cc@example.com"
-                            value={cc}
-                            onChange={e => {
-                                setCc(e.target.value);
+                            value={parseEmailList(cc)}
+                            onChange={tags => {
+                                setCc(tags.join(", "));
                                 if (ccError) setCcError(null);
                             }}
                             error={ccError ?? undefined}

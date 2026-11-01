@@ -1,36 +1,73 @@
-import { BACKEND_URL } from "@/lib/api/backend-config";
+import { getBackendHeaders, getBackendUrl } from "@/lib/api/api-server";
 import { NextRequest, NextResponse } from "next/server";
+
+function appendAddressFields(incoming: FormData, outbound: FormData, key: string) {
+    const addresses = incoming
+        .getAll(key)
+        .flatMap(value => String(value).split(/[,;]/))
+        .map(value => value.trim().replace(/^mailto:/i, ""))
+        .filter(value => value.length > 0);
+
+    for (const address of addresses) {
+        outbound.append(key, address);
+    }
+}
 
 export async function POST(req: NextRequest) {
     try {
-        console.log("Received send-email request via Next.js API Route");
+        const incoming = await req.formData();
+        const outbound = new FormData();
 
-        // Parse incoming request as FormData
-        const formData = await req.formData();
-
-        // Extract headers
-        const authHeader = req.headers.get("Authorization") || req.headers.get("X-Auth-Token");
-
-        console.log("Auth Header present:", !!authHeader);
-
-        // Forward to Spring Boot backend - Use 127.0.0.1 (not localhost) for consistency
-        const url = `${BACKEND_URL}/notifications/send-email`;
-        // When sending FormData with fetch, do NOT manually set Content-Type.
-        // The browser/fetch automatically sets it with the correct boundary.
-        const response = await fetch(url, {
-            method: "POST",
-            body: formData, // passing FormData directly lets fetch set the content-type with boundary
-            headers: authHeader ? { Authorization: authHeader } : undefined,
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Backend failed with status ${response.status}: ${errorText}`);
-            return new NextResponse(errorText, { status: response.status });
+        const pdfPart = incoming.get("pdfFile");
+        if (!(pdfPart instanceof File) || pdfPart.size === 0) {
+            return new NextResponse("PDF attachment is required", { status: 400 });
         }
 
+        for (const [key, value] of incoming.entries()) {
+            if (key === "pdfFile" || key === "to" || key === "cc" || key === "subject" || key === "body") continue;
+            if (typeof value === "string" && value.trim().length === 0) continue;
+            outbound.append(key, value);
+        }
+
+        const subject = incoming.get("subject");
+        if (typeof subject === "string" && subject.trim().length > 0) {
+            outbound.append("subject", subject.trim());
+        }
+
+        const body = incoming.get("body");
+        if (typeof body === "string" && body.trim().length > 0) {
+            outbound.append("body", body.trim());
+        }
+
+        appendAddressFields(incoming, outbound, "to");
+        appendAddressFields(incoming, outbound, "cc");
+
+        if (!outbound.has("to")) {
+            return new NextResponse("At least one valid To address is required", { status: 400 });
+        }
+
+        const filename = pdfPart.name?.toLowerCase().endsWith(".pdf")
+            ? pdfPart.name
+            : "estimate.pdf";
+        outbound.append(
+            "pdfFile",
+            new File([pdfPart], filename, { type: pdfPart.type || "application/pdf" }),
+        );
+
+        // Force IPv4 so Node does not resolve localhost to ::1 while Spring listens on 127.0.0.1
+        const backendUrl = getBackendUrl().replace("localhost", "127.0.0.1");
+        const response = await fetch(`${backendUrl}/notifications/send-mail`, {
+            method: "POST",
+            body: outbound,
+            headers: getBackendHeaders(req),
+        });
+
         const result = await response.text();
-        console.log("Backend success:", result);
+        if (!response.ok) {
+            console.error(`Backend failed with status ${response.status}: ${result}`);
+            return new NextResponse(result || "Failed to send email", { status: response.status });
+        }
+
         return new NextResponse(result, { status: 200 });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";

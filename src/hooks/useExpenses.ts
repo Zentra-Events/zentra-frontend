@@ -18,8 +18,8 @@ import type { MenuItem } from "@/types";
 /* ------------------------------------------------------------------ */
 
 export const EXPENSE_TYPE_LABELS: Record<string, string> = {
-    ESTIMATED_EXPENSE: "Estimated Expense",
-    ACTUAL_EXPENSE: "Actual Expense",
+    ESTIMATED_EXPENSE: "Estimated",
+    ACTUAL_EXPENSE: "Actual",
 };
 
 export const EXPENSE_STATUS_META: Record<

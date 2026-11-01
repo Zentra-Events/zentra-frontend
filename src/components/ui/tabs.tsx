@@ -41,7 +41,7 @@ export function Tabs({ items, value, onChange, className }: TabsProps) {
                         disabled={item.disabled}
                         onClick={() => !item.disabled && onChange(item.key)}
                         className={cn(
-                            "flex items-center gap-2 pb-2 text-sm font-medium transition-colors",
+                            "flex items-center gap-2 pb-2 text-sm font-medium transition-colors cursor-pointer",
                             isActive
                                 ? "border-b-3 border-primary text-foreground"
                                 : "text-muted-foreground hover:text-foreground",

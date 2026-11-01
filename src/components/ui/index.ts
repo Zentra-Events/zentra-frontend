@@ -14,6 +14,7 @@ export { FormikFieldSelect } from "./formik-field-select";
 export { FormikFieldInput } from "./formik-field-input";
 export { Card, CardHeader, CardContent, CardFooter } from "./card";
 export { Badge } from "./badge";
+export { EmailTagInput } from "./email-tag-input";
 // `CreatableSelectField` is dependency-free (no react-select), so it is safe
 // to re-export through the barrel.
 export { CreatableSelectField } from "./creatable-select";

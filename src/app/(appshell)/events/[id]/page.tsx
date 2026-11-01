@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { ProjectPlanningModal } from "@/components/project-planning-modal";
 import { EstimateVersionsView } from "@/components/estimate-versions-view";
-import { ExpensesListModal } from "@/components/expenses-list-modal";
+import { EventFinanceModal } from "@/components/event-finance-modal";
 import { ManageBillingModal } from "@/components/billing/manage-billing-modal";
 import { ChecklistModal } from "@/components/checklist-modal";
 import { ChecklistPreviewModal } from "@/components/checklist-preview-modal";
@@ -46,7 +46,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     const [eventData, setEventData] = useState<EventResponse | null>(null);
     const [isProjectPlanningModalOpen, setIsProjectPlanningModalOpen] = useState(false);
     const [isEstimateHistoryModalOpen, setIsEstimateHistoryModalOpen] = useState(false);
-    const [isExpensesListModalOpen, setIsExpensesListModalOpen] = useState(false);
+    const [isEventFinanceModalOpen, setIsEventFinanceModalOpen] = useState(false);
     const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
     const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
     const [isChecklistPreviewModalOpen, setIsChecklistPreviewModalOpen] = useState(false);
@@ -281,7 +281,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             title: "Expenses",
             description: "Track invoices, vendor payments, and overheads.",
             linkLabel: "Manage Expenses",
-            onClick: () => setIsExpensesListModalOpen(true),
+            onClick: () => setIsEventFinanceModalOpen(true),
         },
         {
             id: "billing",
@@ -652,12 +652,11 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                 />
             )}
 
-            <ExpensesListModal
-                isOpen={isExpensesListModalOpen}
-                onClose={() => setIsExpensesListModalOpen(false)}
+            <EventFinanceModal
+                isOpen={isEventFinanceModalOpen}
+                onClose={() => setIsEventFinanceModalOpen(false)}
                 eventData={eventData}
                 eventID={eventData?.eventID || id}
-                onSaved={fetchEventData}
             />
 
             <ManageBillingModal

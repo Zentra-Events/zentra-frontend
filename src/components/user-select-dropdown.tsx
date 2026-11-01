@@ -22,6 +22,7 @@ export function UserSelectDropdown({
     placeholder,
     isDisabled = false,
     isClearable = true,
+    isCreatable = true,
     smallLabel,
     wrapperClassName,
     inputClassName,
@@ -36,6 +37,8 @@ export function UserSelectDropdown({
     placeholder?: string;
     isDisabled?: boolean;
     isClearable?: boolean;
+    /** Whether typing a new name creates a custom option. Defaults to true. */
+    isCreatable?: boolean;
     smallLabel?: boolean;
     wrapperClassName?: string;
     inputClassName?: string;
@@ -43,9 +46,14 @@ export function UserSelectDropdown({
     /** Optional validation error shown under the field. */
     error?: string;
 }) {
-    const { users, loading } = useUsers();
+    const { users, loading, error: usersError } = useUsers();
     const [inputValue, setInputValue] = useState(value ?? "");
     const [isFocused, setIsFocused] = useState(false);
+
+    const options = useMemo(() => {
+        if (usersError) return [{ value: "", label: "Failed to load users" }];
+        return users.map(user => ({ value: user.name, label: user.name })).filter(o => o.value);
+    }, [users, usersError]);
 
     // Sync external value changes (edit mode, reset, clear) while the user
     // is not actively typing.
@@ -53,11 +61,7 @@ export function UserSelectDropdown({
         if (!isFocused) setInputValue(value ?? "");
     }, [value, isFocused]);
 
-    // Display user names only.
-    const options = useMemo(
-        () => users.map(user => ({ value: user.name, label: user.name })).filter(o => o.value),
-        [users],
-    );
+
 
     // While typing, show only the search text (no selected chip) so keystrokes
     // never get hidden behind a stale selection. When blurred, show the
@@ -83,11 +87,11 @@ export function UserSelectDropdown({
                 setInputValue(selectedValue);
                 onChange(selectedValue);
             }}
-            onCreateOption={createdValue => {
+            onCreateOption={isCreatable ? createdValue => {
                 const trimmed = createdValue.trim();
                 setInputValue(trimmed);
                 onChange(trimmed);
-            }}
+            } : undefined}
             onFocus={() => setIsFocused(true)}
             onBlur={() => {
                 setIsFocused(false);

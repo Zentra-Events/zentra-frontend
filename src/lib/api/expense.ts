@@ -20,6 +20,8 @@ function toExpenseList(payload: unknown): Expense[] {
     return toList<Expense>(payload, ["expenses"]);
 }
 
+type ExpensePayload = Omit<Expense, "id" | "receipt" | "receiptFileName" | "receiptContentType">;
+
 /** Fetch expenses across all events (global listing). */
 export async function fetchAllExpenses(): Promise<Expense[]> {
     const res = await apiRequest(API_ENDPOINTS.expenses.list);
@@ -41,21 +43,48 @@ export async function fetchEventExpenses(eventID: string): Promise<Expense[]> {
 }
 
 /** Create a new expense. */
-export async function createExpense(body: unknown): Promise<Response> {
+export async function createExpense(body: ExpensePayload): Promise<Response> {
     return apiRequest(API_ENDPOINTS.expenses.list, {
         method: "POST",
-        body: typeof body === "string" ? body : JSON.stringify(body),
+        body: JSON.stringify(body),
     });
 }
 
 /** Update an existing expense. */
 export async function updateExpense(
     id: string | number,
-    body: unknown
+    body: ExpensePayload,
 ): Promise<Response> {
     return apiRequest(API_ENDPOINTS.expenses.update(id), {
         method: "PUT",
-        body: typeof body === "string" ? body : JSON.stringify(body),
+        body: JSON.stringify(body),
+    });
+}
+
+/** Upload or replace an expense receipt. */
+export async function uploadExpenseReceipt(
+    id: string | number,
+    file: File,
+): Promise<Response> {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiRequest(API_ENDPOINTS.expenses.receipt(id), {
+        method: "POST",
+        body: formData,
+    });
+}
+
+/** Fetch an expense receipt as raw bytes from the backend. */
+export async function fetchExpenseReceipt(id: string | number): Promise<Response> {
+    return apiRequest(API_ENDPOINTS.expenses.receipt(id), {
+        method: "GET",
+    });
+}
+
+/** Remove an expense receipt without changing the expense details. */
+export async function deleteExpenseReceipt(id: string | number): Promise<Response> {
+    return apiRequest(API_ENDPOINTS.expenses.receipt(id), {
+        method: "DELETE",
     });
 }
 

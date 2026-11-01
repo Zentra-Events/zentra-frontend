@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, type ReactNode } from "react";
+import React, { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 
@@ -8,11 +8,17 @@ import { Button } from "@/components/ui/button";
 import { FormikFieldInput } from "@/components/ui/formik-field-input";
 import { FormikFieldSelect } from "@/components/ui/formik-field-select";
 import { FormikFieldTextArea } from "@/components/ui/formik-field-textarea";
+import { UserSelectDropdown } from "@/components/user-select-dropdown";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
-import { createExpense, updateExpense } from "@/lib/api/expense";
+import {
+    createExpense,
+    deleteExpenseReceipt,
+    updateExpense,
+    uploadExpenseReceipt,
+} from "@/lib/api/expense";
 import { useAuth } from "@/context/auth";
 import { toast } from "sonner";
-import { Info, Receipt } from "lucide-react";
+import { FileText, Info, Receipt } from "lucide-react";
 import { hasPermission } from "@/lib/utils/permissions";
 import type { Expense } from "@/types/expense";
 
@@ -34,6 +40,10 @@ interface ExpenseItem {
 
 interface ExpensesModalFormValues {
     expenses: ExpenseItem[];
+}
+
+interface ReceiptFileInfo {
+    file: File;
 }
 
 interface ExpensesModalProps {
@@ -61,6 +71,10 @@ const EXPENSE_STATUS_OPTIONS: { value: ExpenseItem["expenseStatus"]; label: stri
     { value: "ESTIMATE_APPROVED", label: "Estimate Approved" },
     { value: "ESTIMATE_REJECTED", label: "Estimate Rejected" },
 ];
+
+const ACCEPTED_FILE_TYPES = ".jpg,.jpeg,.png,.pdf";
+const MAX_FILE_SIZE_MB = 25;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const initialExpense: ExpenseItem = {
     itemName: "",
@@ -146,6 +160,12 @@ function StepBadge({ children }: { children: ReactNode }) {
     );
 }
 
+function fileSizeLabel(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 export function ExpensesModal({
     isOpen,
     onClose,
@@ -155,15 +175,32 @@ export function ExpensesModal({
     editingExpense,
 }: ExpensesModalProps) {
     const { user } = useAuth();
-    // Only admin and super admin roles can change expense type/status
     const canEdit = hasPermission(user, undefined, ["w:expenses", "a:expenses"]);
     const [initialExpenses, setInitialExpenses] = useState<ExpenseItem[]>([]);
+
+    // Receipt file state: maps expense index -> selected file info
+    const [receiptFiles, setReceiptFiles] = useState<Map<number, ReceiptFileInfo>>(
+        new Map(),
+    );
+    // Tracks whether to remove an existing receipt on edit (index -> true)
+    const [removeReceipt, setRemoveReceipt] = useState<Map<number, boolean>>(new Map());
+    // Keep only receipt metadata; the saved binary is never needed for updates.
+    const [existingReceipts, setExistingReceipts] = useState<
+        Map<number, { fileName: string; contentType: string }>
+    >(new Map());
 
     useEffect(() => {
         if (!isOpen) {
             setInitialExpenses([]);
+            setReceiptFiles(new Map());
+            setRemoveReceipt(new Map());
+            setExistingReceipts(new Map());
             return;
         }
+
+        setReceiptFiles(new Map());
+        setRemoveReceipt(new Map());
+        setExistingReceipts(new Map());
 
         // Edit mode: prefill the form with the single expense being edited.
         if (editingExpense) {
@@ -177,8 +214,6 @@ export function ExpensesModal({
                             ? String(editingExpense.amount)
                             : String(editingExpense.amount || ""),
                     comments: editingExpense.comments || "",
-                    // `expenseDescription` carries the expense type enum. Fall back to
-                    // ESTIMATED_EXPENSE for records that did not store an enum value.
                     expenseDescription: isExpenseTypeEnum(storedDescription)
                         ? storedDescription
                         : "ESTIMATED_EXPENSE",
@@ -190,6 +225,21 @@ export function ExpensesModal({
                     lastUpdateddDate: editingExpense.lastUpdateddDate || undefined,
                 },
             ]);
+
+            // Show existing receipt if present
+            if (editingExpense.receiptFileName || editingExpense.receiptContentType) {
+                setExistingReceipts(
+                    new Map([
+                        [
+                            0,
+                            {
+                                fileName: editingExpense.receiptFileName || "receipt",
+                                contentType: editingExpense.receiptContentType || "application/octet-stream",
+                            },
+                        ],
+                    ]),
+                );
+            }
             return;
         }
 
@@ -206,8 +256,6 @@ export function ExpensesModal({
                                 ? String(exp.amount)
                                 : String(exp.amount || ""),
                         comments: exp.comments || "",
-                        // `expenseDescription` carries the expense type enum. Fall back to
-                        // ESTIMATED_EXPENSE for records that did not store an enum value.
                         expenseDescription: isExpenseTypeEnum(storedDescription)
                             ? storedDescription
                             : "ESTIMATED_EXPENSE",
@@ -225,43 +273,117 @@ export function ExpensesModal({
         }
     }, [isOpen, eventData, editingExpense]);
 
-    const persistExpenseUpdate = async (exp: ExpenseItem, expenseId: string | undefined) => {
-        const eventId = String(eventID || eventData?.id || "");
-        if (!eventId) {
-            toast.error("Event ID is missing. Please refresh the page and try again.");
-            return;
-        }
+    const handleFileChange = useCallback(
+        (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
 
-        if (!expenseId) {
-            toast.error(
-                "This expense cannot be updated because the API did not return an expense ID.",
-            );
-            return;
-        }
+            // Validate file type
+            const validTypes = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+            if (!validTypes.includes(file.type)) {
+                toast.error(
+                    `Invalid file type "${file.type}". Only JPG, JPEG, PNG, and PDF files are allowed.`,
+                );
+                e.target.value = "";
+                return;
+            }
 
-        // Send the request body using the exact backend property names.
-        const payload = {
-            itemName: exp.itemName,
-            eventID: eventId,
-            amount: parseFloat(exp.amount) || 0,
-            comments: exp.comments || "",
-            poc: exp.poc || "",
-            expenseDescription: exp.expenseDescription,
-            expenseStatus: exp.expenseStatus,
-            createdDate: exp.createdDate,
-            lastUpdateddDate: new Date().toISOString(),
-        };
+            // Validate file size
+            if (file.size > MAX_FILE_SIZE_BYTES) {
+                toast.error(`File too large. Maximum size is ${MAX_FILE_SIZE_MB} MB.`);
+                e.target.value = "";
+                return;
+            }
 
-        const res = await updateExpense(expenseId, payload);
+            setReceiptFiles(prev => {
+                const next = new Map(prev);
+                next.set(index, { file });
+                return next;
+            });
+        },
+        [],
+    );
 
-        if (!res.ok) {
-            throw new Error(`Failed to update expense "${exp.itemName}" (status ${res.status})`);
-        }
+    const removeReceiptFile = useCallback((index: number) => {
+        setReceiptFiles(prev => {
+            const next = new Map(prev);
+            next.delete(index);
+            return next;
+        });
+    }, []);
 
-        toast.success("Expense updated successfully");
-        onSave();
-        onClose();
-    };
+    const removeExistingReceipt = useCallback((index: number) => {
+        setRemoveReceipt(prev => {
+            const next = new Map(prev);
+            next.set(index, true);
+            return next;
+        });
+        setReceiptFiles(prev => {
+            const next = new Map(prev);
+            next.delete(index);
+            return next;
+        });
+        setExistingReceipts(prev => {
+            const next = new Map(prev);
+            next.delete(index);
+            return next;
+        });
+    }, []);
+
+    const persistExpenseUpdate = useCallback(
+        async (exp: ExpenseItem, expenseId: string | undefined) => {
+            const eventId = String(eventID || eventData?.id || "");
+            if (!eventId) {
+                toast.error("Event ID is missing. Please refresh the page and try again.");
+                return;
+            }
+
+            if (!expenseId) {
+                toast.error(
+                    "This expense cannot be updated because the API did not return an expense ID.",
+                );
+                return;
+            }
+
+            const payload = {
+                itemName: exp.itemName,
+                eventID: eventId,
+                amount: parseFloat(exp.amount) || 0,
+                comments: exp.comments || "",
+                poc: exp.poc || "",
+                expenseDescription: exp.expenseDescription,
+                expenseStatus: exp.expenseStatus,
+                createdDate: exp.createdDate,
+                lastUpdateddDate: new Date().toISOString(),
+            };
+            const res = await updateExpense(expenseId, payload);
+            if (!res.ok) {
+                throw new Error(`Failed to update expense "${exp.itemName}" (status ${res.status})`);
+            }
+
+            const receiptInfo = receiptFiles.get(0);
+            if (receiptInfo) {
+                const receiptRes = await uploadExpenseReceipt(expenseId, receiptInfo.file);
+                if (!receiptRes.ok) {
+                    throw new Error(
+                        `Expense updated, but receipt replacement failed (status ${receiptRes.status})`,
+                    );
+                }
+            } else if (removeReceipt.has(0)) {
+                const receiptRes = await deleteExpenseReceipt(expenseId);
+                if (!receiptRes.ok) {
+                    throw new Error(
+                        `Expense updated, but receipt removal failed (status ${receiptRes.status})`,
+                    );
+                }
+            }
+
+            toast.success("Expense updated successfully");
+            onSave();
+            onClose();
+        },
+        [eventID, eventData, receiptFiles, removeReceipt, onSave, onClose],
+    );
 
     const handleSave = async (values: ExpensesModalFormValues) => {
         try {
@@ -289,8 +411,9 @@ export function ExpensesModal({
                 return;
             }
 
-            // POST each expense to the expenses endpoint with the expected request body
-            for (const exp of completeExpenses) {
+            // POST each expense to the expenses endpoint
+            for (let i = 0; i < completeExpenses.length; i++) {
+                const exp = completeExpenses[i];
                 const payload = {
                     itemName: exp.itemName,
                     eventID: eventId,
@@ -301,13 +424,37 @@ export function ExpensesModal({
                     expenseStatus: exp.expenseStatus,
                     createdDate: new Date().toISOString(),
                 };
-
                 const res = await createExpense(payload);
-
                 if (!res.ok) {
                     throw new Error(
                         `Failed to save expense "${exp.itemName}" (status ${res.status})`,
                     );
+                }
+
+                const receiptInfo = receiptFiles.get(i);
+                if (receiptInfo) {
+                    const createdExpense: unknown = await res.json();
+                    if (
+                        typeof createdExpense !== "object" ||
+                        createdExpense === null ||
+                        !("id" in createdExpense) ||
+                        typeof createdExpense.id !== "string" ||
+                        !createdExpense.id
+                    ) {
+                        throw new Error(
+                            `Expense "${exp.itemName}" was saved, but its ID was not returned for receipt upload.`,
+                        );
+                    }
+
+                    const receiptRes = await uploadExpenseReceipt(
+                        createdExpense.id,
+                        receiptInfo.file,
+                    );
+                    if (!receiptRes.ok) {
+                        throw new Error(
+                            `Expense "${exp.itemName}" was saved, but receipt upload failed (status ${receiptRes.status}).`,
+                        );
+                    }
                 }
             }
 
@@ -346,7 +493,7 @@ export function ExpensesModal({
                 validationSchema={validationSchema}
                 onSubmit={handleSave}
             >
-                {({ isSubmitting, values }) => (
+                {({ isSubmitting, values, setFieldValue }) => (
                     <Form noValidate>
                         <ModalBody className="space-y-5">
                             {values.expenses.map((_, index) => (
@@ -416,18 +563,133 @@ export function ExpensesModal({
                                             />
                                         </div>
 
-                                        <FormikFieldInput
-                                            name={`expenses[${index}].poc`}
-                                            label="POC"
-                                            placeholder="Point of Contact"
+                                        <UserSelectDropdown
+                                            isCreatable={false}
+                                            value={values.expenses[index].poc || ""}
+                                            onChange={name =>
+                                                setFieldValue(`expenses[${index}].poc`, name)
+                                            }
+                                            label={
+                                                <span className="inline-flex items-center gap-1">
+                                                    Spent By
+                                                </span>
+                                            }
+                                            placeholder="Select user"
+                                            isDisabled={!canEdit}
                                         />
 
                                         <FormikFieldTextArea
                                             name={`expenses[${index}].comments`}
                                             label="Comments"
                                             placeholder="Add any notes..."
-                                            rows={3}
+                                            rows={6}
                                         />
+
+                                        {/* Receipt / Bill Attachment Section */}
+                                        <section
+                                            className="mt-4 rounded-xl border border-border bg-surface p-4"
+                                        >
+                                            <SectionHeader
+                                                id={`expense-${index}-receipt-heading`}
+                                                icon={<Receipt size={18} aria-hidden="true" />}
+                                                title="Receipt / Bill Attachment"
+                                                description="Optional. Upload a receipt or bill (JPG, JPEG, PNG, PDF). Max 10 MB."
+                                                badge={
+                                                    editingExpense &&
+                                                    existingReceipts.has(index)
+                                                        ? <StepBadge>Existing</StepBadge>
+                                                        : null
+                                                }
+                                            />
+                                            <div className="mt-3 space-y-2">
+                                                {/* Existing receipt display (edit mode) */}
+                                                {editingExpense && existingReceipts.has(index) && (
+                                                    <div className="flex items-center gap-2 rounded-md border border-border-hover bg-muted/50 p-3">
+                                                        <FileText size={16} className="text-primary shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm text-foreground truncate">
+                                                                {existingReceipts.get(index)?.fileName}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground truncate">
+                                                                {existingReceipts.get(index)?.contentType}
+                                                            </p>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                removeExistingReceipt(index)
+                                                            }
+                                                            className="h-8 px-2"
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </div>
+                                                )}
+
+                                                {/* File input */}
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="file"
+                                                        id={`expense-receipt-${index}`}
+                                                        accept={ACCEPTED_FILE_TYPES}
+                                                        onChange={e => handleFileChange(index, e)}
+                                                        disabled={isSubmitting}
+                                                        className="sr-only"
+                                                    />
+                                                    <label
+                                                        htmlFor={`expense-receipt-${index}`}
+                                                        className="inline-flex items-center gap-2 rounded-md border border-border-hover bg-muted/50 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-accent cursor-pointer"
+                                                    >
+                                                        <span className="shrink-0">
+                                                            {receiptFiles.has(index) ? (
+                                                                <span className="text-primary">
+                                                                    Replace
+                                                                </span>
+                                                            ) : (
+                                                                <span>Attach Receipt</span>
+                                                            )}
+                                                        </span>
+                                                    </label>
+                                                    {receiptFiles.has(index) && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => removeReceiptFile(index)}
+                                                            className="h-8 px-2 text-destructive hover:text-destructive"
+                                                            disabled={isSubmitting}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    )}
+                                                </div>
+
+                                                {/* Selected file preview */}
+                                                {receiptFiles.has(index) && (
+                                                    <div className="flex items-center gap-2 rounded-md border border-border-hover bg-muted/50 p-3">
+                                                        <FileText size={16} className="text-primary shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm text-foreground truncate">
+                                                                {receiptFiles.get(index)?.file.name}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {fileSizeLabel(
+                                                                    receiptFiles.get(index)?.file.size || 0,
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {!editingExpense && !existingReceipts.has(index) && !receiptFiles.has(index) && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        No receipt attached.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </section>
                                     </div>
                                 </section>
                             ))}

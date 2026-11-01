@@ -552,6 +552,7 @@ export function ExecutionChecklistModal({
                 autoFocus={false}
                 headerActions={
                     <UserSelectDropdown
+                        isCreatable={false}
                         value={checklistAssignedTo}
                         onChange={setchecklistAssignedTo}
                         placeholder="Assigned To"
