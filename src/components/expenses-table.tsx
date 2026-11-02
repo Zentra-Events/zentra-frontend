@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { Badge, Button, MenuList, Table, Tooltip } from "@/components/ui";
 import { MoreVerticalIcon, PencilIcon, TrashIcon } from "@/components/ui/icons";
-import { FileText } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import { formatCurrency, truncate } from "@/lib/utils";
 import { formatShortDate } from "@/lib/utils/date";
 import type { Column } from "@/components/ui/table";
@@ -45,9 +45,7 @@ const DEFAULT_COLUMNS: Column<Expense>[] = [
         key: "comments",
         header: "Comments",
         render: item => (
-            <Tooltip content={item.comments || ""}>
-                <span>{truncate(item.comments ?? "", 10) || "—"}</span>
-            </Tooltip>
+            item.comments ? <Tooltip content={item.comments}>{truncate(item.comments, 10)}</Tooltip> : "—"
         ),
         maxWidth: "240px",
     },
@@ -88,6 +86,8 @@ interface ExpensesTableProps {
     onDelete?: (expense: Expense) => void;
     /** Callback when a user chooses View Receipt on a row. */
     onViewReceipt?: (expense: Expense) => void;
+    /** ID of the expense whose receipt is currently being fetched (shows a loading indicator only in that row's button). */
+    viewReceiptLoadingExpenseId?: string | null;
     /** Message shown when there are no rows. */
     emptyMessage?: string;
     className?: string;
@@ -99,9 +99,14 @@ export function ExpensesTable({
     onEdit,
     onDelete,
     onViewReceipt,
+    viewReceiptLoadingExpenseId,
     emptyMessage = "No expenses found.",
     className,
 }: ExpensesTableProps) {
+    const isLoadingReceipt = useMemo(
+        () => (item: Expense) => item.id === viewReceiptLoadingExpenseId,
+        [viewReceiptLoadingExpenseId],
+    );
     const receiptColumn: Column<Expense> = {
         key: "receipt",
         header: "Receipt",
@@ -112,15 +117,21 @@ export function ExpensesTable({
             if (!hasReceipt) {
                 return <span className="text-muted-foreground">—</span>;
             }
+            const loading = isLoadingReceipt(item);
             return (
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={loading}
                     onClick={() => onViewReceipt?.(item)}
                     className="h-8 w-8 p-0 text-xs"
                 >
-                    <FileText size={12} />
+                    {loading ? (
+                        <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                        <FileText size={12} />
+                    )}
                 </Button>
             );
         },
@@ -162,15 +173,6 @@ export function ExpensesTable({
                 },
             ];
 
-            if (Boolean(item.receipt && item.receiptFileName)) {
-                items.push({
-                    key: "view-receipt",
-                    label: "View Receipt",
-                    icon: <FileText size={16} />,
-                    onClick: () => onViewReceipt?.(item),
-                });
-            }
-
             return (
                 <div className="flex justify-end">
                     <MenuList
@@ -185,7 +187,7 @@ export function ExpensesTable({
                 </div>
             );
         },
-        [onEdit, onDelete, onViewReceipt],
+        [onEdit, onDelete, onViewReceipt, viewReceiptLoadingExpenseId],
     );
 
     const columns: Column<Expense>[] = useMemo(() => {

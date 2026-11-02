@@ -21,6 +21,7 @@ import {
 import { DetailTopBar } from "@/components/enquiries/detail/detail-topbar";
 import { EnquiryStatusTracker } from "@/components/enquiries/detail/enquiry-status-tracker";
 import { DetailInfo } from "@/components/enquiries/detail/detail-info";
+import { DetailHighLevelRequirement } from "@/components/enquiries/detail/detail-high-level-requirement";
 import { DetailContacts } from "@/components/enquiries/detail/detail-contacts";
 import { DetailNotes } from "@/components/enquiries/detail/detail-timeline";
 import { DetailSideTop } from "@/components/enquiries/detail/detail-side-top";
@@ -339,6 +340,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
                 <div className="min-w-0 space-y-3">
                     <DetailInfo e={enquiry} />
                     <DetailContacts e={enquiry} />
+                    <DetailHighLevelRequirement e={enquiry} />
                     <DetailNotes
                         notes={notes}
                         loading={false}

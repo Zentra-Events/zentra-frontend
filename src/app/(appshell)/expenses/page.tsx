@@ -36,6 +36,7 @@ export default function ExpensesPage() {
     /* ------------------------------------------------------------------ */
 
     const [viewReceiptOpen, setViewReceiptOpen] = useState(false);
+    const [viewReceiptLoadingExpenseId, setViewReceiptLoadingExpenseId] = useState<string | null>(null);
     const [viewReceiptData, setViewReceiptData] = useState<{
         receipt: string | null;
         receiptFileName: string | null;
@@ -245,6 +246,7 @@ export default function ExpensesPage() {
                 toast.error("Cannot view receipt: expense ID is missing.");
                 return;
             }
+            setViewReceiptLoadingExpenseId(expense.id);
             try {
                 const res = await fetchExpenseReceipt(expense.id);
                 if (!res.ok) {
@@ -269,6 +271,8 @@ export default function ExpensesPage() {
             } catch (err) {
                 console.error("Failed to load receipt:", err);
                 toast.error("Failed to load receipt.");
+            } finally {
+                setViewReceiptLoadingExpenseId(null);
             }
         },
         [fetchExpenseReceipt],
@@ -391,6 +395,7 @@ export default function ExpensesPage() {
                                 onEdit={openForm}
                                 onDelete={selectForDelete}
                                 onViewReceipt={handleViewReceipt}
+                                viewReceiptLoadingExpenseId={viewReceiptLoadingExpenseId}
                                 emptyMessage={
                                     expenses.length === 0
                                         ? "No expenses found."

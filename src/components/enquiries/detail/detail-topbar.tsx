@@ -28,7 +28,6 @@ export function DetailTopBar(p: P) {
     const by = (e as unknown as { createdBy?: string }).createdBy || e.assignee || "Rahul";
     const num = `ENQ-${String(e.id).padStart(4, "0").slice(-4)}`;
     const badge = statusBadgeMeta(p.normStatus);
-    // Backend priority: LOW | MEDIUM | HIGH | URGENT (null when not set).
     const priority = (p.priority || e.priority || "").trim().toUpperCase();
     const priorityLabel =
         priority === "URGENT"
@@ -39,7 +38,7 @@ export function DetailTopBar(p: P) {
                 ? "Medium Priority"
                 : priority === "LOW"
                   ? "Low Priority"
-                  : "High Priority";
+                  : "Medium Priority";
     return (
         <>
             <div className="flex flex-wrap items-center justify-between gap-2">
