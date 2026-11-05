@@ -1,6 +1,8 @@
 import { GroupedCategory, GroupedItem, generateId } from "./artifact-utils";
 import { EventItem } from "@/types/event";
 
+export type { GroupedCategory, GroupedItem } from "./artifact-utils";
+
 export interface ComparisonItem extends GroupedItem {
     category: string;
     subCategory: string;

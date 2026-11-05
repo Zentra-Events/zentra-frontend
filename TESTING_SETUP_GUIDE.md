@@ -47,10 +47,24 @@ project-root/
 │   │       ├── browser.ts        # MSW browser worker for Playwright
 │   │       ├── next-navigation.ts # Mock for next/navigation
 │   │       └── next-image.tsx    # Mock for next/image
-│   ├── components/               # Application components
+│   ├── components/
+│   │   ├── __tests__/            # Component test files (e.g. create-enquiry-modal.test.tsx)
+│   │   └── create-enquiry-modal.tsx
+│   ├── context/
+│   │   ├── __tests__/            # Context test files (e.g. enquiries.test.tsx)
+│   │   └── enquiries.tsx
+│   ├── hooks/
+│   │   ├── __tests__/            # Hook test files (e.g. useEnquiryDetail.test.tsx)
+│   │   └── useEnquiryDetail.ts
+│   ├── lib/
+│   │   ├── utils/
+│   │   │   ├── __tests__/        # Utility test files (e.g. id.test.ts)
+│   │   │   └── id.ts
+│   │   ├── validations/
+│   │   │   ├── __tests__/        # Validation test files (e.g. enquiry.test.ts)
+│   │   │   └── enquiry.ts
+│   │   └── ...
 │   ├── app/                      # Next.js App Router
-│   ├── context/                  # React context providers (Auth, Theme, etc.)
-│   ├── lib/                      # Utility libraries (API, auth, storage)
 │   └── ...
 ├── tests/
 │   └── e2e/
@@ -98,6 +112,8 @@ Key settings:
 - **webServer**: Auto-starts `npm run dev` before tests, reuses existing server when not in CI
 
 ## Writing Unit and Component Tests
+
+Test files are colocated with their source in `__tests__` subdirectories (e.g. `src/components/__tests__/ComponentName.test.tsx`). The Vitest include pattern `src/**/*.{test,spec}.{ts,tsx}` picks them up automatically.
 
 ### Basic Unit Test
 
