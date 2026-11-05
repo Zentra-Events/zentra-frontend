@@ -46,3 +46,35 @@ BACKEND_URL=http://localhost:8080
 ```
 
 Adjust the port or host to match your backend. If the backend is not running or the address is unreachable, the API route will return a 502 (connection refused) or 504 (timeout) with a short diagnostic message.
+
+## Updating the User Manual
+
+The user manual at `docs/USER_MANUAL.md` is kept in sync with code changes using a git baseline. This avoids re-reading the entire codebase each time.
+
+### Setup (one time)
+
+1. Create the baseline file at the current HEAD:
+   ```bash
+   git rev-parse HEAD > .manual-baseline
+   ```
+
+### Update cycle (whenever code changes)
+
+1. See what changed since the last manual sync:
+   ```bash
+   bash scripts/sync-manual.sh
+   ```
+   This lists every file under `src/` touched since the baseline, plus commit summaries.
+
+2. Read only the listed files (not the whole codebase) and update `docs/USER_MANUAL.md` for any new or changed features.
+
+3. Advance the baseline so the next sync only surfaces new commits:
+   ```bash
+   git rev-parse HEAD > .manual-baseline
+   ```
+
+### Files involved
+
+- `scripts/sync-manual.sh` — diffs `src/` against `.manual-baseline` and prints changed files + commits.
+- `.manual-baseline` — stores the commit hash the manual was last synced to (can be gitignored if preferred).
+- `docs/USER_MANUAL.md` — the application user guide.
