@@ -34,11 +34,8 @@ import {
     ClipboardCheck,
     ChevronDown,
     ArrowRight,
-    Edit3,
-    CheckCircle2,
     FileText,
 } from "lucide-react";
-import { Button } from "@/components/ui";
 
 export default function EventDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = React.use(params);

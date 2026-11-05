@@ -1,7 +1,6 @@
 "use client";
 import { FileText, BadgeCheck } from "lucide-react";
 import { Enquiry } from "@/types/enquiry";
-import { Badge } from "@/components/ui";
 export function DetailHighLevelRequirement({ e }: { e: Enquiry }) {
     const req =
         e.highlvelRequirement ||

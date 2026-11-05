@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { WalletIcon, PlusIcon, ReceiptIcon } from "lucide-react";
+import { WalletIcon, ReceiptIcon } from "lucide-react";
 
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";

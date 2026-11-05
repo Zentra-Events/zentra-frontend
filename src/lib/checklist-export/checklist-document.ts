@@ -160,7 +160,7 @@ export function buildChecklistDocumentModel(
 
     appendCategoryRows(rows, groups, vendorList, inventoryList, 0);
 
-    const safeName = displayTitle.replace(/[^\w\-]+/g, "_").slice(0, 40);
+    const safeName = displayTitle.replace(/[^\w-]+/g, "_").slice(0, 40);
 
     return {
         title,

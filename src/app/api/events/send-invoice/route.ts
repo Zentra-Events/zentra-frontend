@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
         const result = await response.text();
         console.log("Backend success:", result);
         return new NextResponse(result, { status: 200 });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("API Route Proxy Error:", error);
-        return new NextResponse(`Internal Server Error: ${error.message}`, { status: 500 });
+        return new NextResponse(`Internal Server Error: ${error instanceof Error ? error.message : String(error)}`, { status: 500 });
     }
 }

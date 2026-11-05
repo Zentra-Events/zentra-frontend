@@ -309,7 +309,7 @@ export function buildEstimateDocumentModel(estimate: EstimateDto, eventName?: st
         },
     );
 
-    const safeName = displayTitle.replace(/[^\w\-]+/g, "_").slice(0, 40);
+    const safeName = displayTitle.replace(/[^\w-]+/g, "_").slice(0, 40);
     const version = estimate.version || "estimate";
 
     return {

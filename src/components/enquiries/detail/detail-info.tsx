@@ -1,7 +1,6 @@
 "use client";
 import { CalendarDays, MapPin } from "lucide-react";
 import { Enquiry } from "@/types/enquiry";
-import { cn } from "@/lib/utils/cn";
 import { formatScheduleRange } from "@/lib/utils/date";
 import { Badge } from "@/components/ui";
 export function DetailInfo({ e }: { e: Enquiry }) {
