@@ -143,6 +143,7 @@ export default function EstimatesPage() {
         (Partial<EstimateDto> & { enquiryId?: string }) | undefined
     >(undefined);
     const [versionsViewEnquiryId, setVersionsViewEnquiryId] = useState<string | null>(null);
+    const [returnToVersionsEnquiryId, setReturnToVersionsEnquiryId] = useState<string | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [estimateToDelete, setEstimateToDelete] = useState<EstimateRecord | null>(null);
 
@@ -219,7 +220,7 @@ export default function EstimatesPage() {
                 router.replace("/estimates");
             }
         }
-    }, [searchParams, router, estimates]);
+    }, [searchParams, router]);
 
     const counts = useMemo(() => {
         const counter: Record<StatusTab, number> = {
@@ -283,6 +284,10 @@ export default function EstimatesPage() {
         await refreshEstimates().catch(err =>
             console.warn("Failed to refresh estimates after save", err),
         );
+        if (returnToVersionsEnquiryId) {
+            setVersionsViewEnquiryId(returnToVersionsEnquiryId);
+            setReturnToVersionsEnquiryId(null);
+        }
         toast.success("Estimate saved successfully");
     };
 
@@ -641,6 +646,10 @@ export default function EstimatesPage() {
                     await refreshEstimates().catch(err =>
                         console.warn("Failed to refresh estimates on close", err),
                     );
+                    if (returnToVersionsEnquiryId) {
+                        setVersionsViewEnquiryId(returnToVersionsEnquiryId);
+                        setReturnToVersionsEnquiryId(null);
+                    }
                 }}
                 initialData={prefill}
                 onSaved={handleSavedEstimate}
@@ -653,12 +662,10 @@ export default function EstimatesPage() {
                         setPrefill(estimate);
                         setIsModalOpen(true);
                         setVersionsViewEnquiryId(null);
+                        setReturnToVersionsEnquiryId(estimate.enquiryId ?? null);
                     }}
-                    onClose={async () => {
+                    onClose={() => {
                         setVersionsViewEnquiryId(null);
-                        await refreshEstimates().catch(err =>
-                            console.warn("Failed to refresh estimates on versions close", err),
-                        );
                     }}
                 />
             )}
