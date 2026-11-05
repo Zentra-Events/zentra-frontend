@@ -22,7 +22,7 @@ export default function DropdownMenu({ items, className = "" }: DropdownMenuProp
     const [position, setPosition] = useState({ top: 0, right: 0 });
 
     useEffect(() => {
-        const _handleClickOutside = (_event: MouseEvent) => {
+        const _handleClickOutside = (event: MouseEvent) => {
             // Since we use a portal, the menu is outside the ref.
             // But we have a backdrop div for clicking outside.
             // However, if we click the toggle button again, we need to handle it.

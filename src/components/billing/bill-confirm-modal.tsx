@@ -138,7 +138,7 @@ export function ClientBillConfirmModal({
     onClose,
     onConfirm,
     defaultValues,
-    _items,
+    items: _items,
     totals,
     submitting = false,
     mode = "create",
