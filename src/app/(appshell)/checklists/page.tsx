@@ -123,7 +123,7 @@ export default function ChecklistsPage() {
     const { request, loading } = useRequestApi<ChecklistFormData[]>();
     const [checklists, setChecklists] = useState<ChecklistFormData[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
-    const [selectedChecklist, setSelectedChecklist] = useState<ChecklistFormData | null>(null);
+    const [_selectedChecklist, set_selectedChecklist] = useState<ChecklistFormData | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [checklistToDelete, setChecklistToDelete] = useState<ChecklistFormData | null>(null);
 
@@ -149,11 +149,11 @@ export default function ChecklistsPage() {
     };
 
     const handleView = (checklist: ChecklistFormData) => {
-        setSelectedChecklist(checklist);
+        set_selectedChecklist(checklist);
     };
 
     const handleEdit = (checklist: ChecklistFormData) => {
-        setSelectedChecklist(checklist);
+        set_selectedChecklist(checklist);
         setModalOpen(true);
     };
 

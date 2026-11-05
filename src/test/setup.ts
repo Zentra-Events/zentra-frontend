@@ -1,12 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, beforeAll, afterAll, vi } from "vitest";
+import { afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import indexedDBFactory from "fake-indexeddb";
 
 // Global IndexedDB setup
 beforeAll(() => {
-    (globalThis as any).indexedDB = indexedDBFactory;
-    (globalThis as any).IDBRange = (indexedDBFactory as any).IDBRange;
+    (globalThis as Record<string, unknown>).indexedDB = indexedDBFactory;
+    (globalThis as Record<string, unknown>).IDBRange = (indexedDBFactory as unknown as Record<string, unknown>).IDBRange;
 });
 
 afterEach(() => {
@@ -36,8 +36,8 @@ Object.defineProperty(window, "scrollTo", {
 });
 
 // Suppress console errors/warnings during tests unless explicitly tested
-const originalError = console.error;
-const originalWarn = console.warn;
+const _originalError = console.error;
+const _originalWarn = console.warn;
 
 beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});

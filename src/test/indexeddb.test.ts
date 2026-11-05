@@ -5,7 +5,7 @@ describe("IndexedDB read/write", () => {
     let db: IDBDatabase;
 
     beforeEach(async () => {
-        (globalThis as any).indexedDB = indexedDBFactory;
+        (globalThis as Record<string, unknown>).indexedDB = indexedDBFactory;
 
         const openRequest = indexedDBFactory.open("test-db", 1);
 
@@ -37,8 +37,8 @@ describe("IndexedDB read/write", () => {
         });
 
         const getRequest = store.get(1);
-        const result = await new Promise<any>((resolve, reject) => {
-            getRequest.onsuccess = () => resolve(getRequest.result);
+        const result = await new Promise<{ name: string; value: number }>((resolve, reject) => {
+            getRequest.onsuccess = () => resolve(getRequest.result as { name: string; value: number });
             getRequest.onerror = () => reject(getRequest.error);
         });
 
@@ -67,8 +67,8 @@ describe("IndexedDB read/write", () => {
         const store = transaction.objectStore("items");
 
         const getAllRequest = store.getAll();
-        const results = await new Promise<any[]>((resolve, reject) => {
-            getAllRequest.onsuccess = () => resolve(getAllRequest.result);
+        const results = await new Promise<Array<{ name: string; value: number }>>((resolve, reject) => {
+            getAllRequest.onsuccess = () => resolve(getAllRequest.result as Array<{ name: string; value: number }>);
             getAllRequest.onerror = () => reject(getAllRequest.error);
         });
 

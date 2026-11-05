@@ -4,27 +4,11 @@ import { QuickActions } from "@/components/dashboard/quick-actions";
 import { DASHBOARD_STATS, dashboardIcons } from "@/constants/dashboard";
 import { EventCalender } from "@/components/dashboard/event-calender";
 import { useAuth } from "@/context/auth";
-import {
-    CalendarIcon as CalendarSvgIcon,
-    ReceiptIcon,
-    MessageSquareIcon,
-    WalletIcon,
-    ChartLineIcon,
-    CalendarIcon,
-} from "@/components/ui/icons";
+import { CalendarIcon } from "@/components/ui/icons";
 import { DashboardIconName } from "@/types/dashboard";
 
 const hour = new Date().getHours();
 const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-
-const iconMap = {
-    event: CalendarSvgIcon,
-    calendar: CalendarSvgIcon,
-    receipt: ReceiptIcon,
-    message: MessageSquareIcon,
-    wallet: WalletIcon,
-    chart: ChartLineIcon,
-} as const;
 
 function getIcon(iconName: DashboardIconName, size = 24, className?: string) {
     const IconComponent = dashboardIcons[iconName] || CalendarIcon;

@@ -1,5 +1,3 @@
-import { act } from "@testing-library/react";
-
 export interface MockAuthState {
     token: string | null;
     tokenType: string;

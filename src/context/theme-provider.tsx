@@ -49,8 +49,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
         if (stored && stored !== theme) setThemeState(stored);
         setMounted(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [theme]);
 
     const prefersDark = useSyncExternalStore(
         subscribeToSystemPreference,

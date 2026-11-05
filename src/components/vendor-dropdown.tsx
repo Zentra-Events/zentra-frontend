@@ -105,7 +105,7 @@ export function VendorDropdown({
                 } else {
                     throw new Error("No vendor ID returned from API");
                 }
-            } catch (err) {
+            } catch (_err) {
                 toast.error("Failed to create vendor");
                 // Clear the input by passing empty string
                 onChange("");

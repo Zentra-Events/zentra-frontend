@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, CheckCircle } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "./ui-old/button";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api/api-client";

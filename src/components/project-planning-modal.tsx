@@ -15,6 +15,7 @@ import { useToast } from "./ui/toaster/use-toast";
 const CreatableSelect = dynamic(() => import("react-select/creatable"), {
     ssr: false,
 });
+
 interface EventItemRow {
     category: string;
     subCategory?: string;
@@ -48,7 +49,9 @@ interface ProjectPlanningModalProps {
         eventEndDate?: string;
         location?: string;
         venue?: string;
-        items?: any[];
+        items?: unknown[];
+        status?: string;
+        client?: string | { email?: string };
         additionalCostEstimate?: AdditionalCostRow[];
         [key: string]: unknown;
     };
@@ -84,7 +87,6 @@ export function ProjectPlanningModal({
             finalAmt: 0,
         },
     ]);
-    const [editIndex, setEditIndex] = useState<number | null>(null);
     const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
     const [additionalCosts, setAdditionalCosts] = useState<AdditionalCostRow[]>([]);
     const [isAdditionalCostsOpen, setIsAdditionalCostsOpen] = useState(true);
@@ -121,22 +123,25 @@ export function ProjectPlanningModal({
         // Load items from eventData if available
         if (Array.isArray(eventData?.items) && eventData.items.length > 0) {
             setRows(
-                eventData.items.map((item: any) => ({
-                    category: item.category || "",
-                    subCategory: item.subCategory || "",
-                    inventoryType: item.vendor && item.vendor !== "" ? "external" : "self",
-                    item: item.item || "",
-                    inventoryID: item.inventoryID || "",
-                    vendor: item.vendor || "",
-                    quantity: item.quantity || 1,
-                    pricePerItem: item.pricePerItem || 0,
-                    days: item.days || 0,
-                    startDate: item.startDate || eventData?.eventStartDate || "",
-                    endDate: item.endDate || eventData?.eventEndDate || "",
-                    deadlineDate: item.deadlineDate || "",
-                    description: item.description || "",
-                    finalAmt: item.finalAmt || 0,
-                }))
+                eventData.items.map((item) => {
+                    const it = item as EventItemRow;
+                    return {
+                        category: it.category || "",
+                        subCategory: it.subCategory || "",
+                        inventoryType: it.vendor && it.vendor !== "" ? "external" : "self",
+                        item: it.item || "",
+                        inventoryID: it.inventoryID || "",
+                        vendor: it.vendor || "",
+                        quantity: it.quantity || 1,
+                        pricePerItem: it.pricePerItem || 0,
+                        days: it.days || 0,
+                        startDate: it.startDate || eventData?.eventStartDate || "",
+                        endDate: it.endDate || eventData?.eventEndDate || "",
+                        deadlineDate: it.deadlineDate || "",
+                        description: it.description || "",
+                        finalAmt: it.finalAmt || 0,
+                    };
+                })
             );
         }
 
@@ -263,7 +268,7 @@ export function ProjectPlanningModal({
         // Check if event is already under review
         // Assuming 'status' is available in eventData.
         // We cast to any to safely access status, or interface should be updated.
-        const currentStatus = (eventData as any).status;
+        const currentStatus = eventData.status;
 
         if (currentStatus === "ESTIMATE_UNDER_REVIEW") {
             // Enforce new version workflow
@@ -337,7 +342,10 @@ export function ProjectPlanningModal({
     };
 
     const handleProceedToEmail = () => {
-        const clientEmail = (eventData as any).client?.email || "";
+        const clientEmail =
+            typeof eventData.client === "object" && eventData.client
+                ? eventData.client.email || ""
+                : "";
         setEmailForm({
             to: clientEmail,
             cc: "",
@@ -569,12 +577,12 @@ export function ProjectPlanningModal({
                                                                               }
                                                                             : null
                                                                     }
-                                                                    onChange={(selected: any) =>
+                                                                    onChange={(selected) =>
                                                                         handleRowChange(
                                                                             row._idx,
                                                                             "category",
                                                                             selected
-                                                                                ? selected.value
+                                                                                ? (selected as { value: string | number }).value
                                                                                 : ""
                                                                         )
                                                                     }
@@ -610,12 +618,12 @@ export function ProjectPlanningModal({
                                                                               }
                                                                             : null
                                                                     }
-                                                                    onChange={(selected: any) =>
+                                                                    onChange={(selected) =>
                                                                         handleRowChange(
                                                                             row._idx,
                                                                             "subCategory",
                                                                             selected
-                                                                                ? selected.value
+                                                                                ? (selected as { value: string | number }).value
                                                                                 : ""
                                                                         )
                                                                     }
@@ -722,15 +730,14 @@ export function ProjectPlanningModal({
                                                                                   }
                                                                                 : null
                                                                         }
-                                                                        onChange={(
-                                                                            selected: any
-                                                                        ) => {
-                                                                            const newRows = [
-                                                                                ...rows,
-                                                                            ];
+        onChange={(selected) => {
+            const newRows = [
+                ...rows,
+            ];
+            const sel = selected as { value: string | number; __isNew__?: boolean; data?: { id?: string; itemName?: string; price?: number } } | null;
                                                                             if (
-                                                                                selected &&
-                                                                                selected.__isNew__
+                                                                                sel &&
+                                                                                sel.__isNew__
                                                                             ) {
                                                                                 newRows[row._idx] =
                                                                                     {
@@ -739,11 +746,11 @@ export function ProjectPlanningModal({
                                                                                         ],
                                                                                         inventoryID:
                                                                                             "",
-                                                                                        item: selected.value,
+                                                                                        item: String(sel.value),
                                                                                     };
                                                                             } else if (
-                                                                                selected &&
-                                                                                selected.data
+                                                                                sel &&
+                                                                                sel.data
                                                                             ) {
                                                                                 newRows[row._idx] =
                                                                                     {
@@ -752,18 +759,18 @@ export function ProjectPlanningModal({
                                                                                         ],
                                                                                         inventoryID:
                                                                                             String(
-                                                                                                selected
+                                                                                                sel
                                                                                                     .data
                                                                                                     .id ||
                                                                                                     ""
                                                                                             ),
                                                                                         item:
-                                                                                            selected
+                                                                                            sel
                                                                                                 .data
                                                                                                 .itemName ||
                                                                                             "",
                                                                                         pricePerItem:
-                                                                                            selected
+                                                                                            sel
                                                                                                 .data
                                                                                                 .price ||
                                                                                             0,
@@ -821,12 +828,12 @@ export function ProjectPlanningModal({
                                                                                   }
                                                                                 : null
                                                                         }
-                                                                        onChange={(selected: any) =>
+                                                                        onChange={(selected) =>
                                                                             handleRowChange(
                                                                                 row._idx,
                                                                                 "vendor",
                                                                                 selected
-                                                                                    ? selected.value
+                                                                                    ? (selected as { value: string | number }).value
                                                                                     : ""
                                                                             )
                                                                         }

@@ -197,7 +197,7 @@ export default function EnquiriesPage() {
         setModalOpen(true);
     };
 
-    const handleEdit = (enquiry: Enquiry) => {
+    const _handleEdit = (enquiry: Enquiry) => {
         setModalMode("edit");
         // NOTE: `enquiry.client` holds the client NAME (that is what the create flow
         // posts), while the form's `client` field expects the client ID. Keep both so

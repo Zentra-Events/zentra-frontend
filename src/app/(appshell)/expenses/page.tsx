@@ -22,7 +22,7 @@ import { ExpensesModal } from "@/components/expenses-modal";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import { AccessButton } from "@/components/shared/access-button";
-import { ReceiptIcon, UserPlusIcon } from "@/components/ui/icons";
+import { ReceiptIcon } from "@/components/ui/icons";
 
 import type { Column } from "@/components/ui/table";
 import type { Event } from "@/types/event";

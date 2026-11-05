@@ -23,8 +23,12 @@ export interface InventoryFormData {
 export interface InventoryUsage {
     id?: string
     inventoryId?: string
-    // Add other fields as needed based on backend model
-    [key: string]: any
+    projectID?: string
+    projectId?: string
+    fromDate?: string
+    toDate?: string
+    quantity?: number
+    [key: string]: unknown
 }
 
 export interface CreateInventoryModalProps {

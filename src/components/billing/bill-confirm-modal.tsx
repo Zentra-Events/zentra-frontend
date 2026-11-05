@@ -3,10 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
     Building2,
-    CalendarDays,
     CircleAlert,
     FileText,
-    Info,
     Receipt,
     Truck,
     Wallet,
@@ -15,7 +13,7 @@ import {
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { BillItemsTable, type BillItemRow } from "./bill-items-table";
+import { type BillItemRow } from "./bill-items-table";
 import { BillTotalsCard, type BillTotalRow } from "./bill-totals-card";
 import { useNestedModalEscape } from "./bill-modal-escape";
 
@@ -140,7 +138,7 @@ export function ClientBillConfirmModal({
     onClose,
     onConfirm,
     defaultValues,
-    items,
+    _items,
     totals,
     submitting = false,
     mode = "create",
