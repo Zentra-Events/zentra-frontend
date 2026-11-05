@@ -157,13 +157,6 @@ const validationSchema = Yup.object({
     highlvelRequirement: Yup.string().required("Please add the enquiry summary"),
     location: Yup.string().optional(),
     venue: Yup.string().required("Venue is required"),
-    pocContactNumber: Yup.string()
-        // .matches(/^\d{10}$/u, "Enter a 10 digit number")
-        .required("POC contact number is required"),
-    enquiryPoC: Yup.string().optional(),
-    status: Yup.mixed<EstimateStatus>()
-        .oneOf(eventStatus.map(s => s.value))
-        .required(),
     serviceCharge: Yup.number().optional().min(0, "Service charge must be 0 or more"),
     gst: Yup.number().optional().min(0, "GST must be 0 or more"),
     gstType: Yup.string().optional(),
