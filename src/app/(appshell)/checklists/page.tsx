@@ -288,7 +288,7 @@ export default function ChecklistsPage() {
                     open={modalOpen}
                     onClose={() => {
                         setModalOpen(false);
-                        setSelectedChecklist(null);
+                        set_selectedChecklist(null);
                     }}
                     onSave={() => {
                         fetchChecklists();

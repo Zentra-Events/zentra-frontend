@@ -256,7 +256,7 @@ export default function CreateChecklistModal({ open, onClose, onSave }: Props) {
                     }
                 }}
             >
-                {({ isSubmitting, setFieldValue, _values }) => (
+                {({ isSubmitting, setFieldValue }) => (
                     <Form>
                         <ModalBody className="max-h-[60vh] overflow-y-auto px-0">
                             <div className="pt-2 space-y-4">
