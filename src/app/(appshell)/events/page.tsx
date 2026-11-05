@@ -255,14 +255,15 @@ const columns = (
                     onClick: () => onView(row),
                     disabled: isBusy,
                 },
-                {
-                    key: "edit",
-                    label: "Edit",
-                    icon: <PencilIcon size={16} />,
-                    onClick: () => onEdit(row),
-                    disabled: isBusy,
-                    scopes: ["w:events"],
-                },
+                // Hide edit option for now, as we are not allowing editing of events
+                // {
+                //     key: "edit",
+                //     label: "Edit",
+                //     icon: <PencilIcon size={16} />,
+                //     onClick: () => onEdit(row),
+                //     disabled: isBusy,
+                //     scopes: ["w:events"],
+                // },
                 {
                     key: "clone",
                     label: isCloning ? "Cloning..." : "Clone",
