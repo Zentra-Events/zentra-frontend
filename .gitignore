@@ -51,3 +51,15 @@ next-env.d.ts
 
 .netlify
 .agents
+
+# Playwright reports and test artifacts
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Vitest coverage
+coverage/
+
+# Test-generated artifacts
+*.webm
+*.zip
