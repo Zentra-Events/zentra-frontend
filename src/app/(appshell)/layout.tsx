@@ -9,6 +9,7 @@ import { AppShellHeader, AppShellSidebar } from "@/components/layout";
 import { Access } from "@/components/access";
 import { usePathname } from "next/navigation";
 import { matchRoutePermission } from "@/lib/utils/permissions";
+import { DraftProvider } from "@/lib/draft/provider";
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname();
@@ -27,7 +28,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                         <EventPrefillProvider>
                             <EstimatePrefillProvider>
                                 <EnquiriesProvider>
-                                    <div className="relative mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 min-h-full">
+                                    <DraftProvider>
+                                        <div className="relative mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 min-h-full">
                                         <Access
                                             roles={currentRoutePermissions?.roles}
                                             scopes={currentRoutePermissions?.scopes}
@@ -59,6 +61,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                                             }}
                                         </Access>
                                     </div>
+                                </DraftProvider>
                                 </EnquiriesProvider>
                             </EstimatePrefillProvider>
                         </EventPrefillProvider>

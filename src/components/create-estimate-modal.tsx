@@ -31,6 +31,22 @@ import { ArtifactsSection } from "@/components/artifacts-section";
 import { CostSummary } from "@/components/cost-summary";
 import type { ArtifactLine } from "@/lib/utils/artifact-utils";
 import { isPersistableArtifactLine } from "@/lib/utils/artifact-utils";
+import { DraftRecoveryModal } from "@/components/ui/draft-recovery-modal";
+import { UnsavedChangesModal } from "@/components/ui/unsaved-changes-modal";
+import {
+    estimateDraftAdapter,
+    type EstimateDraftFormData,
+    type EstimateDraftLine,
+} from "@/lib/draft/adapters/estimate-draft-adapter";
+import {
+    useDraftProtection,
+    createDraftRecovery,
+    draftStorage,
+    draftCleanup,
+    type DraftStatus,
+    type DraftRecord,
+    type RecoveryInfo,
+} from "@/lib/draft";
 
 type EstimateLine = {
     id: string;
@@ -224,6 +240,25 @@ export default function CreateEstimateModal({
         >(),
     );
 
+    /* ------------------------------------------------------------------ */
+    /*  Draft protection state                                            */
+    /* ------------------------------------------------------------------ */
+    const [draftStatus] = useState<DraftStatus>("editing");
+    const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+    const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+    const [recoveryDraft, setRecoveryDraft] = useState<DraftRecord<EstimateDraftFormData> | null>(
+        null,
+    );
+    const [recoveryInfoData, setRecoveryInfoData] = useState<RecoveryInfo | null>(null);
+
+    const formikHelpersRef = useRef<{
+        setValues: (values: unknown) => void;
+        setFieldValue: (field: string, value: unknown) => void;
+    } | null>(null);
+    const initialFormDataRef = useRef<EstimateDraftFormData | null>(null);
+    const closeEditorRef = useRef<(() => void) | null>(null);
+    const recoveryInProgressRef = useRef(false);
+
     useEffect(() => {
         setPrefillData(initialData);
         setSelectedEnquiryId(initialData?.enquiryId);
@@ -247,6 +282,150 @@ export default function CreateEstimateModal({
             });
         }
     }, [initialData]);
+
+    /* ------------------------------------------------------------------ */
+    /*  Draft identity, serialised form data, and dirty tracking          */
+    /* ------------------------------------------------------------------ */
+    const isEditingEstimate = Boolean(initialData?.id);
+
+    const draftContext = useMemo(
+        () => ({
+            entityId: isEditingEstimate ? initialData?.id : undefined,
+            enquiryId: prefillData?.enquiryId ?? selectedEnquiryId,
+            eventId: prefillData?.eventID,
+        }),
+        [initialData?.id, prefillData?.enquiryId, selectedEnquiryId, prefillData?.eventID],
+    );
+
+    const draftIdentity = useMemo(
+        () => estimateDraftAdapter.getIdentity(draftContext),
+        [draftContext],
+    );
+
+    const draftFormDataRef = useRef<EstimateDraftFormData | null>(null);
+    const dirtyRef = useRef(false);
+    const everEditedRef = useRef(false);
+    const baselineJustResetRef = useRef(false);
+    const flushDraftRef = useRef<(() => Promise<void>) | null>(null);
+    const markDraftFailedRef = useRef<(() => void) | null>(null);
+    const draftClearedRef = useRef(false);
+    const recoveredLinesRef = useRef<EstimateLine[] | null>(null);
+
+    const draftDataEqual = useCallback(
+        (a: EstimateDraftFormData | null, b: EstimateDraftFormData | null): boolean => {
+            if (!a || !b) return a === b;
+            return JSON.stringify(a) === JSON.stringify(b);
+        },
+        [],
+    );
+
+    // Baseline key used to detect when the editing context changes (new estimate
+    // vs. edit, or different enquiry selected). When it changes, the dirty
+    // baseline is recaptured so dirty tracking reflects changes from the
+    // current prefill rather than a stale one.
+    const baselineKeyRef = useRef<string | null>(null);
+    const currentBaselineKey = `${isEditingEstimate ? String(initialData?.id) : "new"}:${String(
+        prefillData?.enquiryId ?? selectedEnquiryId ?? "",
+    )}`;
+
+    const flushDraft = useCallback(async (): Promise<void> => {
+        // Never write to IndexedDB unless the user has actually edited. Opening
+        // the modal to verify must not create or update a draft.
+        if (!everEditedRef.current) return;
+        // Guard against a stale or delayed write recreating a draft after it has
+        // been intentionally discarded or successfully saved. A fresh edit clears
+        // the guard via dirtyRef so the new data is still preserved.
+        if (draftClearedRef.current && !dirtyRef.current) return;
+        draftClearedRef.current = false;
+        const data = draftFormDataRef.current;
+        if (!data || (!draftIdentity.enquiryId && !draftIdentity.entityId)) return;
+        const existing = await draftStorage.get<EstimateDraftFormData>(draftIdentity.draftId);
+        const nextRevision = existing ? (existing.localRevision ?? 0) + 1 : 1;
+        const serialized = estimateDraftAdapter.serialize(data);
+        const record: DraftRecord<EstimateDraftFormData> = {
+            ...draftIdentity,
+            formData: serialized,
+            createdAt: existing?.createdAt ?? Date.now(),
+            lastModifiedAt: Date.now(),
+            lastServerSaveAt: existing?.lastServerSaveAt,
+            localRevision: nextRevision,
+            serverRevision: existing?.serverRevision,
+            serverDataHash: existing?.serverDataHash,
+            status: "editing",
+        };
+        await draftStorage.save(record);
+    }, [draftIdentity, draftStorage]);
+
+    useEffect(() => {
+        flushDraftRef.current = flushDraft;
+        markDraftFailedRef.current = () => {
+            void draftStorage.markFailed(draftIdentity.draftId);
+        };
+    }, [flushDraft, draftIdentity.draftId]);
+
+    // Reusable auto-save: periodic flush when dirty (≈750ms after last change),
+    // plus a flush on unmount/close. Runs silently in IndexedDB.
+    useEffect(() => {
+        if (!isOpen || (!draftIdentity.enquiryId && !draftIdentity.entityId)) return;
+        let timer: ReturnType<typeof setInterval> | null = null;
+        const flushIfDirty = async () => {
+            if (everEditedRef.current && dirtyRef.current && flushDraftRef.current) {
+                await flushDraftRef.current();
+            }
+        };
+        timer = setInterval(flushIfDirty, 750);
+        return () => {
+            if (timer) clearInterval(timer);
+            // Only persist on close/unmount if the user actually edited the draft.
+            if (everEditedRef.current && dirtyRef.current) {
+                void flushDraftRef.current?.();
+            }
+        };
+    }, [isOpen, draftIdentity.enquiryId, draftIdentity.entityId]);
+
+    // Track the draft as actively edited so IndexedDB cleanup skips it.
+    useEffect(() => {
+        if (!draftIdentity.draftId) return;
+        draftCleanup.trackActive(draftIdentity.draftId);
+        return () => {
+            draftCleanup.releaseActive(draftIdentity.draftId);
+        };
+    }, [draftIdentity.draftId]);
+
+    // Reset the discard/save guard when a new editing session opens so a fresh
+    // draft can be created. The guard is only set by an explicit discard or a
+    // successful server save within the current session.
+    useEffect(() => {
+        if (isOpen && draftIdentity.draftId) {
+            draftClearedRef.current = false;
+        }
+    }, [isOpen, draftIdentity]);
+
+    /* ------------------------------------------------------------------ */
+    /*  Reusable draft protection (beforeunload + navigation + close)     */
+    /* ------------------------------------------------------------------ */
+    const { registerCloseHandler } = useDraftProtection({
+        isDirty: dirtyRef.current,
+        enabled: isOpen,
+        onSaveBeforeClose: async () => {
+            // Only persist if the user actually edited; opening to verify must not write.
+            if (!everEditedRef.current) return;
+            await flushDraftRef.current?.();
+        },
+        onDiscardBeforeClose: async () => {
+            if (draftIdentity.draftId) {
+                await draftStorage.delete(draftIdentity.draftId);
+            }
+        },
+    });
+
+    // Persist the draft before any programmatic / modal close.
+    useEffect(() => {
+        registerCloseHandler(() => {
+            void flushDraftRef.current?.();
+        });
+        // The close-handler set is component-scoped; no explicit unregister needed.
+    }, [registerCloseHandler]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -297,6 +476,112 @@ export default function CreateEstimateModal({
             cancelled = true;
         };
     }, [isOpen]);
+
+    /* ------------------------------------------------------------------ */
+    /*  Draft recovery: check IndexedDB when the editor opens             */
+    /* ------------------------------------------------------------------ */
+    const recovery = useMemo(
+        () => createDraftRecovery<EstimateDraftFormData>(estimateDraftAdapter),
+        [],
+    );
+
+    useEffect(() => {
+        // Reset in case a previous check was interrupted by an unexpected close
+        // (the finally block only resets when !cancelled, so an unmounted check
+        // leaves this flag stuck at true and would block all later checks).
+        recoveryInProgressRef.current = false;
+
+        if (!isOpen || (!draftIdentity.enquiryId && !draftIdentity.entityId)) return;
+        if (recoveryInProgressRef.current) return;
+
+        let cancelled = false;
+        const checkRecovery = async () => {
+            recoveryInProgressRef.current = true;
+            try {
+                const existing = await draftStorage.get<EstimateDraftFormData>(
+                    draftIdentity.draftId,
+                );
+                if (cancelled) return;
+                if (!existing) return;
+
+                const restored = estimateDraftAdapter.restore(existing.formData);
+                setRecoveryDraft(existing as DraftRecord<EstimateDraftFormData>);
+                setRecoveryInfoData(recovery.recoveryInfo(existing, restored));
+                setShowRecoveryModal(true);
+            } catch (error) {
+                console.error("Draft recovery check failed", error);
+            } finally {
+                if (!cancelled) recoveryInProgressRef.current = false;
+            }
+        };
+
+        void checkRecovery();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, draftIdentity, recovery]);
+
+    const handleRecoverDraft = useCallback(() => {
+        if (!recoveryDraft) return;
+        const restored = estimateDraftAdapter.restore(recoveryDraft.formData);
+        const helpers = formikHelpersRef.current;
+        if (helpers) {
+            helpers.setValues({
+                title: restored.title,
+                highlvelRequirement: restored.highlvelRequirement,
+                enquiryDate: normalizeDate(restored.enquiryDate),
+                fromDate: normalizeDate(restored.fromDate),
+                toDate: normalizeDate(restored.toDate),
+                status: restored.status,
+                location: restored.location,
+                venue: restored.venue,
+                clientPoC: restored.clientPoC,
+                pocContactNumber: restored.pocContactNumber,
+                enquiryPoC: restored.enquiryPoC,
+                serviceCharge: restored.serviceCharge,
+                gst: restored.gst,
+                gstType: restored.gstType,
+                discountAmount: restored.discountAmount,
+                billingAddress: restored.billingAddress,
+            });
+        }
+        setLines(restored.lines);
+        recoveredLinesRef.current = restored.lines;
+        setPrefillData({
+            ...restored,
+            client: restored.client,
+            clientID: restored.clientID,
+            enquiryId: restored.enquiryId,
+            eventID: restored.eventID,
+            status: restored.status,
+        });
+        setSelectedEnquiryId(restored.enquiryId || undefined);
+        setSelectedClientId(restored.client || "");
+        setShowRecoveryModal(false);
+        setRecoveryDraft(null);
+        setRecoveryInfoData(null);
+        recoveryInProgressRef.current = false;
+    }, [recoveryDraft]);
+
+    const handleDiscardDraft = useCallback(async () => {
+        // Delete only the current estimate's draft (Condition A). Scoped to
+        // draftIdentity.draftId so other estimates' drafts are preserved.
+        try {
+            if (draftIdentity.draftId) {
+                await draftStorage.delete(draftIdentity.draftId);
+            }
+        } catch (error) {
+            console.error("Failed to discard estimate draft", error);
+        }
+        draftClearedRef.current = true;
+        dirtyRef.current = false;
+        draftFormDataRef.current = null;
+        initialFormDataRef.current = null;
+        setShowRecoveryModal(false);
+        setRecoveryDraft(null);
+        setRecoveryInfoData(null);
+        recoveryInProgressRef.current = false;
+    }, [draftIdentity.draftId]);
 
     const mapEnquiryToPrefill = useCallback(
         (
@@ -593,6 +878,12 @@ export default function CreateEstimateModal({
 
     useEffect(() => {
         if (!isOpen) return;
+        if (recoveredLinesRef.current) {
+            const recovered = recoveredLinesRef.current;
+            recoveredLinesRef.current = null;
+            setLines(recovered);
+            return;
+        }
         const fromItems: EstimateLine[] = [];
         if (!isAdditionalEstimate && prefillData?.items) {
             Object.entries(prefillData.items).forEach(([category, items]) => {
@@ -654,6 +945,12 @@ export default function CreateEstimateModal({
                 });
             });
         }
+        // Re-capture the draft baseline once lines are loaded from prefill so
+        // the initial load isn't mistaken for a user edit. Without this, the
+        // baseline (captured during first render with empty lines) would differ
+        // from the post-load draft, setting dirtyRef and everEditedRef true and
+        // triggering auto-save even when the user only opened to verify.
+        initialFormDataRef.current = null;
         setLines(fromItems);
     }, [isOpen, prefillData, isAdditionalEstimate]);
 
@@ -1051,6 +1348,10 @@ export default function CreateEstimateModal({
                 return;
             }
 
+            // Persist the latest draft to IndexedDB before the long-running
+            // server save so a timeout or failure never loses user data.
+            await flushDraft();
+
             const res = await apiRequest(API_ENDPOINTS.estimates.list, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1097,12 +1398,24 @@ export default function CreateEstimateModal({
             toast.success(
                 isEditing ? "Estimate updated successfully" : "Estimate created successfully",
             );
+
+            // Condition B: delete the draft only after a successful server save.
+            // If the API fails or times out, the draft is retained for recovery.
+            try {
+                await draftStorage.delete(draftIdentity.draftId);
+                draftClearedRef.current = true;
+                dirtyRef.current = false;
+            } catch {
+                // Draft cleanup must not block the save-success flow.
+            }
+
             onSaved(fallback);
             onClose();
         } catch (error) {
             console.error("Failed to save estimate", error);
             helpers.setStatus("Failed to save estimate. Please try again.");
             toast.error(isEditing ? "Failed to update estimate" : "Failed to create estimate");
+            markDraftFailedRef.current?.();
         } finally {
             setIsSaving(false);
         }
@@ -1115,6 +1428,8 @@ export default function CreateEstimateModal({
         setIsSaving(true);
 
         try {
+            // Persist the latest draft before the server save.
+            await flushDraft();
             const res = await apiRequest(API_ENDPOINTS.estimates.list, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1161,11 +1476,22 @@ export default function CreateEstimateModal({
             };
 
             toast.success("Estimate created successfully");
+
+            // Condition B: delete the draft only after a successful server save.
+            try {
+                await draftStorage.delete(draftIdentity.draftId);
+                draftClearedRef.current = true;
+                dirtyRef.current = false;
+            } catch {
+                // Draft cleanup must not block the save-success flow.
+            }
+
             onSaved(fallback);
             onClose();
         } catch (error) {
             console.error("Failed to save additional estimate", error);
             toast.error("Failed to create additional estimate");
+            markDraftFailedRef.current?.();
         } finally {
             setPendingAdditionalEstimate(null);
             setIsSaving(false);
@@ -1183,6 +1509,45 @@ export default function CreateEstimateModal({
                 ? groupLinesByCategory(pendingAdditionalEstimate.lines as ArtifactLine[])
                 : [],
         [pendingAdditionalEstimate],
+    );
+
+    /* ------------------------------------------------------------------ */
+    /*  Modal close protection                                            */
+    /* ------------------------------------------------------------------ */
+    const performCloseEditor = useCallback(() => {
+        clearEnquirySelection(true);
+        setSelectedClientId("");
+        onClose();
+    }, [clearEnquirySelection, onClose]);
+
+    useEffect(() => {
+        closeEditorRef.current = performCloseEditor;
+    }, [performCloseEditor]);
+
+    const handleCloseEditor = useCallback(() => {
+        if (isSaving) {
+            closeEditorRef.current?.();
+            return;
+        }
+        if (dirtyRef.current) {
+            setShowUnsavedModal(true);
+            return;
+        }
+        closeEditorRef.current?.();
+    }, [isSaving]);
+
+    const handleUnsavedAction = useCallback(
+        async (action: "continue" | "discard-and-close") => {
+            setShowUnsavedModal(false);
+            if (action === "continue") return;
+            if (draftIdentity.draftId) {
+                await draftStorage.delete(draftIdentity.draftId);
+                draftClearedRef.current = true;
+                dirtyRef.current = false;
+            }
+            closeEditorRef.current?.();
+        },
+        [draftIdentity.draftId],
     );
 
     if (!isOpen) return null;
@@ -1203,7 +1568,7 @@ export default function CreateEstimateModal({
             />
             <Modal
                 open={isOpen}
-                onClose={() => !isSaving && onClose()}
+                onClose={handleCloseEditor}
                 size="xxl"
                 title={
                     isAdditionalEstimate
@@ -1226,7 +1591,67 @@ export default function CreateEstimateModal({
                     validationSchema={validationSchema}
                     onSubmit={handleSubmit}
                 >
-                    {({ status, values, setFieldValue }) => {
+                    {({ status, values, setFieldValue, setValues }) => {
+                        formikHelpersRef.current = {
+                            setValues: setValues as (values: unknown) => void,
+                            setFieldValue,
+                        };
+
+                        const serverLines: EstimateDraftLine[] = lines.map(line => ({
+                            id: line.id,
+                            category: line.category,
+                            subCategory: line.subCategory,
+                            item: line.item,
+                            specification: line.specification,
+                            days: line.days,
+                            sqft: line.sqft,
+                            rate: line.rate,
+                            vendor: line.vendor,
+                            unit: line.unit || "nos",
+                        }));
+
+                        const nextDraft: EstimateDraftFormData = {
+                            title: values.title,
+                            highlvelRequirement: values.highlvelRequirement,
+                            enquiryDate: formatDateOutput(values.enquiryDate ?? null) ?? null,
+                            fromDate: formatDateOutput(values.fromDate ?? null) ?? null,
+                            toDate: formatDateOutput(values.toDate ?? null) ?? null,
+                            status: values.status as EstimateStatus,
+                            location: values.location ?? "",
+                            venue: values.venue,
+                            clientPoC: values.clientPoC,
+                            pocContactNumber: values.pocContactNumber,
+                            enquiryPoC: values.enquiryPoC ?? "",
+                            serviceCharge: Number(values.serviceCharge) || 0,
+                            gst: Number(values.gst) || 0,
+                            gstType: values.gstType || "NONE",
+                            discountAmount: Number(values.discountAmount) || 0,
+                            billingAddress: values.billingAddress ?? "",
+                            client: prefillData?.client ?? "",
+                            clientID: prefillData?.clientID,
+                            enquiryId: prefillData?.enquiryId ?? selectedEnquiryId ?? "",
+                            eventID: prefillData?.eventID ?? "",
+                            lines: serverLines,
+                        };
+
+                        draftFormDataRef.current = nextDraft;
+
+                        if (baselineKeyRef.current !== currentBaselineKey) {
+                            initialFormDataRef.current = null;
+                            baselineKeyRef.current = currentBaselineKey;
+                            everEditedRef.current = false;
+                            baselineJustResetRef.current = true;
+                        } else {
+                            baselineJustResetRef.current = false;
+                        }
+                        if (!initialFormDataRef.current) {
+                            initialFormDataRef.current = nextDraft;
+                        }
+                        dirtyRef.current = !draftDataEqual(nextDraft, initialFormDataRef.current);
+                        if (dirtyRef.current && !baselineJustResetRef.current) {
+                            everEditedRef.current = true;
+                        }
+
                         const summary = calculateEstimateSummary({
                             totalAmount,
                             gst: Number(values.gst) || 0,
@@ -1584,11 +2009,7 @@ export default function CreateEstimateModal({
                                         <Button
                                             type="button"
                                             variant="outline"
-                                            onClick={() => {
-                                                clearEnquirySelection(true);
-                                                setSelectedClientId("");
-                                                onClose();
-                                            }}
+                                            onClick={handleCloseEditor}
                                             disabled={isSaving}
                                         >
                                             Cancel
@@ -1614,6 +2035,29 @@ export default function CreateEstimateModal({
                     }}
                 </Formik>
             </Modal>
+
+            <DraftRecoveryModal
+                open={showRecoveryModal}
+                onClose={() => {
+                    setShowRecoveryModal(false);
+                    setRecoveryDraft(null);
+                    setRecoveryInfoData(null);
+                    recoveryInProgressRef.current = false;
+                }}
+                onRecover={handleRecoverDraft}
+                onDiscard={handleDiscardDraft}
+                recoveryInfo={recoveryInfoData ?? { title: "", lastModified: "" }}
+                draftData={recoveryDraft}
+                loading={draftStatus === "saving"}
+            />
+
+            <UnsavedChangesModal
+                open={showUnsavedModal}
+                onClose={() => setShowUnsavedModal(false)}
+                onAction={handleUnsavedAction}
+                entityLabel={draftFormDataRef.current?.title || "this estimate"}
+                loading={draftStatus === "saving"}
+            />
         </>
     );
 }
