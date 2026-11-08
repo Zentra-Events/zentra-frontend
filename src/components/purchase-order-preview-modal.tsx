@@ -1,5 +1,34 @@
-import { useMemo, type ReactNode } from "react";
+"use client";
+
+/* ==================================================================- */
+/*  PURCHASE ORDER PREVIEW MODAL                                       */
+/*                                                                     */
+/*  Displays the purchase order preview with several financial tables. */
+/*  All monetary values are rendered via formatExportCurrency.         */
+/*                                                                     */
+/*  TABLES (in render order):                                          */
+/*   1 Meta Header             — event/client/venue/ID/PAN info        */
+/*   2 Payment Terms           — static terms & conditions             */
+/*   3 Category-wise Items     — item breakdown grouped by category    */
+/*   4 Vendor-Wise Financial   — per-vendor GST/TDS/net/advance/balance */
+/*   5 Grand Summary           — consolidated vendor totals + balance  */
+/*   6 Client Bill Summary     — client estimate → final balance       */
+/*   7 Profit Summary          — internal P&L (admin/super_admin only) */
+/*                                                                     */
+/*  SHARED CALCULATION HELPERS                                         */
+/*   groupItemsByCategory()        — per-item amount/GST/TDS/netTotal   */
+/*   buildVendorFinancials()       — per-vendor financial rows          */
+/*   calculateEventProfitAndLoss() — client + vendor P&L (in billing)   */
+/*   calculateClientBillSummary()  — client bill figures (in billing)   */
+/*   calculatePercentageAmount(a,p) = a × p / 100                      */
+/*   toFiniteNumber(v, fb)         — coerces NaN/Inf/null to fb (0)     */
+/*                                                                     */
+/*  SEE ALSO: docs/purchase-order-preview-calculations.md              */
+/* ==================================================================- */
+
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import type {
     CategoryPurchaseRow,
     EventResponse,
@@ -10,34 +39,17 @@ import type {
 import { Modal, ModalBody, ModalFooter } from "./ui";
 import { Button } from "./ui/button";
 import { formatExportCurrency, numberToWords, toRomanLower } from "@/lib/utils";
+import { formatShortDate } from "@/lib/utils/date";
+import { calculateClientBillSummary, toFiniteNumber } from "@/lib/utils/billing";
 import { purchaseOrderPreviewStyles } from "@/constants/event";
 import { ProfitSummary } from "./profit-summary";
 import { Access } from "./access";
-
-/* ------------------------------------------------------------------ */
-/*  GST Type metadata                                                */
-/* ------------------------------------------------------------------ */
-
-/** Human-readable label for each GST tax type. */
-export const GST_TYPE_LABEL: Record<string, string> = {
-    NONE: "No GST",
-    CGST_SGST: "CGST + SGST",
-    IGST: "IGST",
-};
-
-/**
- * Render a GST percentage with its tax type (when one is applied).
- * - No GST type (or NONE): show the percentage value as-is.
- * - Applied type (e.g. CGST_SGST / IGST): show the percentage with the
- *   type displayed in brackets, e.g. `18% (CGST + SGST)`.
- */
-function formatGstWithType(gstPercent: number, gstType?: string): string {
-    const gstValue = gstPercent > 0 ? `${gstPercent}%` : "—";
-    const isNoGst = !gstType || gstType === "NONE";
-    if (isNoGst || gstValue === "—") return gstValue;
-    const typeLabel = GST_TYPE_LABEL[gstType] ?? gstType;
-    return `${gstValue} (${typeLabel})`;
-}
+import { toast } from "sonner";
+import { useAuth } from "@/context/auth";
+import { hasPermission } from "@/lib/utils/permissions";
+import { fetchExpenseTotal } from "@/lib/api/expense";
+import { downloadPurchaseOrderExcel } from "@/lib/purchase-export/purchase-excel";
+import { downloadPurchaseOrderPdf } from "@/lib/purchase-export/purchase-pdf";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -75,6 +87,32 @@ interface RawItemWithCategory {
     unit?: string;
 }
 
+/**
+ * Group purchase items by category (then by sub-category) and compute
+ * per-item financials.
+ *
+ * CALCULATION (per raw item):
+ *   amount      = (quantity ?? 1) × (pricePerItem ?? 0) × (days ?? 1)
+ *   lookupKey   = vendor ?? "SELF"   // inventory items keyed as "SELF"
+ *   gstPct      = vendorFinancials[lookupKey].gst   ?? 0
+ *   tdsPct      = vendorFinancials[lookupKey].tds   ?? 0
+ *   gstAmount   = amount × gstPct / 100
+ *   tdsAmount   = amount × tdsPct / 100
+ *   netTotal    = amount + gstAmount - tdsAmount
+ *
+ * vendorFinancials is built from eventData.vendorSummary keyed by vendor id
+ * (or "SELF" when vendor is empty / "SELF").
+ *
+ * OUTPUT (per category):
+ *   category          — category name ("Uncategorized" if missing)
+ *   items             — all PurchaseItemRow in the category
+ *   directItems       — items with no sub-category
+ *   subCategories     — { name, items[] } grouped by subCategory
+ *   subtotal          = Σ item.amount   (gross, excludes GST/TDS)
+ *
+ * Each item row also carries vendorName (via getVendorDisplayName) and
+ * vendorId for badge rendering ("SELF" vs vendor).
+ */
 export function groupItemsByCategory(
     items: EventResponse["items"],
     vendorList: Array<{ id?: string; name: string }> | undefined,
@@ -186,7 +224,23 @@ export function groupItemsByCategory(
 }
 
 /**
- * Build vendor-wise financial rows from vendorSummary data
+ * Build vendor-wise financial rows from vendorSummary data.
+ *
+ * One row per vendor in eventData.vendorSummary. Values come directly from
+ * the API rollup:
+ *
+ *   vendorName   — vendorList name, or vs.vendor, or "SELF"
+ *   totalAmount  = vs.totalAmount ?? 0          (vendor cost before GST)
+ *   gstPercent   = vs.gst   ?? 0                (vendor GST %)
+ *   gstType      = vs.gstType ?? "NONE"
+ *   tdsPercent   = vs.tds   ?? 0                (vendor TDS %)
+ *   adjustedAmt  = vs.adjustedAmt ?? 0          (vendor net total)
+ *   advanceAmount= vs.advanceAmount ?? 0
+ *   balance      = vs.balance ?? 0
+ *
+ * GST/TDS amounts shown in the table are computed as:
+ *   GST  = totalAmount × gstPercent / 100
+ *   TDS  = totalAmount × tdsPercent / 100
  */
 export function buildVendorFinancials(
     vendorSummary: EventResponse["vendorSummary"],
@@ -317,29 +371,30 @@ function PaymentTermsSection() {
 /* ------------------------------------------------------------------ */
 /*  CGST / SGST Split Helper                                          */
 /* ------------------------------------------------------------------ */
-
-interface GstSplit {
-    cgstPercent: number;
-    sgstPercent: number;
-    cgstAmount: number;
-    sgstAmount: number;
-}
-
-function splitGst(gstPercent: number, amount: number): GstSplit {
-    const halfPercent = gstPercent / 2;
-    const gstAmount = amount * (gstPercent / 100);
-    return {
-        cgstPercent: halfPercent,
-        sgstPercent: halfPercent,
-        cgstAmount: gstAmount / 2,
-        sgstAmount: gstAmount / 2,
-    };
-}
-
-/* ------------------------------------------------------------------ */
 /*  Category Table                                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Render one category's item table plus its subtotal / net subtotal.
+ *
+ * COLUMNS (per item row):
+ *   Sl. No      — running serial across direct items + sub-category groups
+ *   Item        — item.itemName || "—"
+ *   Description — item.description || "—"
+ *   Days        — item.days
+ *   Qty         — item.qty
+ *   Unit        — item.unit || "nos"
+ *   Rate        — formatExportCurrency(item.rate)  (pricePerItem ?? 0)
+ *   Total Amount— formatExportCurrency(item.amount)   (= qty × rate × days)
+ *   GST Amount  — "+{gstAmount}" or "—"   (green when > 0)
+ *   TDS Amount  — "-{tdsAmount}" or "—"   (red when > 0)
+ *   Net Total   — formatExportCurrency(item.netTotal)  (= amount + GST - TDS)
+ *   Vendor      — badge ("SELF" vs vendor name)
+ *
+ * CATEGORY TOTALS:
+ *   Category Subtotal   = Σ item.amount          (gross, excludes GST/TDS)
+ *   Net SubTotal        = Σ item.netTotal        (= amount + GST - TDS)
+ */
 function CategoryTable({
     categoryData,
     index,
@@ -506,9 +561,61 @@ function CategoryTable({
 }
 
 /* ------------------------------------------------------------------ */
+/*  GST / TDS Amount Cell                                             */
+/* ------------------------------------------------------------------ */
+
+interface GstTdsCellProps {
+    amount: number;
+    percent: number;
+}
+
+/**
+ * Render a vertically stacked GST/TDS cell: the actual calculated amount
+ * on the primary line, with the applicable percentage in brackets below.
+ * Shows an em-dash when there is no value to display.
+ */
+function GstTdsCell({ amount, percent }: GstTdsCellProps) {
+    const hasValue = amount > 0 && Number.isFinite(amount);
+    return (
+        <div className="text-right">
+            {hasValue ? (
+                <>
+                    <div className="font-medium">{formatExportCurrency(amount)}</div>
+                    <div className="text-[10px] text-muted-foreground">({percent}%)</div>
+                </>
+            ) : (
+                <div className="text-muted-foreground">—</div>
+            )}
+        </div>
+    );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Vendor-Wise Financial Summary                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Vendor-Wise Financial Summary table.
+ *
+ * One row per vendor (from buildVendorFinancials), plus a GRAND TOTAL row.
+ *
+ * PER-VENDOR ROW:
+ *   Vendor        — vendorName
+ *   Total Amount  = v.totalAmount
+ *   GST           = v.totalAmount × v.gstPercent / 100   (with "(pct%)" below)
+ *   TDS           = v.totalAmount × v.tdsPercent / 100   (with "(pct%)" below)
+ *   Net Total     = v.adjustedAmt
+ *   Advance Paid  = v.advanceAmount   (red when > 0)
+ *   Balance       = v.balance         (green)
+ *
+ * GRAND TOTAL ROW:
+ *   Total Amount  = Σ v.totalAmount
+ *   GST           = +Σ (v.totalAmount × v.gstPercent / 100)
+ *   TDS           = -Σ (v.totalAmount × v.tdsPercent / 100)
+ *   Net Total     = Σ v.adjustedAmt
+ *   Advance Paid  = Σ v.advanceAmount
+ *   Balance       = Σ v.balance
+ */
 export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinancialRow[] }) {
     if (vendorRows.length === 0) return null;
 
@@ -539,12 +646,8 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
                         <th className="border border-black px-2 py-2 text-center font-bold">
                             Total Amount
                         </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold">
-                            GST (%)
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold">
-                            TDS (%)
-                        </th>
+                        <th className="border border-black px-2 py-2 text-center font-bold">GST</th>
+                        <th className="border border-black px-2 py-2 text-center font-bold">TDS</th>
                         <th className="border border-black px-2 py-2 text-center font-bold">
                             Net Total
                         </th>
@@ -565,11 +668,17 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
                             <td className="border border-black px-2 py-1.5 text-right">
                                 {formatExportCurrency(v.totalAmount)}
                             </td>
-                            <td className="border border-black px-2 py-1.5 text-center">
-                                {formatGstWithType(v.gstPercent, v.gstType)}
+                            <td className="border border-black px-2 py-1.5">
+                                <GstTdsCell
+                                    amount={v.totalAmount * ((v.gstPercent ?? 0) / 100)}
+                                    percent={v.gstPercent ?? 0}
+                                />
                             </td>
-                            <td className="border border-black px-2 py-1.5 text-center">
-                                {v.tdsPercent > 0 ? `${v.tdsPercent}%` : "—"}
+                            <td className="border border-black px-2 py-1.5">
+                                <GstTdsCell
+                                    amount={v.totalAmount * ((v.tdsPercent ?? 0) / 100)}
+                                    percent={v.tdsPercent ?? 0}
+                                />
                             </td>
                             <td className="border border-black px-2 py-1.5 text-right">
                                 {v.adjustedAmt !== 0 ? formatExportCurrency(v.adjustedAmt) : "—"}
@@ -590,14 +699,10 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
                             {formatExportCurrency(grandTotalAmount)}
                         </td>
                         <td className="border border-black px-2 py-1.5 text-right font-bold text-green-700">
-                            {grandGstAmount > 0
-                                ? `+${formatExportCurrency(grandGstAmount)}`
-                                : "—"}
+                            {grandGstAmount > 0 ? `+${formatExportCurrency(grandGstAmount)}` : "—"}
                         </td>
                         <td className="border border-black px-2 py-1.5 text-right font-bold text-destructive">
-                            {grandTdsAmount > 0
-                                ? `-${formatExportCurrency(grandTdsAmount)}`
-                                : "—"}
+                            {grandTdsAmount > 0 ? `-${formatExportCurrency(grandTdsAmount)}` : "—"}
                         </td>
                         <td className="border border-black px-2 py-1.5 text-right font-bold">
                             {formatExportCurrency(grandNetTotal)}
@@ -619,6 +724,23 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
 /*  Grand Summary                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Grand Summary — Consolidated Vendor Summary table.
+ *
+ * Aggregates across all categories and vendor rows.
+ *
+ * ROWS:
+ *   GRAND TOTAL (Subtotal)   = Σ category.subtotal
+ *                                (= Σ item.amount across all categories)
+ *   Total GST                = Σ v.totalAmount × v.gstPercent / 100  (vendors)
+ *   Total TDS                = Σ category.items.tdsAmount  (item-level)
+ *   GRAND TOTAL (After Tax)  = Σ v.adjustedAmt  (vendors)
+ *   Total Advance Paid       = Σ v.advanceAmount
+ *   GRAND OUTSTANDING BALANCE= GRAND TOTAL (After Tax) - Total Advance Paid
+ *
+ * AMOUNT IN WORDS:
+ *   Shown when grandOutstanding > 0: numberToWords(grandOutstanding)
+ */
 function GrandSummary({
     categories,
     vendorRows,
@@ -628,9 +750,9 @@ function GrandSummary({
 }) {
     const grandSubtotal = categories.reduce((sum, cat) => sum + cat.subtotal, 0);
 
-    // Compute GST and TDS from per-item amounts
-    const grandGst = categories.reduce(
-        (sum, cat) => sum + cat.items.reduce((s, item) => s + item.gstAmount, 0),
+    // Compute GST and TDS from vendor-wise financial summary
+    const grandGstAmount = vendorRows.reduce(
+        (sum, v) => sum + v.totalAmount * ((v.gstPercent ?? 0) / 100),
         0,
     );
     const grandTds = categories.reduce(
@@ -640,19 +762,6 @@ function GrandSummary({
     const grandAdvance = vendorRows.reduce((sum, v) => sum + v.advanceAmount, 0);
     const grandTotal = vendorRows.reduce((sum, v) => sum + v.adjustedAmt, 0);
     const grandOutstanding = grandTotal - grandAdvance;
-
-    // CGST/SGST split - compute effective GST% from item totals
-    const effectiveGstPercent =
-        grandSubtotal > 0
-            ? (categories.reduce(
-                  (sum, cat) => sum + cat.items.reduce((s, item) => s + item.gstAmount, 0),
-                  0,
-              ) /
-                  grandSubtotal) *
-              100
-            : 0;
-
-    const grandGstSplit = grandGst > 0 ? splitGst(effectiveGstPercent, grandSubtotal) : null;
 
     return (
         <div>
@@ -670,40 +779,8 @@ function GrandSummary({
                             {formatExportCurrency(grandSubtotal)}
                         </td>
                     </tr>
-                    {grandGstSplit && grandGst > 0 && (
-                        <>
-                            <tr className="text-green-700">
-                                <td
-                                    className="border border-black px-3 py-1.5 text-muted-foreground"
-                                    colSpan={5}
-                                >
-                                    CGST @ {grandGstSplit.cgstPercent.toFixed(2)}%
-                                </td>
-                                <td
-                                    className="border border-black px-3 py-1.5 text-right text-success font-medium"
-                                    colSpan={3}
-                                >
-                                    +{formatExportCurrency(grandGstSplit.cgstAmount)}
-                                </td>
-                            </tr>
-                            <tr className="text-green-700">
-                                <td
-                                    className="border border-black px-3 py-1.5 text-muted-foreground"
-                                    colSpan={5}
-                                >
-                                    SGST @ {grandGstSplit.sgstPercent.toFixed(2)}%
-                                </td>
-                                <td
-                                    className="border border-black px-3 py-1.5 text-right text-success font-medium"
-                                    colSpan={3}
-                                >
-                                    +{formatExportCurrency(grandGstSplit.sgstAmount)}
-                                </td>
-                            </tr>
-                        </>
-                    )}
-                    {!grandGstSplit && grandGst > 0 && (
-                        <tr>
+                    {grandGstAmount > 0 && (
+                        <tr className="text-green-700">
                             <td
                                 className="border border-black px-3 py-1.5 text-muted-foreground"
                                 colSpan={5}
@@ -714,7 +791,7 @@ function GrandSummary({
                                 className="border border-black px-3 py-1.5 text-right text-success font-medium"
                                 colSpan={3}
                             >
-                                +{formatExportCurrency(grandGst)}
+                                +{formatExportCurrency(grandGstAmount)}
                             </td>
                         </tr>
                     )}
@@ -792,38 +869,272 @@ function GrandSummary({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Expenses Summary                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Expenses Summary table.
+ *
+ * Displays the aggregated total expense for the event as a single row,
+ * fetched from `GET /api/expenses/total`. Shows the expense date and the
+ * total amount. Handles loading, empty, and error states without affecting
+ * the rest of the preview.
+ */
+function ExpenseSummaryTable({
+    expenseSummary,
+    loading,
+    error,
+}: {
+    expenseSummary: {
+        startDate: string;
+        endDate?: string;
+        totalAmount: number;
+        hasExpenses: boolean;
+    } | null;
+    loading: boolean;
+    error: string | null;
+}) {
+    const dateRange = expenseSummary?.endDate
+        ? `${expenseSummary.startDate} - ${expenseSummary.endDate}`
+        : expenseSummary?.startDate;
+    return (
+        <div className="mb-6">
+            <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
+                Expenses Summary
+            </div>
+            <table className="w-full border-collapse text-xs border border-black">
+                <thead>
+                    <tr className={purchaseOrderPreviewStyles.headerBg}>
+                        <th className="border border-black px-2 py-2 text-center font-bold">
+                            Event Date
+                        </th>
+                        <th className="border border-black px-2 py-2 text-center font-bold">
+                            Total Amount
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td className="border border-black px-2 py-1.5 text-center">
+                            {loading ? "Loading…" : dateRange || "—"}
+                        </td>
+                        <td className="border border-black px-2 py-1.5 text-right">
+                            {loading
+                                ? "…"
+                                : error || !expenseSummary?.hasExpenses
+                                  ? "No expenses"
+                                  : formatExportCurrency(expenseSummary.totalAmount)}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Client Bill Summary                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Client Bill Summary table.
+ *
+ * All figures come from `calculateClientBillSummary` (in @/lib/utils/billing),
+ * which derives everything from the Client Estimate / PO Client Billing input
+ * — never from Vendor Summary.
+ *
+ * ROWS:
+ *   Estimated Amount            = totalEstimatedCost
+ *   Service Charge ({pct}%)     = estimated × serviceChargePercent / 100
+ *   Discount                    = discountAmount (flat)
+ *   Original Amount             = Estimated + Service Charge - Discount
+ *   GST Amount                  = Original Amount × gstPercent / 100
+ *   Total (Original + GST)      = Original Amount + GST Amount
+ *   Amount Received from Client = receivedAmount  (PO billing input)
+ *   TDS Deducted by Client      = clientTdsAmount  (flat TDS applied by client)
+ *   Final Amount                = Amount Received - GST Amount
+ *   Advance                     = advanceAmount
+ *   Balance                     = Total - Amount Received - Advance - TDS Deducted
+ */
+function ClientBillSummary({
+    eventData,
+    vendorRows,
+    totalEstimatedCost,
+    receivedAmount,
+    amountRecievedFromClientDate,
+}: {
+    eventData: EventResponse;
+    vendorRows: VendorFinancialRow[];
+    totalEstimatedCost: number;
+    receivedAmount: number;
+    amountRecievedFromClientDate: string | null | undefined;
+}) {
+    const summary = useMemo(
+        () =>
+            calculateClientBillSummary({
+                totalEstimatedCost: totalEstimatedCost ?? 0,
+                gstPercent: eventData.gst ?? 0,
+                serviceChargePercent: eventData.serviceCharge ?? 0,
+                discountAmount: eventData.discounts ?? 0,
+                clientTdsAmount: eventData.tds ?? 0,
+                advanceAmount: eventData.advanceAmt ?? 0,
+                receivedAmount,
+                vendorSummaries: vendorRows.map(v => ({
+                    totalAmount: v.totalAmount,
+                    gst: v.gstPercent,
+                })),
+            }),
+        [eventData, vendorRows, totalEstimatedCost, receivedAmount],
+    );
+
+    return (
+        <div>
+            <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
+                Client Bill Summary
+            </div>
+            <table className="w-full border-collapse text-xs border border-black">
+                <tbody>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Estimated Amount
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.estimatedAmount)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Service Charge ({eventData.serviceCharge ?? 0}%)
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.serviceChargeAmount)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Discount
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            −{formatExportCurrency(summary.discountAmount)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Original Amount
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.originalAmount)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            GST Amount
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.gstAmount)}
+                        </td>
+                    </tr>
+                    <tr className={purchaseOrderPreviewStyles.totalBg}>
+                        <td className="border border-black px-3 py-2 font-bold" colSpan={4}>
+                            Total (Original + GST)
+                        </td>
+                        <td
+                            className="border border-black px-3 py-2 text-right font-bold"
+                            colSpan={4}
+                        >
+                            {formatExportCurrency(summary.total)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Amount Received from Client
+                            {amountRecievedFromClientDate
+                                ? ` (${formatShortDate(amountRecievedFromClientDate)})`
+                                : null}
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.amountReceivedFromClient)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            TDS Deducted by Client
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.tdsDeducted)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5 font-bold" colSpan={4}>
+                            Final Amount
+                        </td>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right font-bold"
+                            colSpan={4}
+                        >
+                            {formatExportCurrency(summary.finalAmount)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Advance
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                            {formatExportCurrency(summary.advance)}
+                        </td>
+                    </tr>
+                    <tr className={purchaseOrderPreviewStyles.balanceBg}>
+                        <td
+                            className="border border-black px-3 py-2 font-bold text-sm text-green-800"
+                            colSpan={4}
+                        >
+                            Balance
+                        </td>
+                        <td
+                            className="border border-black px-3 py-2 text-right font-bold text-sm text-green-800"
+                            colSpan={4}
+                        >
+                            {formatExportCurrency(summary.balance)}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Content                                                      */
 /* ------------------------------------------------------------------ */
 
 function PurchaseOrderPreviewContent({
     eventData,
     eventName,
-    vendorList,
-    inventoryList,
+    categories,
+    vendorFinancialRows,
     totalEstimatedCost,
+    receivedAmount,
+    amountRecievedFromClientDate,
+    expenseSummary,
+    expenseLoading,
+    expenseError,
 }: {
     eventData: EventResponse;
     eventName?: string;
-    vendorList?: Array<{ id?: string; name: string }>;
-    inventoryList?: Array<{ id?: string; name: string }>;
+    categories: CategoryPurchaseRow[];
+    vendorFinancialRows: VendorFinancialRow[];
     totalEstimatedCost: number;
+    receivedAmount: number;
+    amountRecievedFromClientDate: string | null | undefined;
+    expenseSummary: {
+        startDate: string;
+        endDate?: string;
+        totalAmount: number;
+        hasExpenses: boolean;
+    } | null;
+    expenseLoading: boolean;
+    expenseError: string | null;
 }) {
-    const categories = useMemo(
-        () =>
-            groupItemsByCategory(
-                eventData.items,
-                vendorList,
-                inventoryList,
-                eventData.vendorSummary,
-            ),
-        [eventData.items, eventData.vendorSummary, vendorList, inventoryList],
-    );
-
-    const vendorFinancialRows = useMemo(
-        () => buildVendorFinancials(eventData.vendorSummary, vendorList),
-        [eventData.vendorSummary, vendorList],
-    );
-
     if (categories.length === 0) {
         return (
             <div className="text-center py-12 text-muted-foreground text-sm">
@@ -852,13 +1163,31 @@ function PurchaseOrderPreviewContent({
             {/* Grand Summary */}
             <div className="mt-6">
                 <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
-                    Consolidated Summary
+                    Consolidated Vendor Summary
                 </div>
                 <GrandSummary categories={categories} vendorRows={vendorFinancialRows} />
             </div>
 
+            {/* Expenses Summary */}
+            <ExpenseSummaryTable
+                expenseSummary={expenseSummary}
+                loading={expenseLoading}
+                error={expenseError}
+            />
+
+            {/* Client Bill Summary */}
+            <div className="mt-6">
+                <ClientBillSummary
+                    eventData={eventData}
+                    vendorRows={vendorFinancialRows}
+                    totalEstimatedCost={totalEstimatedCost}
+                    receivedAmount={receivedAmount}
+                    amountRecievedFromClientDate={amountRecievedFromClientDate}
+                />
+            </div>
+
             {/* Profit Summary – internal (event management team) */}
-            <Access roles={["admin"]}>
+            <Access roles={["admin", "super_admin"]}>
                 <div className="mt-6">
                     <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
                         Profit Summary
@@ -882,6 +1211,119 @@ export function PurchaseOrderPreviewModal({
     totalEstimatedCost,
     onClose,
 }: PurchaseOrderPreviewModalProps) {
+    const [downloading, setDownloading] = useState<"pdf" | "excel" | null>(null);
+    const { user } = useAuth();
+    const includeProfitSummary = hasPermission(user, ["admin", "super_admin"]);
+    const categories = useMemo(
+        () =>
+            groupItemsByCategory(
+                eventData.items,
+                vendorList,
+                inventoryList,
+                eventData.vendorSummary,
+            ),
+        [eventData.items, eventData.vendorSummary, vendorList, inventoryList],
+    );
+    const vendorFinancialRows = useMemo(
+        () => buildVendorFinancials(eventData.vendorSummary, vendorList),
+        [eventData.vendorSummary, vendorList],
+    );
+
+    // Amount received from the client, restored from the saved event data.
+    const receivedAmount = toFiniteNumber(eventData.amountRecievedFromClient, 0);
+    const amountRecievedFromClientDate =
+        (eventData.amountRecievedFromClientDate as string | null) ?? null;
+
+    // Expenses Summary fetched from `GET /api/expenses/total` when the preview opens.
+    const [expenseSummary, setExpenseSummary] = useState<{
+        startDate: string;
+        endDate?: string;
+        totalAmount: number;
+        hasExpenses: boolean;
+    } | null>(null);
+    const [expenseLoading, setExpenseLoading] = useState(false);
+    const [expenseError, setExpenseError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadExpenseSummary = async () => {
+            if (!eventData?.eventID) {
+                setExpenseLoading(false);
+                return;
+            }
+            setExpenseLoading(true);
+            setExpenseError(null);
+            try {
+                const poc = user?.name || "";
+                const data = await fetchExpenseTotal(eventData.eventID, poc);
+                if (cancelled) return;
+                const totalAmount = data.reduce(
+                    (sum, entry) => sum + Number(entry.totalAmount ?? 0),
+                    0,
+                );
+                setExpenseSummary({
+                    startDate: formatShortDate(eventData.eventStartDate),
+                    endDate: eventData.eventEndDate
+                        ? formatShortDate(eventData.eventEndDate)
+                        : undefined,
+                    totalAmount,
+                    hasExpenses: data.length > 0,
+                });
+            } catch (err) {
+                if (cancelled) return;
+                console.error("Failed to fetch Expenses Summary:", err);
+                setExpenseError(
+                    err instanceof Error ? err.message : "Unable to load Expenses Summary.",
+                );
+            } finally {
+                if (!cancelled) setExpenseLoading(false);
+            }
+        };
+        loadExpenseSummary();
+        return () => {
+            cancelled = true;
+        };
+    }, [eventData?.eventID, user?.name]);
+
+    const handleDownload = async (format: "pdf" | "excel") => {
+        if (downloading) return;
+        setDownloading(format);
+        try {
+            if (format === "pdf") {
+                await downloadPurchaseOrderPdf(
+                    eventData,
+                    eventName,
+                    categories,
+                    vendorFinancialRows,
+                    {
+                        totalEstimatedCost,
+                        includeProfitSummary,
+                        expenseSummary,
+                    },
+                );
+                toast.success("PDF downloaded");
+            } else {
+                await downloadPurchaseOrderExcel(
+                    eventData,
+                    eventName,
+                    categories,
+                    vendorFinancialRows,
+                    {
+                        totalEstimatedCost,
+                        includeProfitSummary,
+                        expenseSummary,
+                    },
+                );
+                toast.success("Excel downloaded");
+            }
+        } catch (error) {
+            console.error(`Failed to download purchase order ${format}:`, error);
+            toast.error(`Failed to download ${format === "pdf" ? "PDF" : "Excel"}`);
+        } finally {
+            setDownloading(null);
+        }
+    };
+
     return (
         <Modal
             open
@@ -897,15 +1339,38 @@ export function PurchaseOrderPreviewModal({
                     <PurchaseOrderPreviewContent
                         eventData={eventData}
                         eventName={eventName}
-                        vendorList={vendorList}
-                        inventoryList={inventoryList}
+                        categories={categories}
+                        vendorFinancialRows={vendorFinancialRows}
                         totalEstimatedCost={totalEstimatedCost}
+                        receivedAmount={receivedAmount}
+                        amountRecievedFromClientDate={amountRecievedFromClientDate}
+                        expenseSummary={expenseSummary}
+                        expenseLoading={expenseLoading}
+                        expenseError={expenseError}
                     />
                 </div>
             </ModalBody>
             <ModalFooter>
                 <Button variant="outline" onClick={onClose}>
                     Close
+                </Button>
+                <Button
+                    variant="outline"
+                    onClick={() => handleDownload("pdf")}
+                    disabled={downloading !== null}
+                    className="flex items-center gap-2"
+                    icon={<FileText size={16} />}
+                >
+                    {downloading === "pdf" ? "Downloading…" : "Download PDF"}
+                </Button>
+                <Button
+                    variant="primary"
+                    onClick={() => handleDownload("excel")}
+                    disabled={downloading !== null}
+                    className="flex items-center gap-2"
+                    icon={<FileSpreadsheet size={16} />}
+                >
+                    {downloading === "excel" ? "Downloading…" : "Download Excel"}
                 </Button>
             </ModalFooter>
         </Modal>

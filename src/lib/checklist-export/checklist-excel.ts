@@ -6,6 +6,7 @@ import {
     CHECKLIST_EXPORT_COLORS,
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
+    getChecklistDeadlineDisplay,
     getChecklistItemName,
     getChecklistItemUnit,
     type ChecklistDocumentModel,
@@ -100,12 +101,22 @@ async function embedLogoInWorksheet(
     });
 
     const rowSpan = Math.max(endRow - startRow + 1, 1);
-    const rowHeightPt = 22;
-    const imageHeightPx = Math.round(rowSpan * rowHeightPt * 1.33);
-    const imageWidthPx = Math.round(LOGO_COLUMN_WIDTH * 7);
+    const imageHeightPx = Math.round(
+        Array.from({ length: rowSpan }, (_, index) => sheet.getRow(startRow + index).height ?? 18)
+            .reduce((height, rowHeight) => height + rowHeight, 0) * (96 / 72),
+    );
+    const imageWidthPx = imageHeightPx;
+    const logoColumnWidthPx = LOGO_COLUMN_WIDTH * 7;
+    const logoColumnOffset = Math.max(
+        (logoColumnWidthPx - imageWidthPx) / logoColumnWidthPx / 2,
+        0,
+    );
 
     sheet.addImage(imageId, {
-        tl: { col: LOGO_COLUMN_INDEX - 1 + 0.15, row: startRow - 1 + 0.08 },
+        tl: {
+            col: LOGO_COLUMN_INDEX - 1 + logoColumnOffset,
+            row: startRow - 1,
+        },
         ext: { width: imageWidthPx, height: imageHeightPx },
     });
 }
@@ -141,7 +152,6 @@ async function populateWorksheet(
         { width: 8 },
         { width: 18 },
         { width: 14 },
-        { width: 12 },
         { width: 12 },
         { width: LOGO_COLUMN_WIDTH },
     ];
@@ -233,7 +243,7 @@ async function populateWorksheet(
                 row.getCell(7).alignment = { horizontal: "left", vertical: "top", wrapText: true };
                 row.getCell(8).value = item.status || "PENDING";
                 row.getCell(8).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(9).value = item.deadlineDate || "—";
+                row.getCell(9).value = getChecklistDeadlineDisplay(item);
                 row.getCell(9).alignment = { horizontal: "center", vertical: "top" };
                 applyBorderRange(row, 1, CHECKLIST_COLUMN_COUNT);
                 row.height = 28;

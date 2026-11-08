@@ -630,6 +630,12 @@ export interface EventProfitAndLossInput {
     serviceChargePercent: number;
     discountAmount: number;
     vendorSummaries: readonly EventVendorFinancial[] | null | undefined;
+    /**
+     * Optional flat client TDS amount (not a percentage). When provided, the
+     * client TDS is applied as a direct amount instead of being computed from
+     * `tdsPercent`. Vendor TDS calculations are unaffected.
+     */
+    clientTdsAmount?: number;
 }
 
 export interface EventProfitAndLoss {
@@ -654,9 +660,43 @@ export interface EventProfitAndLoss {
 /**
  * Event level profit & loss.
  *
- * Extracted from the existing `ProfitSummary` component so that the billing
- * screens and the profit summary share a single implementation of the
- * client-side rule.
+ * Shared client-side P&L rule used by both the billing screens and the
+ * Purchase Order Preview Profit Summary (internal, admin only).
+ *
+ * INPUTS
+ *   totalEstimatedCost  — approved estimate amount
+ *   gstPercent          — client GST % (e.g. 18 = 18%)
+ *   tdsPercent          — client TDS % (unused here; kept 0)
+ *   clientTdsAmount     — client TDS as a FLAT applied amount
+ *                         (eventData.tds); NOT a percentage
+ *   serviceChargePercent — client service charge %
+ *   discountAmount      — client discount (flat amount)
+ *   vendorSummaries     — vendor-wise rollup from eventData
+ *                         (totalAmount, gst, tds, adjustedAmt…)
+ *
+ * HELPER
+ *   calculatePercentageAmount(amount, pct) = amount × pct / 100
+ *   toFiniteNumber(v, fb)                  — coerces NaN/Inf/null to fb (default 0)
+ *
+ * CALCULATION STEPS (client side)
+ *   1 estimatedAmount   = totalEstimatedCost
+ *   2 serviceChargeAmt  = estimatedAmount × serviceChargePercent / 100
+ *   3 taxableAmount     = estimatedAmount + serviceCharge - discount
+ *   4 gstAmount         = taxableAmount × gstPercent / 100
+ *   5 tdsAmount         = clientTdsAmount  (flat; tdsPercent unused)
+ *   6 totalClientBilled = taxableAmount + gstAmount - tdsAmount
+ *   7 clientBilledWoGST  = totalClientBilled - gstAmount
+ *                                          (= taxableAmount - tds)
+ *
+ * VENDOR-SIDE ROLLUP (from vendorSummaries)
+ *   totalVendorGst  = Σ totalAmount × gst   / 100
+ *   totalVendorTds  = Σ totalAmount × tds   / 100
+ *   totalVendorNet  = Σ (totalAmount + vendorGst - vendorTds)
+ *
+ * FINAL FIGURES
+ *   Profit   = clientBilledWoGST + totalVendorGst
+ *              - (totalVendorTds + totalVendorNet)
+ *   Net Hand = clientBilledWoGST - (totalVendorTds + totalVendorNet)
  */
 export function calculateEventProfitAndLoss(
     input: EventProfitAndLossInput,
@@ -673,7 +713,13 @@ export function calculateEventProfitAndLoss(
     );
     const taxableAmount = estimatedAmount + serviceChargeAmount - discountAmount;
     const gstAmount = calculatePercentageAmount(taxableAmount, gstPercent);
-    const tdsAmount = calculatePercentageAmount(taxableAmount, tdsPercent);
+    // Client TDS may be a flat applied amount (client-billing screen) rather
+    // than a percentage. When `clientTdsAmount` is provided it is used directly;
+    // otherwise TDS is computed from `tdsPercent`. Vendor TDS (below) always
+    // uses the percentage convention and is unaffected.
+    const tdsAmount = input.clientTdsAmount !== undefined
+        ? toFiniteNumber(input.clientTdsAmount, 0)
+        : calculatePercentageAmount(taxableAmount, tdsPercent);
     const totalClientBilledAmount = taxableAmount + gstAmount - tdsAmount;
     const clientBilledWithoutGst = totalClientBilledAmount - gstAmount;
 
@@ -723,5 +769,134 @@ export function calculateEventProfitAndLoss(
         totalVendorNet,
         profit: clientBilledWithoutGst + totalVendorGst - (totalVendorTds + totalVendorNet),
         netHand: clientBilledWithoutGst - (totalVendorTds + totalVendorNet),
+    };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Client bill summary (vendor costs vs client billing) */
+/* ------------------------------------------------------------------ */
+
+export interface ClientBillSummaryInput {
+    /** Approved estimate amount before tax (vendor cost base for the PO). */
+    totalEstimatedCost: number;
+    /** Client GST percentage (eventData.gst). */
+    gstPercent: number;
+    /** Client service charge percentage (eventData.serviceCharge). */
+    serviceChargePercent: number;
+    /** Client discount flat amount (eventData.discounts). */
+    discountAmount: number;
+    /** Flat TDS amount deducted by the client (eventData.tds). */
+    clientTdsAmount: number;
+    /** Advance already received from the client (eventData.advanceAmt). */
+    advanceAmount: number;
+    /** Amount already received from the client (PO Client Billing input / eventData.receivedAmount). */
+    receivedAmount: number;
+    /** Vendor-side rollup (kept for the shared P&L computation only). */
+    vendorSummaries: readonly EventVendorFinancial[] | null | undefined;
+}
+
+export interface PurchaseOrderClientBillSummary {
+    /** Approved estimate amount before tax (vendor cost base for the PO). */
+    estimatedAmount: number;
+    /** Service charge amount (base * serviceChargePercent / 100). */
+    serviceChargeAmount: number;
+    /** Discount flat amount. */
+    discountAmount: number;
+    /** Sum of vendor totalAmount (vendor cost before GST). */
+    originalAmount: number;
+    /** Sum of vendor GST amounts (totalAmount * gst% / 100). */
+    gstAmount: number;
+    /** Original Amount + GST Amount. */
+    total: number;
+    /** Client billed amount without GST + client GST (= total billed to client). */
+    amountReceivedFromClient: number;
+    /** Flat TDS amount deducted by the client. */
+    tdsDeducted: number;
+    /** Amount Received from Client - Client GST. */
+    finalAmount: number;
+    /** Advance received from the client. */
+    advance: number;
+    /** Final Amount - Advance. */
+    balance: number;
+}
+
+/**
+ * Client Bill Summary for the Purchase Order Preview.
+ *
+ * All client-bill figures come from the Client Estimate and the PO Client
+ * Billing input (never from Vendor Summary). Reuses
+ * `calculateEventProfitAndLoss` for the client-side GST/TDS so the values are
+ * identical to the Profit Summary.
+ *
+ * INPUTS
+ *   totalEstimatedCost   — approved estimate amount
+ *   gstPercent           — client GST % (eventData.gst)
+ *   serviceChargePercent — client service charge % (eventData.serviceCharge)
+ *   discountAmount       — client discount flat amount (eventData.discounts)
+ *   clientTdsAmount      — client TDS flat applied amount (eventData.tds)
+ *   advanceAmount        — client advance received (eventData.advanceAmt)
+ *   receivedAmount       — amount received from client (PO billing input)
+ *   vendorSummaries      — vendor-side rollup (shared P&L computation only)
+ *
+ * HELPER
+ *   calculatePercentageAmount(amount, pct) = amount × pct / 100
+ *   toFiniteNumber(v, fb)                  — coerces NaN/Inf/null to fb (default 0)
+ *
+ * CALCULATION STEPS (all from client estimate / PO billing input)
+ *   1 estimatedAmount    = totalEstimatedCost
+ *   2 serviceChargeAmt   = estimatedAmount × serviceChargePercent / 100
+ *   3 discountAmount     = discountAmount (flat)
+ *   4 originalAmount     = estimatedAmount + serviceChargeAmt - discountAmount
+ *   5 gstAmount          = originalAmount × gstPercent / 100
+ *   6 total              = originalAmount + gstAmount
+ *   7 amountReceivedFromClient = receivedAmount (from PO billing input)
+ *   8 tdsDeducted        = clientTdsAmount (flat TDS applied by client)
+ *   9 finalAmount        = amountReceivedFromClient - gstAmount
+ *  10 advance            = advanceAmount
+ *  11 balance            = total - amountReceived - advance - tdsDeducted
+ *
+ * NOTE: Vendor Summary is passed only for the shared P&L computation inside
+ * `calculateEventProfitAndLoss`; it does NOT alter client bill figures.
+ */
+export function calculateClientBillSummary(
+    input: ClientBillSummaryInput,
+): PurchaseOrderClientBillSummary {
+    const pnl = calculateEventProfitAndLoss({
+        totalEstimatedCost: input.totalEstimatedCost,
+        gstPercent: input.gstPercent,
+        tdsPercent: 0,
+        clientTdsAmount: input.clientTdsAmount,
+        serviceChargePercent: input.serviceChargePercent,
+        discountAmount: input.discountAmount,
+        vendorSummaries: input.vendorSummaries,
+    });
+
+    const serviceChargeAmount = pnl.serviceChargeAmount;
+    const discountAmount = pnl.discountAmount;
+    const estimatedAmount = pnl.estimatedAmount;
+    const originalAmount = estimatedAmount + serviceChargeAmount - discountAmount;
+    const gstAmount = pnl.gstAmount;
+
+    // Amount Received from Client comes straight from the PO Client Billing
+    // input; it is never derived from the estimate or vendor summary.
+    const amountReceivedFromClient = toFiniteNumber(input.receivedAmount, 0);
+    const tdsDeducted = pnl.tdsAmount;
+    const finalAmount = amountReceivedFromClient - gstAmount;
+    const advance = toFiniteNumber(input.advanceAmount, 0);
+
+    const total = originalAmount + gstAmount;
+
+    return {
+        estimatedAmount,
+        serviceChargeAmount,
+        discountAmount,
+        originalAmount,
+        gstAmount,
+        total,
+        amountReceivedFromClient,
+        tdsDeducted,
+        finalAmount,
+        advance,
+        balance: total - amountReceivedFromClient - advance - tdsDeducted,
     };
 }

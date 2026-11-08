@@ -85,6 +85,8 @@ export const API_ENDPOINTS = {
         list: "/api/expenses",
         byEvent: (eventID: string | number) =>
             `/api/expenses/event?eventID=${encodeURIComponent(String(eventID))}`,
+        total: (eventID: string | number, poc: string | number) =>
+            `/api/expenses/total?eventID=${encodeURIComponent(String(eventID))}&poc=${encodeURIComponent(String(poc))}`,
         detail: (id: string | number) => `/api/expenses/by-id?id=${encodeURIComponent(String(id))}`,
         update: (id: string | number) => `/api/expenses?id=${encodeURIComponent(String(id))}`,
         delete: (id: string | number) => `/api/expenses?id=${encodeURIComponent(String(id))}`,

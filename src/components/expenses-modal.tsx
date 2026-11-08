@@ -27,7 +27,6 @@ interface ExpenseItem {
     itemName: string;
     amount: string;
     comments: string;
-    expenseDescription: "ESTIMATED_EXPENSE" | "ACTUAL_EXPENSE";
     poc: string;
     expenseStatus:
         | "ESTIMATE_SUBMITTED"
@@ -60,11 +59,6 @@ interface ExpensesModalProps {
     editingExpense?: Expense | null;
 }
 
-const EXPENSE_TYPE_OPTIONS: { value: ExpenseItem["expenseDescription"]; label: string }[] = [
-    { value: "ESTIMATED_EXPENSE", label: "Estimated Expense" },
-    { value: "ACTUAL_EXPENSE", label: "Actual Expense" },
-];
-
 const EXPENSE_STATUS_OPTIONS: { value: ExpenseItem["expenseStatus"]; label: string }[] = [
     { value: "ESTIMATE_SUBMITTED", label: "Estimate Submitted" },
     { value: "ESTIMATE_REVIEW", label: "Estimate Under Review" },
@@ -80,13 +74,9 @@ const initialExpense: ExpenseItem = {
     itemName: "",
     amount: "",
     comments: "",
-    expenseDescription: "ESTIMATED_EXPENSE",
     poc: "",
     expenseStatus: "ESTIMATE_SUBMITTED",
 };
-
-const isExpenseTypeEnum = (val: string | undefined): val is ExpenseItem["expenseDescription"] =>
-    val === "ESTIMATED_EXPENSE" || val === "ACTUAL_EXPENSE";
 
 const validationSchema = Yup.object({
     expenses: Yup.array().of(
@@ -97,9 +87,6 @@ const validationSchema = Yup.object({
                 .test("is-positive-amount", "Amount must be greater than 0", function (value) {
                     return Boolean(value && parseFloat(value || "0") > 0);
                 }),
-            expenseDescription: Yup.string()
-                .oneOf(["ESTIMATED_EXPENSE", "ACTUAL_EXPENSE"], "Please select an expense type")
-                .required("Expense type is required"),
             expenseStatus: Yup.string()
                 .oneOf(
                     [
@@ -176,6 +163,10 @@ export function ExpensesModal({
 }: ExpensesModalProps) {
     const { user } = useAuth();
     const canEdit = hasPermission(user, undefined, ["w:expenses", "a:expenses"]);
+    // Only super_admin or admin can choose who spent the money; everyone else
+    // defaults the "Spent By" field to the logged in user.
+    const isAdminOrSuperAdmin = hasPermission(user, ["super_admin", "admin"]);
+    const defaultPoc = isAdminOrSuperAdmin ? "" : user?.name || "";
     const [initialExpenses, setInitialExpenses] = useState<ExpenseItem[]>([]);
 
     // Receipt file state: maps expense index -> selected file info
@@ -204,7 +195,6 @@ export function ExpensesModal({
 
         // Edit mode: prefill the form with the single expense being edited.
         if (editingExpense) {
-            const storedDescription = editingExpense.expenseDescription as string | undefined;
             setInitialExpenses([
                 {
                     id: editingExpense.id || undefined,
@@ -214,10 +204,7 @@ export function ExpensesModal({
                             ? String(editingExpense.amount)
                             : String(editingExpense.amount || ""),
                     comments: editingExpense.comments || "",
-                    expenseDescription: isExpenseTypeEnum(storedDescription)
-                        ? storedDescription
-                        : "ESTIMATED_EXPENSE",
-                    poc: editingExpense.poc || "",
+                    poc: isAdminOrSuperAdmin ? editingExpense.poc || "" : defaultPoc,
                     expenseStatus:
                         (editingExpense.expenseStatus as ExpenseItem["expenseStatus"]) ||
                         "ESTIMATE_SUBMITTED",
@@ -246,30 +233,24 @@ export function ExpensesModal({
         // Load existing expenses if available, otherwise start with one empty field
         if (Array.isArray(eventData?.expensesList) && eventData.expensesList.length > 0) {
             setInitialExpenses(
-                eventData.expensesList.map(exp => {
-                    const storedDescription = exp.expenseDescription as string | undefined;
-                    return {
-                        id: exp.id || undefined,
-                        itemName: exp.itemName,
-                        amount:
-                            typeof exp.amount === "number"
-                                ? String(exp.amount)
-                                : String(exp.amount || ""),
-                        comments: exp.comments || "",
-                        expenseDescription: isExpenseTypeEnum(storedDescription)
-                            ? storedDescription
-                            : "ESTIMATED_EXPENSE",
-                        poc: exp.poc || "",
-                        expenseStatus:
-                            (exp.expenseStatus as ExpenseItem["expenseStatus"]) ||
-                            "ESTIMATE_SUBMITTED",
-                        createdDate: exp.createdDate,
-                        lastUpdateddDate: exp.lastUpdateddDate,
-                    };
-                }),
+                eventData.expensesList.map(exp => ({
+                    id: exp.id || undefined,
+                    itemName: exp.itemName,
+                    amount:
+                        typeof exp.amount === "number"
+                            ? String(exp.amount)
+                            : String(exp.amount || ""),
+                    comments: exp.comments || "",
+                    poc: isAdminOrSuperAdmin ? exp.poc : defaultPoc,
+                    expenseStatus:
+                        (exp.expenseStatus as ExpenseItem["expenseStatus"]) ||
+                        "ESTIMATE_SUBMITTED",
+                    createdDate: exp.createdDate,
+                    lastUpdateddDate: exp.lastUpdateddDate,
+                })),
             );
         } else {
-            setInitialExpenses([{ ...initialExpense }]);
+            setInitialExpenses([{ ...initialExpense, poc: defaultPoc }]);
         }
     }, [isOpen, eventData, editingExpense]);
 
@@ -351,7 +332,6 @@ export function ExpensesModal({
                 amount: parseFloat(exp.amount) || 0,
                 comments: exp.comments || "",
                 poc: exp.poc || "",
-                expenseDescription: exp.expenseDescription,
                 expenseStatus: exp.expenseStatus,
                 createdDate: exp.createdDate,
                 lastUpdateddDate: new Date().toISOString(),
@@ -420,7 +400,6 @@ export function ExpensesModal({
                     amount: parseFloat(exp.amount) || 0,
                     comments: exp.comments || "",
                     poc: exp.poc || "",
-                    expenseDescription: exp.expenseDescription,
                     expenseStatus: exp.expenseStatus,
                     createdDate: new Date().toISOString(),
                 };
@@ -537,17 +516,19 @@ export function ExpensesModal({
                                         </div>
 
                                         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                                            <FormikFieldSelect
-                                                name={`expenses[${index}].expenseDescription`}
+                                            <UserSelectDropdown
+                                                isCreatable={false}
+                                                value={values.expenses[index].poc || ""}
+                                                onChange={name =>
+                                                    setFieldValue(`expenses[${index}].poc`, name)
+                                                }
                                                 label={
                                                     <span className="inline-flex items-center gap-1">
-                                                        Expense Type
-                                                        <RequiredMark />
+                                                        Spent By
                                                     </span>
                                                 }
-                                                options={EXPENSE_TYPE_OPTIONS}
-                                                placeholder="Select expense type"
-                                                isDisabled={!canEdit}
+                                                placeholder="Select user"
+                                                isDisabled={!isAdminOrSuperAdmin}
                                             />
                                             <FormikFieldSelect
                                                 name={`expenses[${index}].expenseStatus`}
@@ -562,21 +543,6 @@ export function ExpensesModal({
                                                 isDisabled={!canEdit}
                                             />
                                         </div>
-
-                                        <UserSelectDropdown
-                                            isCreatable={false}
-                                            value={values.expenses[index].poc || ""}
-                                            onChange={name =>
-                                                setFieldValue(`expenses[${index}].poc`, name)
-                                            }
-                                            label={
-                                                <span className="inline-flex items-center gap-1">
-                                                    Spent By
-                                                </span>
-                                            }
-                                            placeholder="Select user"
-                                            isDisabled={!canEdit}
-                                        />
 
                                         <FormikFieldTextArea
                                             name={`expenses[${index}].comments`}

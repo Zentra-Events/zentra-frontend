@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from "react";
+import {
+    useCallback,
+    useState,
+    type ChangeEvent,
+    type ClipboardEvent,
+    type KeyboardEvent,
+} from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -45,9 +51,12 @@ export function EmailTagInput({
         setDraft("");
     }, [draft, value, onChange]);
 
-    const removeEmail = useCallback((email: string) => {
-        onChange(value.filter(e => e !== email));
-    }, [value, onChange]);
+    const removeEmail = useCallback(
+        (email: string) => {
+            onChange(value.filter(e => e !== email));
+        },
+        [value, onChange],
+    );
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => setDraft(e.target.value);
 
@@ -129,11 +138,20 @@ export function EmailTagInput({
                     disabled={disabled}
                     placeholder={value.length === 0 ? placeholder : undefined}
                     className="flex-1 min-w-[80px] bg-transparent border-none outline-none px-0 py-1 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
                 />
+                {draft.length > 0 && !disabled && (
+                    <button
+                        type="button"
+                        onClick={() => setDraft("")}
+                        aria-label="Clear input"
+                        className="rounded-md p-1 transition-colors text-muted-foreground hover:bg-muted hover:text-accent"
+                    >
+                        <X size={12} />
+                    </button>
+                )}
             </div>
             {error && <p className="text-xs text-error">{error}</p>}
         </div>

@@ -142,6 +142,11 @@ export function EventFinanceModal({
     const allocationCount = allocations.length;
     const expenseCount = expenses.length;
 
+    const totalExpenseAmount = expenses.reduce(
+        (sum, exp) => sum + (typeof exp.amount === "number" ? exp.amount : Number(exp.amount) || 0),
+        0,
+    );
+
     const handleViewExpenses = (_allocation: FundAllocation) => {
         setActiveTab("expenses");
     };
@@ -238,7 +243,7 @@ export function EventFinanceModal({
                 }
             >
                 <ModalBody className="max-h-[calc(100vh-240px)] overflow-y-auto">
-                    <EventFinanceSummary summary={summary} />
+                    <EventFinanceSummary summary={{ ...summary, totalExpenseAmount }} />
 
                     <Tabs
                         value={activeTab}

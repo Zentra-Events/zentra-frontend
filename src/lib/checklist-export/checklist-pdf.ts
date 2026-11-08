@@ -5,12 +5,14 @@ import {
     buildChecklistDocumentModel,
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
+    getChecklistDeadlineDisplay,
     getChecklistItemName,
     getChecklistItemUnit,
     type ChecklistExportContext,
     type ChecklistExportRow,
 } from "./checklist-document";
 import { getEstimateLogoDataUrl } from "@/lib/estimate-export/estimate-logo";
+import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
 
 const LOGO_WIDTH_MM = 32;
 const LOGO_META_GAP_MM = 4;
@@ -69,8 +71,8 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 getChecklistItemUnit(item),
                 item.days != null ? String(item.days) : "—",
                 exportRow.vendorDisplay,
-                item.status || "PENDING",
-                item.deadlineDate || "—",
+                getChecklistStatusLabel(item.status),
+                getChecklistDeadlineDisplay(item),
             ]);
             segment.rowMeta.push({});
         }
@@ -113,7 +115,7 @@ function buildTableColumnStyles(contentWidth: number) {
     const status = 16;
     const dates = 18;
     const vendor = 24;
-    const fixedTotal = serial + quantity + unit + days + status + dates * 2 + vendor;
+    const fixedTotal = serial + quantity + unit + days + status + dates + vendor;
     const elements = Math.round((contentWidth - fixedTotal) * 0.38);
     const details = contentWidth - fixedTotal - elements;
 
@@ -127,7 +129,6 @@ function buildTableColumnStyles(contentWidth: number) {
         6: { halign: "left" as const, cellWidth: vendor },
         7: { halign: "center" as const, cellWidth: status },
         8: { halign: "center" as const, cellWidth: dates },
-        9: { halign: "center" as const, cellWidth: dates },
     };
 }
 
@@ -217,7 +218,8 @@ export async function generateChecklistPdfBlob(
         const blockHeight = Math.max(metaBlockEndY - metaBlockStartY, 20);
         const logoHeight = Math.min(LOGO_WIDTH_MM, blockHeight);
         const logoX = pageWidth - margin - LOGO_WIDTH_MM;
-        doc.addImage(logoDataUrl, "PNG", logoX, metaBlockStartY, LOGO_WIDTH_MM, logoHeight);
+        const logoY = metaBlockStartY + (blockHeight - logoHeight) / 2;
+        doc.addImage(logoDataUrl, "PNG", logoX, logoY, LOGO_WIDTH_MM, logoHeight);
     }
 
     y += 4;

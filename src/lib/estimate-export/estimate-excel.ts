@@ -11,6 +11,7 @@ import {
 } from "./estimate-document";
 import type { EstimateDto } from "@/types/estimate";
 import { getEstimateLogoPngBase64 } from "./estimate-logo";
+import { downloadBlob } from "@/lib/document-export/download";
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
     top: { style: "thin", color: { argb: ESTIMATE_EXPORT_COLORS.border } },
@@ -374,14 +375,5 @@ export async function downloadEstimateExcel(
     const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
-    triggerDownload(blob, `${model.filenameBase}.xlsx`);
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    window.URL.revokeObjectURL(url);
+    downloadBlob(blob, `${model.filenameBase}.xlsx`);
 }

@@ -292,14 +292,13 @@ export function CreatePurchaseOrderModal({
 }: CreatePurchaseOrderModalProps) {
     const itemList = eventData?.items ?? [];
     const vendorSummary = eventData?.vendorSummary ?? [];
-    // Client / event display info, populated from the existing event/estimate data.
-    const clientName = eventData?.client || "—";
-    const eventName = eventData?.title || "—";
-    const eventDescription =
-        (eventData?.highlvelRequirement as string) ||
-        eventData?.venue ||
-        eventData?.location ||
-        "—";
+    // Client display info, populated from the existing event/estimate data.
+    const [clientName, setClientName] = useState(eventData?.client || "—");
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setClientName(eventData?.client || "—");
+    }, [isOpen, eventData?.client]);
     // Determine which vendors to show in the sidebar: all vendors from vendorList
     // that have items in itemList
     const activeVendorIds = useMemo(() => getItemVendorIds(itemList), [itemList]);
@@ -337,7 +336,7 @@ export function CreatePurchaseOrderModal({
     // Which sidebar tab is active: "client" renders the Client Details section,
     // "vendor" renders the selected vendor's items & financials. Client Details
     // is the initial standalone selection, independent of any vendor.
-    const [activeView, setActiveView] = useState<"client" | "vendor">("client");
+    const [activeView, setActiveView] = useState<"client" | "vendor">("vendor");
 
     /* ---------- Client / estimate financials ----------
      * Editable client billing details, pre-populated from the approved/final
@@ -351,6 +350,8 @@ export function CreatePurchaseOrderModal({
         billingAddress: "",
         tds: 0,
         receivedAmount: 0,
+        advanceAmt: 0,
+        amountRecievedFromClientDate: null,
     });
 
     useEffect(() => {
@@ -363,8 +364,11 @@ export function CreatePurchaseOrderModal({
             billingAddress: eventData?.billingAddress ?? "",
             tds: eventData?.tds ?? 0,
             // Amount already received from the client. Defaults to the
-            // recorded client advance when available.
-            receivedAmount: eventData?.advanceAmt ?? 0,
+            // recorded client advance when no client received amount is present.
+            receivedAmount: (eventData?.amountRecievedFromClient as number | undefined) ?? 0,
+            advanceAmt: eventData?.advanceAmt ?? 0,
+            amountRecievedFromClientDate:
+                (eventData?.amountRecievedFromClientDate as string | null) ?? null,
         });
     }, [isOpen]);
 
@@ -480,17 +484,27 @@ export function CreatePurchaseOrderModal({
         });
     }, [vendors, vendorSummary, itemList]);
 
-    /* ---------- Keep subtotal in sync with computed value for the active vendor ---------- */
+    /* ---------- Keep subtotal in sync with computed value for all vendors ---------- */
     useEffect(() => {
         setFinancialsByVendor(prev => {
-            const current = prev[activeVendorId];
-            if (!current) return prev;
-            return {
-                ...prev,
-                [activeVendorId]: { ...current, subtotal: computedSubtotal },
-            };
+            const next = { ...prev };
+            let changed = false;
+            for (const v of vendors) {
+                const cats = groupItemsByCategory(editableItems, v.id);
+                const computed = cats.reduce(
+                    (sum, section) =>
+                        sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
+                    0,
+                );
+                const current = next[v.id];
+                if (current && Math.abs(current.subtotal - computed) > 0.01) {
+                    next[v.id] = { ...current, subtotal: computed };
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
         });
-    }, [computedSubtotal, activeVendorId]);
+    }, [vendors, editableItems]);
 
     /* ---------- Get financials for active vendor ---------- */
     const financials: Financials = useMemo(() => {
@@ -533,7 +547,11 @@ export function CreatePurchaseOrderModal({
     /* ---------- Client billing field handlers ---------- */
     const updateClientFinancial = (field: keyof ClientFinancials, value: string) => {
         setClientFinancials(prev => {
-            if (field === "gstType" || field === "billingAddress") {
+            if (
+                field === "gstType" ||
+                field === "billingAddress" ||
+                field === "amountRecievedFromClientDate"
+            ) {
                 return { ...prev, [field]: value };
             }
             if (value === "") return { ...prev, [field]: 0 };
@@ -557,24 +575,15 @@ export function CreatePurchaseOrderModal({
         clientFinancials.discount,
     ]);
 
-    // TDS is applied on the same base used for GST (total after service charge
-    // and discount adjustments), mirroring the vendor-side net total convention
-    // without mixing the two calculations.
+    // Client TDS is entered as a flat amount (not a percentage) and is applied
+    // directly against the GST-inclusive total. Vendor-side TDS calculation is
+    // unchanged.
     const clientTdsAmount = useMemo(() => {
-        const base =
-            totalClientEstimatedAmount +
-            clientSummary.serviceChargeAmount -
-            clientFinancials.discount;
-        return base * (clientFinancials.tds / 100);
-    }, [
-        totalClientEstimatedAmount,
-        clientSummary.serviceChargeAmount,
-        clientFinancials.discount,
-        clientFinancials.tds,
-    ]);
+        return clientFinancials.tds;
+    }, [clientFinancials.tds]);
 
     const clientTotal = clientSummary.totalWithGST - clientTdsAmount;
-    const clientOutstanding = clientTotal - clientFinancials.receivedAmount;
+    const clientOutstanding = clientTotal - clientFinancials.receivedAmount - clientFinancials.advanceAmt;
 
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
@@ -824,7 +833,10 @@ export function CreatePurchaseOrderModal({
                 serviceCharge: clientFinancials.serviceCharge,
                 discounts: clientFinancials.discount,
                 billingAddress: clientFinancials.billingAddress,
-                receivedAmount: clientFinancials.receivedAmount,
+                advanceAmt: clientFinancials.advanceAmt,
+                amountRecievedFromClient: clientFinancials.receivedAmount,
+                amountRecievedFromClientDate: clientFinancials.amountRecievedFromClientDate,
+                client: clientName,
             };
 
             // Use POST to create the event – requires the event id
@@ -842,7 +854,6 @@ export function CreatePurchaseOrderModal({
             if (res.ok) {
                 toast.success("Purchase order saved successfully");
                 onSave?.();
-                onClose();
             } else {
                 const errBody = await res.text().catch(() => "Unknown error");
                 console.error("Save purchase order failed:", errBody);
@@ -881,48 +892,10 @@ export function CreatePurchaseOrderModal({
                 {/* Left: Client + Vendor Sidebar */}
                 <aside className="w-72 border-r border-border bg-surface-container-low/30 overflow-y-auto shrink-0">
                     <nav className="p-2 space-y-5">
-                        {/* Client Detail section */}
-                        <div>
-                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                Client Detail
-                            </p>
-                            <button
-                                type="button"
-                                onClick={() => setActiveView("client")}
-                                className={cn(
-                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
-                                    activeView === "client"
-                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                        : "hover:bg-surface-container-high",
-                                )}
-                            >
-                                <span
-                                    className={cn(
-                                        "text-sm font-bold truncate",
-                                        activeView === "client"
-                                            ? "text-inherit"
-                                            : "text-foreground",
-                                    )}
-                                >
-                                    Billing & settlement
-                                </span>
-                                {/* <span
-                                    className={cn(
-                                        "text-xs italic",
-                                        activeView === "client"
-                                            ? "opacity-80"
-                                            : "text-muted-foreground",
-                                    )}
-                                >
-                                    Billing & settlement
-                                </span> */}
-                            </button>
-                        </div>
-
                         {/* Vendor Detail section */}
-                        <div className="border-t border-border pt-3">
+                        <div className="border-b border-border py-3">
                             <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                Vendor Detail
+                                Vendor Summary
                             </p>
                             <div className="space-y-2">
                                 {vendors.map(v => {
@@ -939,7 +912,7 @@ export function CreatePurchaseOrderModal({
                                                 "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
                                                 isActive
                                                     ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                    : "hover:bg-surface-container-high",
+                                                    : "hover:bg-primary/10 hover:text-primary",
                                             )}
                                         >
                                             <span
@@ -970,6 +943,44 @@ export function CreatePurchaseOrderModal({
                                 )}
                             </div>
                         </div>
+
+                        {/* Client Detail section */}
+                        <div>
+                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Client Summary
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setActiveView("client")}
+                                className={cn(
+                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
+                                    activeView === "client"
+                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                        : "hover:bg-primary/10 hover:text-primary",
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        "text-sm font-bold truncate",
+                                        activeView === "client"
+                                            ? "text-inherit"
+                                            : "text-foreground",
+                                    )}
+                                >
+                                    Billing information
+                                </span>
+                                <span
+                                    className={cn(
+                                        "text-xs italic",
+                                        activeView === "client"
+                                            ? "opacity-80"
+                                            : "text-muted-foreground",
+                                    )}
+                                >
+                                    Client Bill Summary
+                                </span>
+                            </button>
+                        </div>
                     </nav>
                 </aside>
 
@@ -979,8 +990,7 @@ export function CreatePurchaseOrderModal({
                         {activeView === "client" ? (
                             <PurchaseOrderClientDetails
                                 clientName={clientName}
-                                eventName={eventName}
-                                eventDescription={eventDescription}
+                                onClientNameChange={setClientName}
                                 clientFinancials={clientFinancials}
                                 onFinancialChange={updateClientFinancial}
                                 estimates={estimates}
@@ -1209,8 +1219,18 @@ export function CreatePurchaseOrderModal({
                                     ...(clientTdsAmount > 0
                                         ? [
                                               {
-                                                  label: `TDS (${clientFinancials.tds}%)`,
+                                                  label: "Applied TDS Amount",
                                                   amount: clientTdsAmount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientFinancials.advanceAmt > 0
+                                        ? [
+                                              {
+                                                  label: "Advance",
+                                                  amount: clientFinancials.advanceAmt,
                                                   tone: "negative" as const,
                                                   prefix: "-",
                                               },

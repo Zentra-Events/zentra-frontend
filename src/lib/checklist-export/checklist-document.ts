@@ -3,6 +3,7 @@ import type { ChecklistItem } from "@/components/checklist-modal/types";
 import { groupByCategory } from "@/lib/utils";
 import { toRomanLower } from "@/lib/utils";
 import { ESTIMATE_EXPORT_COLORS } from "@/lib/estimate-export/estimate-document";
+import { formatShortDateTime } from "@/lib/utils/date";
 
 export { ESTIMATE_EXPORT_COLORS as CHECKLIST_EXPORT_COLORS };
 
@@ -78,6 +79,10 @@ export function getChecklistItemDetails(item: ChecklistItem): string {
 
 export function getChecklistItemUnit(item: ChecklistItem): string {
     return (item.unit || "nos").trim() || "nos";
+}
+
+export function getChecklistDeadlineDisplay(item: ChecklistItem): string {
+    return item.deadlineDate ? formatShortDateTime(item.deadlineDate) : "—";
 }
 
 function appendCategoryRows(

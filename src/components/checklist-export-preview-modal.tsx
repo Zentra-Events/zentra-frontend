@@ -9,6 +9,7 @@ import {
     buildChecklistDocumentModel,
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
+    getChecklistDeadlineDisplay,
     getChecklistItemName,
     getChecklistItemUnit,
     type ChecklistExportContext,
@@ -18,7 +19,6 @@ import { downloadChecklistExcel } from "@/lib/checklist-export/checklist-excel";
 import { downloadChecklistPdf } from "@/lib/checklist-export/checklist-pdf";
 import { toast } from "sonner";
 import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
-import { formatShortDateTime } from "@/lib/utils/date";
 
 const previewStyles = {
     titleBg: "bg-[#e6e0f8]",
@@ -123,9 +123,7 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                         {getChecklistStatusLabel(item.status)}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.deadlineDate
-                                            ? formatShortDateTime(item.deadlineDate)
-                                            : "—"}
+                                        {getChecklistDeadlineDisplay(item)}
                                     </td>
                                 </tr>
                             );

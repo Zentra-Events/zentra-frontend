@@ -554,10 +554,22 @@ vendor-wise needs.
 - Adjusted Amount: correction if shown.
 - Total Amount: vendor total with tax adjustments.
 
+### Understanding the Purchase Order Preview tables
+Opening Purchase Order Preview shows several sections that tell you, in order, what is being bought, what is owed to each vendor, what the client is billed, and how much is left.
+
+- **Meta Header** — event title, client, event dates, venue, event ID, billing address, and PAN. This identifies which event the purchase order belongs to.
+- **Payment Terms** — standard commercial terms (payment timing, delivery, GST applicability, TDS treatment). These are fixed reference terms, not calculated figures.
+- **Category-wise Items** — every purchased item grouped by category and sub-category. Each line shows days, quantity, unit, rate, total amount (quantity × rate × days), GST, TDS, net total, and whether the item is your own stock ("SELF") or an outside vendor. Each category ends with a Category Subtotal (gross item total) and a Net SubTotal (after GST and TDS).
+- **Vendor-Wise Financial Summary** — one row per vendor showing the total amount owed before tax, GST, TDS, net total, advance already paid, and balance still payable. A GRAND TOTAL row adds all vendors together.
+- **Consolidated Vendor Summary** — the business-level rollup: grand subtotal across all categories, total GST, total TDS, grand total after tax, total advance paid, and the outstanding balance (grand total minus advance). An "Amount in Words" figure is shown when there is an outstanding balance.
+- **Client Bill Summary** — what the client is billed and how much they owe you: estimated amount, service charge, discount, original amount, GST amount, total billed, amount received from the client (with date), TDS deducted by the client, final amount, advance, and balance. This reflects client-side billing only and does not include vendor costs.
+- **Profit Summary** — internal P&L view shown only to administrators. It compares what the client is billed (without GST) against what vendors cost (including their GST/TDS), to show profit and the net cash position.
+
 ### Result
 Preview shows Meta Header, Payment Terms, Category tables,
-Vendor Financial Summary, Consolidated Summary, and Profit
-Summary for admins. This is your buying and payable control.
+Vendor Financial Summary, Consolidated Summary, Client Bill Summary,
+and Profit Summary for admins. This is your buying and payable control.
+Use Download PDF or Download Excel to save the same view for records.
 
 ## 13. Payments and Balances
 
@@ -597,25 +609,26 @@ charge, discount, GST/TDS build the final amount.
 
 ## 15. Profit Summary
 
-Shown in Purchase Order Preview for admins as internal P and L.
-
-Rows you will see:
+Shown in Purchase Order Preview for administrators as an internal
+profit-and-loss view. It compares what the client is billed against
+what vendors cost, to show the event's earnings and net cash position.
+This section is view-only — do not edit profit figures directly.
 
 | Metric | Meaning | How to interpret |
 | ------ | ------- | ---------------- |
-| Estimated amount | Approved item + additional cost base | Starting revenue base |
-| Service Charge | Fee on base | Extra client billing |
-| Discount | Reduction | Lowers taxable amount |
-| GST | Tax on taxable amount | Added to bill |
-| TDS Deducted | Client deduction | Reduces cash received |
-| Total Client Billed Amount | Taxable + GST - TDS | Total bill |
-| Client Billed without GST | Bill minus GST | For profit comparison |
-| Profit | Revenue left after vendor costs | Positive is good; red/negative is loss |
-| Net Hand | Cash effect as shown | Money position after vendor payables |
+| Total (Original + GST) | Client bill before TDS, including GST | Same figure as "Total (Original + GST)" in Client Bill Summary; the gross revenue base |
+| TDS Deducted (Applied TDS Amount) | Tax the client withheld from payment | Shown as a negative amount because it reduces cash you receive |
+| Total Client Billed Amount | Taxable amount + GST − client TDS | The full amount billed to the client |
+| Total Vendor GST | GST you pay across all vendors | Part of your vendor cost |
+| Total Vendor TDS | TDS deducted across all vendors | Shown as a negative amount; reduces what you pay vendors |
+| Net Vendor Total | Vendor totals after their own GST and TDS | What vendors effectively cost you |
+| Client Billed Amount without GST | Client bill minus GST | Revenue base used for profit comparison |
+| Profit | Client revenue without GST + vendor GST − (vendor TDS + vendor net cost) | Positive means you earned; red/negative means a loss |
+| Net Hand | Client revenue without GST − (vendor TDS + vendor net cost) | Cash position after vendor payables |
 
 Vendor GST/TDS feed vendor net costs. Additional estimates are
 included once merged. Ask finance/admin if a figure looks wrong;
-do not edit profit directly.
+profit is calculated automatically and cannot be edited manually.
 
 ## 16. Notifications / Email
 
