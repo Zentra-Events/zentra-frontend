@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
             size: searchParams.get("size"),
             search: searchParams.get("search"),
             role: searchParams.get("role"),
+            sortBy: searchParams.get("sortBy"),
+            direction: searchParams.get("direction"),
         });
 
         const res = await fetch(url, {

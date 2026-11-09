@@ -20,7 +20,7 @@ export const DEFAULT_LABELS: CategoryEditorStrings = {
     addCategory: "Add Category",
     addSubCategory: "Sub Category",
     addItem: "Item",
-    addUngroupedItem: "Add General Item",
+    addUngroupedItem: "Add Item",
     categoryNamePlaceholder: "Category name",
     subCategoryNamePlaceholder: "Sub category",
     emptyStateText: "No elements added yet.",

@@ -10,6 +10,41 @@ vi.mock("@/lib/api/api-client", () => ({
 vi.mock("sonner", () => ({
     toast: { success: vi.fn(), error: vi.fn() },
 }));
+// Mock MenuList to avoid AuthProvider requirement (it calls useAuth)
+vi.mock("@/components/ui", async (importActual) => {
+    const actual = await importActual<typeof import("@/components/ui")>();
+    return {
+        ...actual,
+        MenuList: ({
+            items,
+            trigger,
+        }: {
+            items: Array<{
+                key: string;
+                label: string;
+                icon?: React.ReactNode;
+                onClick?: () => void;
+                disabled?: boolean;
+                className?: string;
+            }>;
+            trigger: React.ReactNode;
+        }) => (
+            <div data-testid="menu-list">
+                {trigger}
+                {items.map(item => (
+                    <button
+                        key={item.key}
+                        data-testid={`menu-item-${item.key}`}
+                        onClick={() => item.onClick?.()}
+                        disabled={item.disabled}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </div>
+        ),
+    };
+});
 // Mock AccessButton to avoid AuthProvider requirement
 vi.mock("@/components/shared/access-button", () => ({
     AccessButton: ({

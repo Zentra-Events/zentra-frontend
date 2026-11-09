@@ -97,7 +97,10 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
         if (enquiry.ennquiryStatus?.trim()) return;
         const legacy = (enquiry.status || "").trim().toUpperCase();
         const untouched =
-            legacy === "" || legacy === "ENQUIRY_CREATED" || legacy === "NEW" || legacy === "NEW_LEAD";
+            legacy === "" ||
+            legacy === "ENQUIRY_CREATED" ||
+            legacy === "NEW" ||
+            legacy === "NEW_LEAD";
         if (!untouched) return;
         void updateFields({ ennquiryStatus: DEFAULT_ENQUIRY_STATUS } as Partial<Enquiry>);
     }, [enquiry, updateFields]);
@@ -188,7 +191,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     title: enquiry.eventName || enquiry.title || "Event",
-                    status: "ENQUIRY_CREATED",
+                    status: "ESTIMATE_INPROGRESS",
                     enquiryDate: enquiry.date || new Date().toISOString(),
                     fromDate: enquiry.fromDate || enquiry.date || new Date().toISOString(),
                     toDate: enquiry.toDate || enquiry.date || new Date().toISOString(),

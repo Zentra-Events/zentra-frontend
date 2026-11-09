@@ -43,6 +43,8 @@ export const API_ENDPOINTS = {
         detail: (id: string | number) => `/api/estimates/${id}`,
         byEnquiry: (id: string | number) => `/api/estimates/by-enquiry/${id}`,
         netTotal: (eventId: string | number) => `/api/estimates/net-total?eventID=${eventId}`,
+        delete: (id: string | number) =>
+            `/api/estimates/${encodeURIComponent(String(id))}`,
     },
     auth: {
         login: "/api/login",

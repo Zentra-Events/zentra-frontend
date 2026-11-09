@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
 import { InlineEdit } from "@/components/ui";
 import { TrashIcon } from "@/components/ui/icons";
-import { DEFAULT_CURRENCY_SYMBOL, DEFAULT_ITEM_COLUMNS, DEFAULT_LABELS, DEFAULT_UNIT_OPTIONS } from "@/lib/category-editor";
+import { DEFAULT_CURRENCY_SYMBOL, DEFAULT_GENERAL_CATEGORY, DEFAULT_ITEM_COLUMNS, DEFAULT_LABELS, DEFAULT_UNIT_OPTIONS } from "@/lib/category-editor";
 import type {
     CategoryEditorGroup,
     CategoryEditorGroupFocusState,
@@ -69,6 +69,7 @@ export function CategoryGroupCard<L extends CategoryEditorLine>({
     const copy: CategoryEditorStrings = { ...DEFAULT_LABELS, ...strings };
     const categoryHeaderRef = useRef<HTMLDivElement>(null);
     const subCategoryInputsRef = useRef<Map<string, HTMLElement | null>>(new Map());
+    const isGeneralGroup = group.name === DEFAULT_GENERAL_CATEGORY;
 
     /* ---- Auto-focus Category Name after adding a category ---- */
     useEffect(() => {
@@ -142,40 +143,41 @@ export function CategoryGroupCard<L extends CategoryEditorLine>({
 
     return (
         <div className="rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
-            {/* ---- Category Header ---- */}
-            <div
-                ref={categoryHeaderRef}
-                className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2.5"
-            >
-                <div className="flex items-center gap-2">
-                    <InlineEdit
-                        value={group.name}
-                        onSave={onRename}
-                        placeholder={copy.categoryNamePlaceholder}
-                        disabled={disabled}
-                        className="font-medium text-gray-900"
-                        data-field="category-name"
-                    />
+            {!isGeneralGroup ? (
+                <div
+                    ref={categoryHeaderRef}
+                    className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2.5"
+                >
+                    <div className="flex items-center gap-2">
+                        <InlineEdit
+                            value={group.name}
+                            onSave={onRename}
+                            placeholder={copy.categoryNamePlaceholder}
+                            disabled={disabled}
+                            className="font-medium text-gray-900"
+                            data-field="category-name"
+                        />
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <AddSubCategoryButton
+                            label={copy.addSubCategory}
+                            disabled={disabled}
+                            onClick={onAddSubCategory}
+                        />
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={disabled}
+                            onClick={onDelete}
+                            className="h-7 w-7 p-0 text-gray-500 hover:text-red-600"
+                            title="Delete category"
+                        >
+                            <TrashIcon size={14} />
+                        </Button>
+                    </div>
                 </div>
-                <div className="flex items-center gap-1">
-                    <AddSubCategoryButton
-                        label={copy.addSubCategory}
-                        disabled={disabled}
-                        onClick={onAddSubCategory}
-                    />
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={disabled}
-                        onClick={onDelete}
-                        className="h-7 w-7 p-0 text-gray-500 hover:text-red-600"
-                        title="Delete category"
-                    >
-                        <TrashIcon size={14} />
-                    </Button>
-                </div>
-            </div>
+            ) : null}
 
             {/* ---- Table with single header for all items ---- */}
             {showTable && (

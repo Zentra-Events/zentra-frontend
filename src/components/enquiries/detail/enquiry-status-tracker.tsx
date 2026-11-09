@@ -125,15 +125,6 @@ export function EnquiryStatusTracker({
         [onStatusChange],
     );
 
-    const selectPrimary = useCallback(
-        (value: string) => {
-            if (!canWrite || locked) return;
-            if (value === progress.status) return;
-            void runChange(value);
-        },
-        [canWrite, locked, progress.status, runChange],
-    );
-
     const requestOutcome = useCallback(
         (outcome: EnquiryExceptionalStatus) => {
             if (!canWriteOutcomeValue(outcome.value) || locked) return;
@@ -251,10 +242,7 @@ export function EnquiryStatusTracker({
                                     i < PRIMARY_STATUSES.length - 1 &&
                                     progress.states[i + 1] !== "upcoming"
                                 }
-                                canWrite={canWrite}
-                                locked={locked}
                                 isCurrent={progress.status === s.value}
-                                onSelect={selectPrimary}
                             />
                         ))}
                     </div>
@@ -273,10 +261,7 @@ export function EnquiryStatusTracker({
                         nextDone={
                             i < PRIMARY_STATUSES.length - 1 && progress.states[i + 1] !== "upcoming"
                         }
-                        canWrite={canWrite}
-                        locked={locked}
                         isCurrent={progress.status === s.value}
-                        onSelect={selectPrimary}
                     />
                 ))}
             </ol>
@@ -338,10 +323,7 @@ interface NodeProps {
     index: number;
     state: TrackerNodeState;
     last: boolean;
-    canWrite: boolean;
-    locked: boolean;
     isCurrent: boolean;
-    onSelect: (value: string) => void;
 }
 
 interface TimelineNodeProps extends NodeProps {
@@ -364,27 +346,17 @@ function NodeDot({
     index,
     state,
     isCurrent,
-    canWrite,
-    locked,
-    onSelect,
-}: Pick<
-    NodeProps,
-    "status" | "index" | "state" | "isCurrent" | "canWrite" | "locked" | "onSelect"
->) {
+}: Pick<NodeProps, "status" | "index" | "state" | "isCurrent">) {
     const isTerminal = status.value === "EVENT_APPROVED";
-    const disabled = !canWrite || locked || isCurrent;
     return (
         <button
             type="button"
-            disabled={disabled}
-            onClick={() => onSelect(status.value)}
             aria-current={isCurrent ? "step" : undefined}
             aria-label={`Move to ${status.label}`}
             title={`Move to ${status.label}`}
             className={cn(
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 nodeClasses(state, isTerminal),
-                disabled && !isCurrent && "opacity-70",
             )}
         >
             {state === "upcoming" ? index + 1 : <Check size={14} aria-hidden strokeWidth={3} />}
@@ -399,10 +371,7 @@ function TimelineNode({
     last,
     leftDone,
     rightDone,
-    canWrite,
-    locked,
     isCurrent,
-    onSelect,
 }: TimelineNodeProps) {
     return (
         <div className="flex flex-col items-center">
@@ -423,9 +392,6 @@ function TimelineNode({
                     index={index}
                     state={state}
                     isCurrent={isCurrent}
-                    canWrite={canWrite}
-                    locked={locked}
-                    onSelect={onSelect}
                 />
                 <div className="flex flex-1 items-center pl-2">
                     {!last && (
@@ -468,10 +434,7 @@ function MobileStep({
     state,
     last,
     nextDone,
-    canWrite,
-    locked,
     isCurrent,
-    onSelect,
 }: NodeProps & { nextDone: boolean }) {
     const group = STAGE_GROUPS.find(g => g.id === status.group);
     const GroupIcon = group ? GROUP_ICONS[group.id] : UserRound;
@@ -484,9 +447,6 @@ function MobileStep({
                     index={index}
                     state={state}
                     isCurrent={isCurrent}
-                    canWrite={canWrite}
-                    locked={locked}
-                    onSelect={onSelect}
                 />
                 {!last && (
                     <span

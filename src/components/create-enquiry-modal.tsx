@@ -200,9 +200,7 @@ export default function CreateEnquiryModal({
     // Keep the alternate-contact toggle in sync when switching between
     // create mode and editing an enquiry that already has alternate values.
     useEffect(() => {
-        setShowAlternateContact(
-            Boolean(editData?.alternatePoC || editData?.alternatePoCNumber),
-        );
+        setShowAlternateContact(Boolean(editData?.alternatePoC || editData?.alternatePoCNumber));
     }, [editData?.alternatePoC, editData?.alternatePoCNumber, isOpen]);
 
     const normalizeAssignedTo = (value?: string) => {
@@ -241,6 +239,7 @@ export default function CreateEnquiryModal({
               eventPoCNumber: "",
               assignedTo: "",
               priority: DEFAULT_PRIORITY,
+              status: "ENQUIRY_CREATED",
           };
 
     const isEdit = mode === "edit" || !!editData?.id;
@@ -447,539 +446,540 @@ export default function CreateEnquiryModal({
                     const selectedPriority =
                         PRIORITY_OPTIONS.find(o => o.value === values.priority) ?? null;
                     return (
-                    <Form noValidate>
-                        <ModalBody className="space-y-5">
-                            {status && (
-                                <div
-                                    role="alert"
-                                    className="flex items-start gap-3 rounded-lg border border-error/30 bg-error-light px-4 py-3 text-sm text-error"
-                                >
-                                    <CircleAlert size={18} aria-hidden="true" />
-                                    <div className="min-w-0">
-                                        <p className="font-semibold">
-                                            Unable to {isEdit ? "update" : "create"} enquiry
-                                        </p>
-                                        <p className="mt-0.5 break-words opacity-90">{status}</p>
+                        <Form noValidate>
+                            <ModalBody className="space-y-5">
+                                {status && (
+                                    <div
+                                        role="alert"
+                                        className="flex items-start gap-3 rounded-lg border border-error/30 bg-error-light px-4 py-3 text-sm text-error"
+                                    >
+                                        <CircleAlert size={18} aria-hidden="true" />
+                                        <div className="min-w-0">
+                                            <p className="font-semibold">
+                                                Unable to {isEdit ? "update" : "create"} enquiry
+                                            </p>
+                                            <p className="mt-0.5 break-words opacity-90">
+                                                {status}
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                            {/* Assignee + Priority (unnumbered) — first in visual + tab order.
+                                )}
+                                {/* Assignee + Priority (unnumbered) — first in visual + tab order.
                                 Uses the same grid template and gap as the section grid below so
                                 the fields line up exactly with the inputs in those sections. */}
-                            <div className="rounded-xl border border-border bg-background p-4 sm:p-5">
-                                <div className="grid items-start gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-                                    <UserSelectDropdown
-                                        value={values.assignedTo ?? ""}
-                                        onChange={assignedTo =>
-                                            setFieldValue("assignedTo", assignedTo)
-                                        }
-                                        label={
-                                            <span className="flex flex-wrap items-center gap-1.5">
-                                                <Briefcase
-                                                    size={14}
-                                                    className="text-muted-foreground"
-                                                    aria-hidden="true"
-                                                />
-                                                Assignee
-                                                <OptionalBadge />
-                                            </span>
-                                        }
-                                        placeholder="Search or enter assignee name"
-                                    />
-                                    <Select
-                                        inputId="enquiry-modal-priority-select"
-                                        aria-label="Enquiry priority"
-                                        label={
-                                            <span className="flex flex-wrap items-center gap-1.5">
-                                                <Flag
-                                                    size={14}
-                                                    className="text-muted-foreground"
-                                                    aria-hidden="true"
-                                                />
-                                                Priority
-                                                <OptionalBadge />
-                                            </span>
-                                        }
-                                        options={PRIORITY_OPTIONS}
-                                        value={selectedPriority}
-                                        isSearchable={false}
-                                        placeholder="Select priority"
-                                        onChange={(opt: unknown) => {
-                                            const next = (
-                                                opt as { value?: EnquiryPriorityValue } | null
-                                            )?.value;
-                                            if (!next) return;
-                                            setFieldValue("priority", next);
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-                                <section
-                                    aria-labelledby="enquiry-event-details-heading"
-                                    className="flex flex-col rounded-xl border border-border bg-background p-4 sm:p-5"
-                                >
-                                    <SectionHeader
-                                        id="enquiry-event-details-heading"
-                                        icon={<CalendarDays size={18} aria-hidden="true" />}
-                                        eyebrow="Step 1"
-                                        title="Event Details"
-                                        description="What is happening, when, and where."
-                                        badge={<StepBadge>Required</StepBadge>}
-                                    />
-                                    <div className="mt-4 flex flex-1 flex-col justify-start gap-4">
-                                        <FormikFieldInput
-                                            name="title"
+                                <div className="rounded-xl border border-border bg-background p-4 sm:p-5">
+                                    <div className="grid items-start gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                                        <UserSelectDropdown
+                                            value={values.assignedTo ?? ""}
+                                            onChange={assignedTo =>
+                                                setFieldValue("assignedTo", assignedTo)
+                                            }
                                             label={
-                                                <span className="inline-flex items-center gap-1">
-                                                    Event Title
-                                                    <RequiredMark />
+                                                <span className="flex flex-wrap items-center gap-1.5">
+                                                    <Briefcase
+                                                        size={14}
+                                                        className="text-muted-foreground"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Assignee
+                                                    <OptionalBadge />
                                                 </span>
                                             }
-                                            type="text"
-                                            placeholder="e.g. Birthday party, Annual day celebration"
+                                            placeholder="Search or enter assignee name"
                                         />
-                                        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                                            <FormikFieldDatePicker
-                                                name="fromDate"
-                                                label={
-                                                    <span className="inline-flex items-center gap-1.5">
-                                                        Starts <OptionalBadge />
-                                                    </span>
-                                                }
-                                                placeholderText="Select start date & time"
-                                            />
-                                            <FormikFieldDatePicker
-                                                name="toDate"
-                                                label={
-                                                    <span className="inline-flex items-center gap-1.5">
-                                                        Ends <OptionalBadge />
-                                                    </span>
-                                                }
-                                                placeholderText="Select end date & time"
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                                            <FormikFieldInput
-                                                name="location"
-                                                label={
-                                                    <span className="inline-flex items-center gap-1">
-                                                        Location
-                                                        <RequiredMark />
-                                                    </span>
-                                                }
-                                                type="text"
-                                                placeholder="City or area"
-                                            />
-                                            <FormikFieldInput
-                                                name="venue"
-                                                label={
-                                                    <span className="inline-flex items-center gap-1">
-                                                        Venue
-                                                        <RequiredMark />
-                                                    </span>
-                                                }
-                                                type="text"
-                                                placeholder="Hall, resort, or address"
-                                            />
-                                        </div>
+                                        <Select
+                                            inputId="enquiry-modal-priority-select"
+                                            aria-label="Enquiry priority"
+                                            label={
+                                                <span className="flex flex-wrap items-center gap-1.5">
+                                                    <Flag
+                                                        size={14}
+                                                        className="text-muted-foreground"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Priority
+                                                    <OptionalBadge />
+                                                </span>
+                                            }
+                                            options={PRIORITY_OPTIONS}
+                                            value={selectedPriority}
+                                            isSearchable={false}
+                                            placeholder="Select priority"
+                                            onChange={(opt: unknown) => {
+                                                const next = (
+                                                    opt as { value?: EnquiryPriorityValue } | null
+                                                )?.value;
+                                                if (!next) return;
+                                                setFieldValue("priority", next);
+                                            }}
+                                        />
                                     </div>
-                                </section>
-
-                                <section
-                                    aria-labelledby="enquiry-client-details-heading"
-                                    className="rounded-xl border border-border bg-background p-4 sm:p-5"
-                                >
-                                    <SectionHeader
-                                        id="enquiry-client-details-heading"
-                                        icon={<Building2 size={18} aria-hidden="true" />}
-                                        eyebrow="Step 2"
-                                        title="Client & Primary Contact"
-                                        description="Who is requesting the event and contact details."
-                                        badge={<StepBadge>Required</StepBadge>}
-                                    />
-                                    <div className="mt-4 space-y-4">
-                                        <FormikFieldRadio
-                                            name="eventType"
-                                            label={
-                                                <span className="inline-flex items-center gap-1">
-                                                    Event Type
-                                                    <RequiredMark />
-                                                </span>
-                                            }
-                                            options={[
-                                                { label: "Individual", value: "PERSONAL" },
-                                                { label: "Corporate", value: "CORPORATE" },
-                                                { label: "Other", value: "OTHER" },
-                                            ]}
+                                </div>
+                                <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                                    <section
+                                        aria-labelledby="enquiry-event-details-heading"
+                                        className="flex flex-col rounded-xl border border-border bg-background p-4 sm:p-5"
+                                    >
+                                        <SectionHeader
+                                            id="enquiry-event-details-heading"
+                                            icon={<CalendarDays size={18} aria-hidden="true" />}
+                                            eyebrow="Step 1"
+                                            title="Event Details"
+                                            description="What is happening, when, and where."
+                                            badge={<StepBadge>Required</StepBadge>}
                                         />
-
-                                        <div>
-                                            {clientsLoading ? (
-                                                <div className="flex flex-col gap-1.5">
-                                                    <span className="flex min-h-5 flex-wrap items-center gap-1.5 text-sm font-medium leading-5 text-foreground">
-                                                        <span className="inline-flex items-center gap-1">
-                                                            Client
-                                                            <RequiredMark />
-                                                        </span>
+                                        <div className="mt-4 flex flex-1 flex-col justify-start gap-4">
+                                            <FormikFieldInput
+                                                name="title"
+                                                label={
+                                                    <span className="inline-flex items-center gap-1">
+                                                        Event Title
+                                                        <RequiredMark />
                                                     </span>
-                                                    <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-surface px-3 py-2 text-sm text-muted-foreground">
-                                                        <Loader2
-                                                            size={16}
-                                                            className="animate-spin"
-                                                            aria-hidden="true"
-                                                        />
-                                                        Loading clients...
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <FormikFieldCreatableSelect
-                                                    name="client"
-                                                    id="client"
+                                                }
+                                                type="text"
+                                                placeholder="e.g. Birthday party, Annual day celebration"
+                                            />
+                                            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                                                <FormikFieldDatePicker
+                                                    name="fromDate"
+                                                    label={
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            Starts <OptionalBadge />
+                                                        </span>
+                                                    }
+                                                    placeholderText="Select start date & time"
+                                                />
+                                                <FormikFieldDatePicker
+                                                    name="toDate"
+                                                    label={
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            Ends <OptionalBadge />
+                                                        </span>
+                                                    }
+                                                    placeholderText="Select end date & time"
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                                                <FormikFieldInput
+                                                    name="location"
                                                     label={
                                                         <span className="inline-flex items-center gap-1">
-                                                            Client
+                                                            Location
                                                             <RequiredMark />
                                                         </span>
                                                     }
-                                                    placeholder="Search or type a new client name..."
-                                                    isClearable
-                                                    options={clients.map(c => ({
-                                                        value: c.id,
-                                                        label: c.name,
-                                                    }))}
-                                                    value={(() => {
-                                                        const option = clients.find(
-                                                            c => c.id === values.client,
-                                                        );
-                                                        if (option)
-                                                            return {
-                                                                value: option.id,
-                                                                label: option.name,
-                                                            };
-                                                        if (clientsLoading) return null;
-                                                        if (values.clientName)
-                                                            return {
-                                                                value: "__new__",
-                                                                label: values.clientName,
-                                                            };
-                                                        return null;
-                                                    })()}
-                                                    onChange={selectedValue => {
-                                                        const selectedOption = clients.find(
-                                                            c => c.id === selectedValue,
-                                                        );
-                                                        const personal = isPersonalEvent(
-                                                            values.eventType,
-                                                        );
-                                                        // Update client + clientName (+ clientPoC for PERSONAL)
-                                                        // atomically with a single setValues call. Separate
-                                                        // sequential setFieldValue() calls re-validate the
-                                                        // form against stale values, so the second call
-                                                        // (clientName = "") re-triggers "Please select a
-                                                        // client" even though the client id was just set.
-                                                        if (
-                                                            selectedValue === "__new__" ||
-                                                            (selectedValue !== "" &&
-                                                                !selectedOption)
-                                                        ) {
-                                                            const newName =
-                                                                selectedValue === "__new__"
-                                                                    ? values.clientName
-                                                                    : selectedValue;
-                                                            setValues({
-                                                                ...values,
-                                                                client: "",
-                                                                clientName: newName,
-                                                                ...(personal
-                                                                    ? {
-                                                                          clientPoC: newName,
-                                                                      }
-                                                                    : {}),
-                                                            });
-                                                        } else if (selectedOption) {
-                                                            setValues({
-                                                                ...values,
-                                                                client: selectedOption.id,
-                                                                clientName: "",
-                                                                ...(personal
-                                                                    ? {
-                                                                          clientPoC:
-                                                                              selectedOption.name,
-                                                                      }
-                                                                    : {}),
-                                                            });
-                                                        } else {
-                                                            setValues({
-                                                                ...values,
-                                                                client: "",
-                                                                clientName: "",
-                                                            });
-                                                        }
-                                                    }}
-                                                    onCreateOption={(inputValue: string) => {
-                                                        // Do not persist immediately; store typed name and show as selected.
-                                                        // Single atomic update (same stale-values rationale as above).
-                                                        setValues({
-                                                            ...values,
-                                                            client: "",
-                                                            clientName: inputValue,
-                                                            ...(isPersonalEvent(values.eventType)
-                                                                ? { clientPoC: inputValue }
-                                                                : {}),
-                                                        });
-                                                    }}
+                                                    type="text"
+                                                    placeholder="City or area"
                                                 />
-                                            )}
-                                        </div>
-
-                                        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                                            <FormikFieldInput
-                                                name="clientPoC"
-                                                label={
-                                                    isPersonalEvent(values.eventType) ? (
-                                                        <span className="inline-flex min-h-5 items-center">
-                                                            Contact Person Name
+                                                <FormikFieldInput
+                                                    name="venue"
+                                                    label={
+                                                        <span className="inline-flex items-center gap-1">
+                                                            Venue
+                                                            <RequiredMark />
                                                         </span>
-                                                    ) : (
-                                                        "Contact Person Name"
-                                                    )
-                                                }
-                                                type="text"
-                                                placeholder={
-                                                    isPersonalEvent(values.eventType)
-                                                        ? "Auto-filled from client"
-                                                        : "Primary contact name"
-                                                }
-                                                disabled={isPersonalEvent(values.eventType)}
-                                                inputClassName={cn(
-                                                    isPersonalEvent(values.eventType) &&
-                                                        "cursor-not-allowed opacity-80",
-                                                )}
-                                            />
-                                            <FormikFieldInput
-                                                name="enquiryPoCNumber"
+                                                    }
+                                                    type="text"
+                                                    placeholder="Hall, resort, or address"
+                                                />
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section
+                                        aria-labelledby="enquiry-client-details-heading"
+                                        className="rounded-xl border border-border bg-background p-4 sm:p-5"
+                                    >
+                                        <SectionHeader
+                                            id="enquiry-client-details-heading"
+                                            icon={<Building2 size={18} aria-hidden="true" />}
+                                            eyebrow="Step 2"
+                                            title="Client & Primary Contact"
+                                            description="Who is requesting the event and contact details."
+                                            badge={<StepBadge>Required</StepBadge>}
+                                        />
+                                        <div className="mt-4 space-y-4">
+                                            <FormikFieldRadio
+                                                name="eventType"
                                                 label={
-                                                    <span className="inline-flex min-h-5 items-center gap-1">
-                                                        Contact Mobile Number
+                                                    <span className="inline-flex items-center gap-1">
+                                                        Event Type
                                                         <RequiredMark />
                                                     </span>
                                                 }
-                                                type="tel"
-                                                inputMode="tel"
-                                                autoComplete="tel"
-                                                placeholder="10-digit mobile number"
-                                                maxLength={10}
-                                                onChange={e => {
-                                                    const value = e.target.value
-                                                        .replace(/\D/g, "")
-                                                        .slice(0, 10);
-                                                    setFieldValue("enquiryPoCNumber", value);
-                                                }}
+                                                options={[
+                                                    { label: "Individual", value: "PERSONAL" },
+                                                    { label: "Corporate", value: "CORPORATE" },
+                                                    { label: "Other", value: "OTHER" },
+                                                ]}
                                             />
-                                        </div>
-                                        {showAlternateContact && (
+
+                                            <div>
+                                                {clientsLoading ? (
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <span className="flex min-h-5 flex-wrap items-center gap-1.5 text-sm font-medium leading-5 text-foreground">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                Client
+                                                                <RequiredMark />
+                                                            </span>
+                                                        </span>
+                                                        <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-surface px-3 py-2 text-sm text-muted-foreground">
+                                                            <Loader2
+                                                                size={16}
+                                                                className="animate-spin"
+                                                                aria-hidden="true"
+                                                            />
+                                                            Loading clients...
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <FormikFieldCreatableSelect
+                                                        name="client"
+                                                        id="client"
+                                                        label={
+                                                            <span className="inline-flex items-center gap-1">
+                                                                Client
+                                                                <RequiredMark />
+                                                            </span>
+                                                        }
+                                                        placeholder="Search or type a new client name..."
+                                                        isClearable
+                                                        options={clients.map(c => ({
+                                                            value: c.id,
+                                                            label: c.name,
+                                                        }))}
+                                                        value={(() => {
+                                                            const option = clients.find(
+                                                                c => c.id === values.client,
+                                                            );
+                                                            if (option)
+                                                                return {
+                                                                    value: option.id,
+                                                                    label: option.name,
+                                                                };
+                                                            if (clientsLoading) return null;
+                                                            if (values.clientName)
+                                                                return {
+                                                                    value: "__new__",
+                                                                    label: values.clientName,
+                                                                };
+                                                            return null;
+                                                        })()}
+                                                        onChange={selectedValue => {
+                                                            const selectedOption = clients.find(
+                                                                c => c.id === selectedValue,
+                                                            );
+                                                            const personal = isPersonalEvent(
+                                                                values.eventType,
+                                                            );
+                                                            // Update client + clientName (+ clientPoC for PERSONAL)
+                                                            // atomically with a single setValues call. Separate
+                                                            // sequential setFieldValue() calls re-validate the
+                                                            // form against stale values, so the second call
+                                                            // (clientName = "") re-triggers "Please select a
+                                                            // client" even though the client id was just set.
+                                                            if (
+                                                                selectedValue === "__new__" ||
+                                                                (selectedValue !== "" &&
+                                                                    !selectedOption)
+                                                            ) {
+                                                                const newName =
+                                                                    selectedValue === "__new__"
+                                                                        ? values.clientName
+                                                                        : selectedValue;
+                                                                setValues({
+                                                                    ...values,
+                                                                    client: "",
+                                                                    clientName: newName,
+                                                                    ...(personal
+                                                                        ? {
+                                                                              clientPoC: newName,
+                                                                          }
+                                                                        : {}),
+                                                                });
+                                                            } else if (selectedOption) {
+                                                                setValues({
+                                                                    ...values,
+                                                                    client: selectedOption.id,
+                                                                    clientName: "",
+                                                                    ...(personal
+                                                                        ? {
+                                                                              clientPoC:
+                                                                                  selectedOption.name,
+                                                                          }
+                                                                        : {}),
+                                                                });
+                                                            } else {
+                                                                setValues({
+                                                                    ...values,
+                                                                    client: "",
+                                                                    clientName: "",
+                                                                });
+                                                            }
+                                                        }}
+                                                        onCreateOption={(inputValue: string) => {
+                                                            // Do not persist immediately; store typed name and show as selected.
+                                                            // Single atomic update (same stale-values rationale as above).
+                                                            setValues({
+                                                                ...values,
+                                                                client: "",
+                                                                clientName: inputValue,
+                                                                ...(isPersonalEvent(
+                                                                    values.eventType,
+                                                                )
+                                                                    ? { clientPoC: inputValue }
+                                                                    : {}),
+                                                            });
+                                                        }}
+                                                    />
+                                                )}
+                                            </div>
+
                                             <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
                                                 <FormikFieldInput
-                                                    name="alternatePoC"
+                                                    name="clientPoC"
+                                                    label={
+                                                        isPersonalEvent(values.eventType) ? (
+                                                            <span className="inline-flex min-h-5 items-center">
+                                                                Contact Person Name
+                                                            </span>
+                                                        ) : (
+                                                            "Contact Person Name"
+                                                        )
+                                                    }
                                                     type="text"
-                                                    placeholder="Alternate contact name"
+                                                    placeholder={
+                                                        isPersonalEvent(values.eventType)
+                                                            ? "Auto-filled from client"
+                                                            : "Primary contact name"
+                                                    }
+                                                    disabled={isPersonalEvent(values.eventType)}
+                                                    inputClassName={cn(
+                                                        isPersonalEvent(values.eventType) &&
+                                                            "cursor-not-allowed opacity-80",
+                                                    )}
                                                 />
                                                 <FormikFieldInput
-                                                    name="alternatePoCNumber"
+                                                    name="enquiryPoCNumber"
+                                                    label={
+                                                        <span className="inline-flex min-h-5 items-center gap-1">
+                                                            Contact Mobile Number
+                                                            <RequiredMark />
+                                                        </span>
+                                                    }
                                                     type="tel"
                                                     inputMode="tel"
                                                     autoComplete="tel"
-                                                    placeholder="Alternate mobile number"
+                                                    placeholder="10-digit mobile number"
                                                     maxLength={10}
                                                     onChange={e => {
                                                         const value = e.target.value
                                                             .replace(/\D/g, "")
                                                             .slice(0, 10);
-                                                        setFieldValue(
-                                                            "alternatePoCNumber",
-                                                            value,
-                                                        );
+                                                        setFieldValue("enquiryPoCNumber", value);
                                                     }}
                                                 />
                                             </div>
-                                        )}
-                                        <div className="flex justify-start">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (showAlternateContact) {
-                                                        setFieldValue("alternatePoC", "");
-                                                        setFieldValue(
-                                                            "alternatePoCNumber",
-                                                            "",
-                                                        );
-                                                    }
-                                                    setShowAlternateContact(prev => !prev);
-                                                }}
-                                                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
-                                            >
-                                                {showAlternateContact ? (
-                                                    <>
-                                                        <Minus size={14} aria-hidden="true" />
-                                                        Remove alternate contact
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Plus size={14} aria-hidden="true" />
-                                                        Add alternate contact
-                                                    </>
-                                                )}
-                                            </button>
+                                            {showAlternateContact && (
+                                                <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                                                    <FormikFieldInput
+                                                        name="alternatePoC"
+                                                        type="text"
+                                                        placeholder="Alternate contact name"
+                                                    />
+                                                    <FormikFieldInput
+                                                        name="alternatePoCNumber"
+                                                        type="tel"
+                                                        inputMode="tel"
+                                                        autoComplete="tel"
+                                                        placeholder="Alternate mobile number"
+                                                        maxLength={10}
+                                                        onChange={e => {
+                                                            const value = e.target.value
+                                                                .replace(/\D/g, "")
+                                                                .slice(0, 10);
+                                                            setFieldValue(
+                                                                "alternatePoCNumber",
+                                                                value,
+                                                            );
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
+                                            <div className="flex justify-start">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (showAlternateContact) {
+                                                            setFieldValue("alternatePoC", "");
+                                                            setFieldValue("alternatePoCNumber", "");
+                                                        }
+                                                        setShowAlternateContact(prev => !prev);
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
+                                                >
+                                                    {showAlternateContact ? (
+                                                        <>
+                                                            <Minus size={14} aria-hidden="true" />
+                                                            Remove alternate contact
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Plus size={14} aria-hidden="true" />
+                                                            Add alternate contact
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                            {isPersonalEvent(values.eventType) && (
+                                                <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                                    Individual events use the client name as the
+                                                    point of contact.
+                                                </p>
+                                            )}
                                         </div>
-                                        {isPersonalEvent(values.eventType) && (
-                                            <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-5 text-muted-foreground">
-                                                Individual events use the client name as the point
-                                                of contact.
-                                            </p>
-                                        )}
+                                    </section>
+                                </div>
+
+                                <section
+                                    aria-labelledby="enquiry-additional-contacts-heading"
+                                    className="rounded-xl border border-border bg-background p-4 sm:p-5"
+                                >
+                                    <SectionHeader
+                                        id="enquiry-additional-contacts-heading"
+                                        icon={<Users size={18} aria-hidden="true" />}
+                                        eyebrow="Step 3"
+                                        title="Additional Contacts"
+                                        description="Add these only when they differ from the primary client contact."
+                                        badge={
+                                            <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                                                Optional
+                                            </span>
+                                        }
+                                    />
+                                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                        <FormikFieldInput
+                                            name="eventPoC"
+                                            label={
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <UserRound
+                                                        size={14}
+                                                        className="text-muted-foreground"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Event POC Name
+                                                </span>
+                                            }
+                                            type="text"
+                                            placeholder="On-ground contact person"
+                                        />
+                                        <FormikFieldInput
+                                            name="eventPoCNumber"
+                                            label={
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <Phone
+                                                        size={14}
+                                                        className="text-muted-foreground"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Event POC Number
+                                                </span>
+                                            }
+                                            type="tel"
+                                            inputMode="tel"
+                                            autoComplete="tel"
+                                            placeholder="10-digit mobile number"
+                                            maxLength={10}
+                                            onChange={e => {
+                                                const value = e.target.value
+                                                    .replace(/\D/g, "")
+                                                    .slice(0, 10);
+                                                setFieldValue("eventPoCNumber", value);
+                                            }}
+                                        />
+                                        <FormikFieldInput
+                                            name="enquiryPoC"
+                                            label={
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <UserRound
+                                                        size={14}
+                                                        className="text-muted-foreground"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Enquiry POC Name
+                                                </span>
+                                            }
+                                            type="text"
+                                            placeholder="Follow-up contact person"
+                                        />
                                     </div>
                                 </section>
-                            </div>
 
-                            <section
-                                aria-labelledby="enquiry-additional-contacts-heading"
-                                className="rounded-xl border border-border bg-background p-4 sm:p-5"
-                            >
-                                <SectionHeader
-                                    id="enquiry-additional-contacts-heading"
-                                    icon={<Users size={18} aria-hidden="true" />}
-                                    eyebrow="Step 3"
-                                    title="Additional Contacts"
-                                    description="Add these only when they differ from the primary client contact."
-                                    badge={
-                                        <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                            Optional
-                                        </span>
-                                    }
-                                />
-                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                                    <FormikFieldInput
-                                        name="eventPoC"
-                                        label={
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <UserRound
-                                                    size={14}
-                                                    className="text-muted-foreground"
-                                                    aria-hidden="true"
-                                                />
-                                                Event POC Name
-                                            </span>
-                                        }
-                                        type="text"
-                                        placeholder="On-ground contact person"
-                                    />
-                                    <FormikFieldInput
-                                        name="eventPoCNumber"
-                                        label={
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <Phone
-                                                    size={14}
-                                                    className="text-muted-foreground"
-                                                    aria-hidden="true"
-                                                />
-                                                Event POC Number
-                                            </span>
-                                        }
-                                        type="tel"
-                                        inputMode="tel"
-                                        autoComplete="tel"
-                                        placeholder="10-digit mobile number"
-                                        maxLength={10}
-                                        onChange={e => {
-                                            const value = e.target.value
-                                                .replace(/\D/g, "")
-                                                .slice(0, 10);
-                                            setFieldValue("eventPoCNumber", value);
-                                        }}
-                                    />
-                                    <FormikFieldInput
-                                        name="enquiryPoC"
-                                        label={
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <UserRound
-                                                    size={14}
-                                                    className="text-muted-foreground"
-                                                    aria-hidden="true"
-                                                />
-                                                Enquiry POC Name
-                                            </span>
-                                        }
-                                        type="text"
-                                        placeholder="Follow-up contact person"
-                                    />
-                                </div>
-                            </section>
-
-                            <section
-                                aria-labelledby="enquiry-requirements-heading"
-                                className="rounded-xl border border-border bg-background p-4 sm:p-5"
-                            >
-                                <SectionHeader
-                                    id="enquiry-requirements-heading"
-                                    icon={<ClipboardList size={18} aria-hidden="true" />}
-                                    eyebrow="Step 4"
-                                    title="High Level Requirements"
-                                    description="Capture guest count, theme, catering, décor, AV, and other must-haves."
-                                    badge={<StepBadge>Required</StepBadge>}
-                                />
-                                <div className="mt-4">
-                                    <FormikFieldTextArea
-                                        name="highlvelRequirement"
-                                        label={
-                                            <>
-                                                Requirements
-                                                <RequiredMark />
-                                            </>
-                                        }
-                                        rows={5}
-                                        placeholder="Guests, theme, catering, décor, AV, and other must-haves"
-                                    />
-                                </div>
-                            </section>
-                        </ModalBody>
-                        <ModalFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <MapPin size={14} className="shrink-0" aria-hidden="true" />
-                                <span>
-                                    Fields marked{" "}
-                                    <span className="font-semibold text-error">*</span> are
-                                    required.
-                                </span>
-                            </p>
-                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-                                <Button
-                                    variant="outline"
-                                    onClick={onClose}
-                                    type="button"
-                                    disabled={isSubmitting || saveProcessing}
-                                    className="w-full sm:w-auto"
+                                <section
+                                    aria-labelledby="enquiry-requirements-heading"
+                                    className="rounded-xl border border-border bg-background p-4 sm:p-5"
                                 >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="button"
-                                    isLoading={isSubmitting || saveProcessing}
-                                    disabled={isSubmitting || saveProcessing}
-                                    onClick={() => submitForm()}
-                                    className="w-full sm:w-auto"
-                                >
-                                    {saveProcessing || isSubmitting
-                                        ? "Saving..."
-                                        : isEdit
-                                          ? "Save changes"
-                                          : "Create enquiry"}
-                                </Button>
-                            </div>
-                        </ModalFooter>
-                    </Form>
-                );
+                                    <SectionHeader
+                                        id="enquiry-requirements-heading"
+                                        icon={<ClipboardList size={18} aria-hidden="true" />}
+                                        eyebrow="Step 4"
+                                        title="High Level Requirements"
+                                        description="Capture guest count, theme, catering, décor, AV, and other must-haves."
+                                        badge={<StepBadge>Required</StepBadge>}
+                                    />
+                                    <div className="mt-4">
+                                        <FormikFieldTextArea
+                                            name="highlvelRequirement"
+                                            label={
+                                                <>
+                                                    Requirements
+                                                    <RequiredMark />
+                                                </>
+                                            }
+                                            rows={5}
+                                            placeholder="Guests, theme, catering, décor, AV, and other must-haves"
+                                        />
+                                    </div>
+                                </section>
+                            </ModalBody>
+                            <ModalFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <MapPin size={14} className="shrink-0" aria-hidden="true" />
+                                    <span>
+                                        Fields marked{" "}
+                                        <span className="font-semibold text-error">*</span> are
+                                        required.
+                                    </span>
+                                </p>
+                                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                                    <Button
+                                        variant="outline"
+                                        onClick={onClose}
+                                        type="button"
+                                        disabled={isSubmitting || saveProcessing}
+                                        className="w-full sm:w-auto"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        isLoading={isSubmitting || saveProcessing}
+                                        disabled={isSubmitting || saveProcessing}
+                                        onClick={() => submitForm()}
+                                        className="w-full sm:w-auto"
+                                    >
+                                        {saveProcessing || isSubmitting
+                                            ? "Saving..."
+                                            : isEdit
+                                              ? "Save changes"
+                                              : "Create enquiry"}
+                                    </Button>
+                                </div>
+                            </ModalFooter>
+                        </Form>
+                    );
                 }}
             </Formik>
         </Modal>

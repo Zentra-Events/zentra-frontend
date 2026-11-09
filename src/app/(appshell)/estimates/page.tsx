@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { MoreVerticalIcon, TrashIcon, FileTextIcon } from "@/components/ui/icons";
-import { Button, MenuList, PageHeader, DataTable, type Column, Badge } from "@/components/ui";
+import { Button, PageHeader, DataTable, type Column, Badge } from "@/components/ui";
 import { MobileCardList } from "@/components/shared/mobile-card-list";
-import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import CreateEstimateModal from "@/components/create-estimate-modal";
 import { EstimateVersionsView } from "@/components/estimate-versions-view";
 import { EstimateDto, EstimateItem } from "@/types/estimate";
@@ -14,7 +12,6 @@ import { useEstimatePrefill } from "@/context/estimate-prefill";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { apiRequest } from "@/lib/api/api-client";
 import { AccessButton } from "@/components/shared/access-button";
-import { MenuItem } from "@/types";
 import { Download, FilePlus2Icon } from "lucide-react";
 
 type EstimateRecord = EstimateDto & {
@@ -143,8 +140,6 @@ export default function EstimatesPage() {
         (Partial<EstimateDto> & { enquiryId?: string }) | undefined
     >(undefined);
     const [versionsViewEnquiryId, setVersionsViewEnquiryId] = useState<string | null>(null);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [estimateToDelete, setEstimateToDelete] = useState<EstimateRecord | null>(null);
 
     const refreshEstimates = useCallback(async () => {
         setLoading(true);
@@ -286,42 +281,6 @@ export default function EstimatesPage() {
         toast.success("Estimate saved successfully");
     };
 
-    const handleDeleteClick = (estimate: EstimateRecord) => {
-        setEstimateToDelete(estimate);
-        setDeleteModalOpen(true);
-    };
-
-    const handleDeleteConfirm = async () => {
-        if (!estimateToDelete?.id) {
-            toast.error("Cannot delete estimate without an ID");
-            return;
-        }
-
-        const id = estimateToDelete.id;
-        try {
-            const res = await apiRequest(`/api/estimates/${encodeURIComponent(String(id))}`, {
-                method: "DELETE",
-            });
-            if (!res.ok) {
-                const txt = await res.text().catch(() => "");
-                throw new Error(`Delete failed: ${res.status} ${txt}`);
-            }
-            setEstimates(prev => prev.filter(e => String(e.id) !== String(id)));
-            toast.success("Estimate deleted successfully");
-        } catch (err) {
-            console.error("Failed to delete estimate", err);
-            toast.error("Failed to delete estimate");
-        } finally {
-            setDeleteModalOpen(false);
-            setEstimateToDelete(null);
-        }
-    };
-
-    const handleDeleteCancel = () => {
-        setDeleteModalOpen(false);
-        setEstimateToDelete(null);
-    };
-
     const columns = useMemo<Column<EstimateRecord>[]>(
         () => [
             {
@@ -416,56 +375,18 @@ export default function EstimatesPage() {
                     </div>
                 ),
             },
-            {
-                key: "assignee",
-                header: "Assignee",
-                render: row => (
-                    <div
-                        className="cursor-pointer hover:text-blue-600"
-                        onClick={() => row.enquiryId && setVersionsViewEnquiryId(row.enquiryId)}
-                    >
-                        {row.assignee ?? "Unassigned"}
-                    </div>
-                ),
-            },
-            {
-                key: "actions",
-                header: "",
-                className: "text-right",
-                render: row => {
-                    const items: MenuItem[] = [
-                        {
-                            key: "versions",
-                            label: "View Versions",
-                            icon: <FileTextIcon size={16} />,
-                            onClick: () => row.enquiryId && setVersionsViewEnquiryId(row.enquiryId),
-                            disabled: !row.enquiryId,
-                        },
-                        {
-                            key: "delete",
-                            label: "Delete",
-                            icon: <TrashIcon size={16} />,
-                            onClick: () => handleDeleteClick(row),
-                            className: "text-destructive focus:text-destructive",
-                            scopes: ["w:estimates"],
-                        },
-                    ];
-
-                    return (
-                        <div className="flex justify-center">
-                            <MenuList
-                                align="end"
-                                items={items}
-                                trigger={
-                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <MoreVerticalIcon size={16} />
-                                    </Button>
-                                }
-                            />
-                        </div>
-                    );
-                },
-            },
+            // {
+            //     key: "assignee",
+            //     header: "Assignee",
+            //     render: row => (
+            //         <div
+            //             className="cursor-pointer hover:text-blue-600"
+            //             onClick={() => row.enquiryId && setVersionsViewEnquiryId(row.enquiryId)}
+            //         >
+            //             {row.assignee ?? "Unassigned"}
+            //         </div>
+            //     ),
+            // },
         ],
         [],
     );
@@ -596,37 +517,6 @@ export default function EstimatesPage() {
                                 )}
                         </>
                     )}
-                    renderActions={est => (
-                        <div className="flex gap-2 justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    setPrefill(est);
-                                    setIsModalOpen(true);
-                                }}
-                            >
-                                Edit
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                    est.enquiryId && setVersionsViewEnquiryId(est.enquiryId)
-                                }
-                                disabled={!est.enquiryId}
-                            >
-                                Versions
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteClick(est)}
-                            >
-                                Delete
-                            </Button>
-                        </div>
-                    )}
                     emptyMessage="No estimates found."
                     isLoading={loading}
                 />
@@ -662,20 +552,6 @@ export default function EstimatesPage() {
                     }}
                 />
             )}
-
-            <ConfirmationModal
-                open={deleteModalOpen}
-                onClose={handleDeleteCancel}
-                onConfirm={handleDeleteConfirm}
-                title="Delete Estimate"
-                description={
-                    estimateToDelete
-                        ? `Are you sure you want to delete "${estimateToDelete.highlvelRequirement || "this estimate"}"? This action cannot be undone.`
-                        : undefined
-                }
-                confirmText="Delete"
-                cancelText="Cancel"
-            />
         </div>
     );
 }

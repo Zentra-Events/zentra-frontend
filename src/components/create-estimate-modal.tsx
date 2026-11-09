@@ -1404,12 +1404,12 @@ export default function CreateEstimateModal({
                                             <div className="mt-3 grid gap-3">
                                                 <FormikFieldSelect
                                                     name="status"
-                                                    label="Status"
+                                                    label="Event Status"
                                                     options={eventStatus.map(s => ({
                                                         label: s.label,
                                                         value: s.value,
                                                     }))}
-                                                    isDisabled={!prefillData?.enquiryId}
+                                                    isDisabled={true}
                                                 />
                                                 <div className="grid gap-3 md:grid-cols-2">
                                                     <FormikFieldInput
