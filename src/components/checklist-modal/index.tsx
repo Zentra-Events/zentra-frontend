@@ -57,7 +57,9 @@ export function ExecutionChecklistModal({
     const [validationTriggered, setValidationTriggered] = useState(false);
     // Global checklist assignee (one per checklist). Initialized from the API
     // response and persisted back to the backend on save.
-    const [checklistAssignedTo, setchecklistAssignedTo] = useState<string>(initialchecklistAssignedTo);
+  const [checklistAssignedTo, setchecklistAssignedTo] = useState<string>(
+    initialchecklistAssignedTo || eventData.checklistAssignedTo || ""
+);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -89,7 +91,7 @@ export function ExecutionChecklistModal({
         });
         setExpandedCategories(cats);
         setExpandedSubCategories(subs);
-        setchecklistAssignedTo(initialchecklistAssignedTo);
+        setchecklistAssignedTo(initialchecklistAssignedTo || eventData.checklistAssignedTo || "");
     }, [isOpen, eventData]);
 
     const filteredItems = useMemo(() => {
@@ -430,38 +432,43 @@ export function ExecutionChecklistModal({
         onCollapseAll: handleCollapseAll,
     };
 
-    const performSave = async () => {
-        setSaving(true);
-        try {
-            const filteredData = persistableItems;
+   const performSave = async () => {
+    if (!eventData.id || !eventData.eventID) {
+        toast.error("Event details are incomplete. Cannot save checklist.");
+        return;
+    }
 
-            const payload = filteredData.map(({ _uid, ...rest }) => rest);
-            const updatedEvent = {
-                ...eventData,
-                checkListCompleted: true,
-                checklistAssignedTo,
-                items: payload,
-            };
+    setSaving(true);
 
-            const res = await apiRequest(API_ENDPOINTS.events.list, {
-                method: "POST",
-                body: JSON.stringify(updatedEvent),
-            });
+    try {
+        const payload = persistableItems.map(({ _uid, ...rest }) => rest);
 
-            if (res.ok) {
-                toast.success("Checklist saved successfully");
-                onSave();
-                onClose();
-            } else {
-                toast.error("Failed to save checklist");
-            }
-        } catch (err) {
-            console.error("Error saving checklist:", err);
-            toast.error("Error saving checklist");
-        } finally {
-            setSaving(false);
+        const updatedEvent = {
+            ...eventData,
+            checkListCompleted: true,
+            checklistAssignedTo,
+            items: payload,
+        };
+
+        const res = await apiRequest(API_ENDPOINTS.events.list, {
+            method: "POST",
+            body: JSON.stringify(updatedEvent),
+        });
+
+        if (res.ok) {
+            toast.success("Checklist saved successfully");
+            onSave();
+            onClose();
+        } else {
+            toast.error("Failed to save checklist");
         }
-    };
+    } catch (err) {
+        console.error("Error saving checklist:", err);
+        toast.error("Error saving checklist");
+    } finally {
+        setSaving(false);
+    }
+};
 
     const handleMissingVendorConfirm = async () => {
         setMissingVendorModalOpen(false);
@@ -514,8 +521,8 @@ export function ExecutionChecklistModal({
                 {/* Right panel: item editor */}
                 <div className="flex-1 overflow-hidden">
                     {selectedItem ? (
-                        <ChecklistItemEditor
-                            item={selectedItem}
+                        
+                         <ChecklistItemEditor   item={selectedItem}
                             vendorList={vendorList}
                             inventoryList={inventoryList}
                             loadingVendors={loadingVendors}

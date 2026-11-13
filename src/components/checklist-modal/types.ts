@@ -10,6 +10,7 @@
 
 import type { Vendor } from "@/types/vendor";
 import type { Inventory } from "@/types/inventory";
+import type { EventChecklistItem } from "@/types/checklist";
 
 /** Persisted status values understood by the backend. */
 export type ChecklistItemStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED";
@@ -57,22 +58,28 @@ export interface EventItem {
     count?: number;
     unit?: string;
     vendor?: string;
-    startDate?: string;
-    endDate?: string;
+   startDate?: string | null;
+    endDate?: string | null;
+    deadlineDate?: string | null;
     status?: string;
-    [key: string]: string | number | undefined;
+   
+    inventoryID?: string | number;
+    
+    pricePerItem?: number;
+    days?: number;
 }
 
 export interface ChecklistModalProps {
     isOpen: boolean;
     onClose: () => void;
     eventData: {
-        id?: string;
-        title?: string;
-        items?: EventItem[];
-        checklist?: ChecklistItem[];
-        [key: string]: string | EventItem[] | ChecklistItem[] | undefined;
-    };
+    id?: string;
+    title?: string;
+    eventID?: string;
+    checklistAssignedTo?: string | null;
+    items?: EventChecklistItem[];
+    checklist?: EventChecklistItem[] | ChecklistItem[];
+};
     /** Global checklist assignee (one per checklist), mapped from the API response. */
     checklistAssignedTo?: string;
     onSave: () => void;
