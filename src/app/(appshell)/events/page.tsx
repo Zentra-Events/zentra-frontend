@@ -7,14 +7,8 @@ import { toast } from "sonner";
 import { useRequestApi } from "@/hooks/useRequestApi";
 import { Button } from "@/components/ui/button";
 import { LinkText, MenuList } from "@/components/ui";
-import {
-    MoreVerticalIcon,
-    PencilIcon,
-    TrashIcon,
-    FileTextIcon,
-    CalendarIcon,
-} from "@/components/ui/icons";
-import { CalendarPlus, Copy, Download } from "lucide-react";
+import { MoreVerticalIcon, TrashIcon, FileTextIcon, CalendarIcon } from "@/components/ui/icons";
+import { CalendarPlus, Download } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -255,22 +249,24 @@ const columns = (
                     onClick: () => onView(row),
                     disabled: isBusy,
                 },
-                {
-                    key: "edit",
-                    label: "Edit",
-                    icon: <PencilIcon size={16} />,
-                    onClick: () => onEdit(row),
-                    disabled: isBusy,
-                    scopes: ["w:events"],
-                },
-                {
-                    key: "clone",
-                    label: isCloning ? "Cloning..." : "Clone",
-                    icon: <Copy size={16} />,
-                    onClick: () => onClone(row),
-                    disabled: isBusy,
-                    scopes: ["w:events"],
-                },
+                // Hide edit option for now, as we are not allowing editing of events
+                // {
+                //     key: "edit",
+                //     label: "Edit",
+                //     icon: <PencilIcon size={16} />,
+                //     onClick: () => onEdit(row),
+                //     disabled: isBusy,
+                //     scopes: ["w:events"],
+                // },
+                // Clone button commented down — not working properly
+                // {
+                //     key: "clone",
+                //     label: isCloning ? "Cloning..." : "Clone",
+                //     icon: <Copy size={16} />,
+                //     onClick: () => onClone(row),
+                //     disabled: isBusy,
+                //     scopes: ["w:events"],
+                // },
                 {
                     key: "delete",
                     label: isDeleting ? "Deleting..." : "Delete",
@@ -571,6 +567,7 @@ export default function EventsPage() {
                                 >
                                     Edit
                                 </Button>
+                                {/* Clone button commented down — not working properly
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -578,7 +575,7 @@ export default function EventsPage() {
                                     disabled={isBusy}
                                 >
                                     {isCloning ? "Cloning..." : "Clone"}
-                                </Button>
+                                </Button> */}
                                 <Button
                                     variant="outline"
                                     size="sm"

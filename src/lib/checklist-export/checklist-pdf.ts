@@ -5,12 +5,13 @@ import {
     buildChecklistDocumentModel,
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
+    getChecklistDeadlineDisplay,
     getChecklistItemName,
-    getChecklistItemUnit,
     type ChecklistExportContext,
     type ChecklistExportRow,
 } from "./checklist-document";
 import { getEstimateLogoDataUrl } from "@/lib/estimate-export/estimate-logo";
+import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
 
 const LOGO_WIDTH_MM = 32;
 const LOGO_META_GAP_MM = 4;
@@ -35,28 +36,12 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
     rows.forEach(exportRow => {
         if (exportRow.type === "category") {
             segment.body.push([
-                exportRow.serial,
-                exportRow.name,
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
+                { content: exportRow.name.toUpperCase(), colSpan: CHECKLIST_EXPORT_COLUMNS.length },
             ]);
             segment.rowMeta.push({ fillColor: PDF_COLORS.categoryBg, fontStyle: "bold" });
         } else if (exportRow.type === "subCategory") {
             segment.body.push([
-                "",
-                `Sub Category: ${exportRow.name}`,
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
+                { content: exportRow.name, colSpan: CHECKLIST_EXPORT_COLUMNS.length },
             ]);
             segment.rowMeta.push({ fillColor: PDF_COLORS.subCategoryBg, fontStyle: "bold" });
         } else if (exportRow.type === "item") {
@@ -66,11 +51,10 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 getChecklistItemName(item),
                 getChecklistItemDetails(item),
                 String(item.quantity ?? 0),
-                getChecklistItemUnit(item),
-                item.days != null ? String(item.days) : "—",
+                item.days != null ? String(item.days) : "-",
                 exportRow.vendorDisplay,
-                item.status || "PENDING",
-                item.deadlineDate || "—",
+                getChecklistStatusLabel(item.status),
+                getChecklistDeadlineDisplay(item),
             ]);
             segment.rowMeta.push({});
         }
@@ -106,28 +90,27 @@ function splitRowsIntoSegments(rows: ChecklistExportRow[]): TableSegment[] {
 }
 
 function buildTableColumnStyles(contentWidth: number) {
-    const serial = 10;
-    const quantity = 10;
-    const unit = 10;
-    const days = 10;
-    const status = 16;
-    const dates = 18;
-    const vendor = 24;
-    const fixedTotal = serial + quantity + unit + days + status + dates * 2 + vendor;
-    const elements = Math.round((contentWidth - fixedTotal) * 0.38);
-    const details = contentWidth - fixedTotal - elements;
+    // Keep the compact columns fixed and share the remaining printable width
+    // among the longer text fields, matching the preview table proportions.
+    const widths = [10, 38, 44, 14, 13, 36, 24, 34];
+    const flexibleColumns = [1, 2, 5, 7];
+    const flexWeights = [0.85, 1.2, 0.85, 0.8];
+    const minTotal = widths.reduce((sum, width) => sum + width, 0);
+    const extra = Math.max(contentWidth - minTotal, 0);
+    const weightTotal = flexWeights.reduce((sum, weight) => sum + weight, 0);
+    flexibleColumns.forEach((column, index) => {
+        widths[column] += (extra * flexWeights[index]) / weightTotal;
+    });
 
     return {
-        0: { halign: "center" as const, cellWidth: serial },
-        1: { halign: "left" as const, cellWidth: elements },
-        2: { halign: "left" as const, cellWidth: details },
-        3: { halign: "right" as const, cellWidth: quantity },
-        4: { halign: "center" as const, cellWidth: unit },
-        5: { halign: "center" as const, cellWidth: days },
-        6: { halign: "left" as const, cellWidth: vendor },
-        7: { halign: "center" as const, cellWidth: status },
-        8: { halign: "center" as const, cellWidth: dates },
-        9: { halign: "center" as const, cellWidth: dates },
+        0: { halign: "center" as const, cellWidth: widths[0] },
+        1: { halign: "left" as const, cellWidth: widths[1] },
+        2: { halign: "left" as const, cellWidth: widths[2] },
+        3: { halign: "center" as const, cellWidth: widths[3] },
+        4: { halign: "center" as const, cellWidth: widths[4] },
+        5: { halign: "left" as const, cellWidth: widths[5] },
+        6: { halign: "center" as const, cellWidth: widths[6] },
+        7: { halign: "center" as const, cellWidth: widths[7] },
     };
 }
 
@@ -145,8 +128,8 @@ function renderTableSegment(
         tableWidth: contentWidth,
         theme: "grid",
         styles: {
-            fontSize: 7,
-            cellPadding: 1.5,
+            fontSize: 8,
+            cellPadding: 2,
             lineColor: [0, 0, 0],
             lineWidth: 0.1,
             overflow: "linebreak",
@@ -217,7 +200,8 @@ export async function generateChecklistPdfBlob(
         const blockHeight = Math.max(metaBlockEndY - metaBlockStartY, 20);
         const logoHeight = Math.min(LOGO_WIDTH_MM, blockHeight);
         const logoX = pageWidth - margin - LOGO_WIDTH_MM;
-        doc.addImage(logoDataUrl, "PNG", logoX, metaBlockStartY, LOGO_WIDTH_MM, logoHeight);
+        const logoY = metaBlockStartY + (blockHeight - logoHeight) / 2;
+        doc.addImage(logoDataUrl, "PNG", logoX, logoY, LOGO_WIDTH_MM, logoHeight);
     }
 
     y += 4;

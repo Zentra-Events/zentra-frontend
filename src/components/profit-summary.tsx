@@ -6,44 +6,98 @@ import { purchaseOrderPreviewStyles } from "@/constants/event";
 
 /* ------------------------------------------------------------------ */
 /*  Profit Summary                                                    */
+/*                                                                    */
+/*  Internal P&L view for the event management team (admin / super    */
+/*  admin only). All figures come from `calculateEventProfitAndLoss`  */
+/*  in @/lib/utils/billing.ts.                                        */
+/*                                                                    */
+/*  INPUTS                                                             */
+/*    totalEstimatedCost   — approved estimate amount (prop)          */
+/*    eventData.gst        — client GST % (e.g. 18 = 18%)             */
+/*    eventData.tds        — client TDS, a FLAT applied amount (NOT a %) */
+/*    eventData.serviceCharge — client service charge %               */
+/*    eventData.discounts  — client discount (flat amount)            */
+/*    eventData.vendorSummary — vendor-wise rollup (totalAmount,      */
+/*                gst, tds, adjustedAmt, advanceAmount, balance)      */
+/*                                                                    */
+/*  HELPER                                                             */
+/*    calculatePercentageAmount(amount, pct) = amount × pct / 100     */
+/*    toFiniteNumber(v, fb)                  — coerces NaN/Inf/null   */
+/*                                              to fb (default 0)     */
+/*                                                                    */
+/*  INTERMEDIATE VALUES (client side)                                  */
+/*    estimatedAmount      = totalEstimatedCost                       */
+/*    serviceChargeAmount  = estimatedAmount × serviceCharge / 100    */
+/*    taxableAmount        = estimatedAmount + serviceCharge - discount */
+/*    gstAmount            = taxableAmount × gstPercent / 100         */
+/*    tdsAmount            = eventData.tds  (flat, not percentage)    */
+/*    totalClientBilled    = taxableAmount + gstAmount - tdsAmount    */
+/*    clientBilledWthoutGST = totalClientBilled - gstAmount           */
+/*                                        (= taxableAmount - tds)     */
+/*                                                                    */
+/*  VENDOR-SIDE ROLLUP (from eventData.vendorSummary)                  */
+/*    totalVendorGst  = Σ vendor.totalAmount × vendor.gst   / 100     */
+/*    totalVendorTds  = Σ vendor.totalAmount × vendor.tds   / 100     */
+/*    totalVendorNet  = Σ (vendor.totalAmount + vendorGst             */
+/*                                   - vendorTds)                     */
+/*                                                                    */
+/*  FINAL FIGURES                                                      */
+/*    Profit  = clientBilledWithoutGST + totalVendorGst               */
+/*              - (totalVendorTds + totalVendorNet)                   */
+/*    Net Hand = clientBilledWithoutGST - (totalVendorTds + totalVendorNet) */
+/*                                                                    */
+/*  ROW ORDER                                                          */
+/*   1 Total (Original + GST)     = taxableAmount + gstAmount         */
+/*   2 TDS Deducted               = -tdsAmount (shown negative)       */
+/*   3 Total Client Billed Amount = totalClientBilledAmount           */
+/*   4 Total Vendor GST           = totalVendorGst                    */
+/*   5 Total Vendor TDS           = -totalVendorTds (shown negative)  */
+/*   6 Net Vendor Total           = totalVendorNet                    */
+/*   7 Client Billed Amount w/o GST = clientBilledWithoutGst          */
+/*   8 Profit                     = Profit (red if < 0)               */
+/*   9 Net Hand                   = Net Hand                          */
+/*  10 Total Expenses             = expense total (from Expenses Summary) */
+/*  11 Balance                    = Net Hand - Total Expenses           */
 /* ------------------------------------------------------------------ */
 
 export function ProfitSummary({
     eventData,
     totalEstimatedCost,
+    expenseSummary,
 }: {
     eventData: EventResponse;
     totalEstimatedCost: number;
+    expenseSummary: { totalAmount: number; hasExpenses: boolean } | null;
 }) {
     const {
-        estimatedAmount,
-        serviceChargeAmount,
-        serviceChargePercent,
-        discountAmount,
+        taxableAmount,
         gstAmount,
-        gstPercent,
         tdsAmount,
-        tdsPercent,
         totalClientBilledAmount,
         clientBilledWithoutGst,
+        totalVendorGst,
+        totalVendorTds,
+        totalVendorNet,
         profit,
         netHand,
     } = useMemo(() => {
-        // eventData.gst / eventData.tds are percentages (e.g. 18 for 18%),
-        // consistent with vendor-level gst/tds and calculatePercentageAmount
-        // usage across the codebase (amount * percentage / 100).
-        //
-        // The calculation itself lives in `@/lib/utils/billing` so that the
-        // billing screens and this summary share a single implementation.
+        // eventData.gst is a percentage (e.g. 18 for 18%). eventData.tds is a
+        // flat applied TDS amount (not a percentage) on the client billing
+        // side; it is passed as `clientTdsAmount` so vendor-side percentage
+        // logic inside `calculateEventProfitAndLoss` is unaffected.
         return calculateEventProfitAndLoss({
             totalEstimatedCost: totalEstimatedCost ?? 0,
             gstPercent: eventData.gst ?? 0,
-            tdsPercent: eventData.tds ?? 0,
+            tdsPercent: 0,
+            clientTdsAmount: eventData.tds ?? 0,
             serviceChargePercent: eventData.serviceCharge ?? 0,
             discountAmount: eventData.discounts ?? 0,
             vendorSummaries: eventData.vendorSummary ?? [],
         });
     }, [eventData, totalEstimatedCost]);
+
+    const totalExpenses = expenseSummary?.totalAmount ?? 0;
+    const balanceAfterExpenses = netHand - totalExpenses;
 
     return (
         <div>
@@ -51,42 +105,18 @@ export function ProfitSummary({
                 <tbody>
                     <tr>
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
-                            Estimated amount
+                            Total (Original + GST)
                         </td>
                         <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            {formatExportCurrency(estimatedAmount)}
+                            {formatExportCurrency(taxableAmount + gstAmount)}
                         </td>
                     </tr>
                     <tr>
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
-                            Service Charge ({serviceChargePercent}%)
+                            TDS Deducted (Applied TDS Amount)
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            {formatExportCurrency(serviceChargeAmount)}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
-                            Discount
-                        </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            −{formatExportCurrency(discountAmount)}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
-                            GST ({gstPercent}%)
-                        </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            {formatExportCurrency(gstAmount)}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
-                            TDS Deducted ({tdsPercent}%)
-                        </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            {formatExportCurrency(tdsAmount)}
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                            -{formatExportCurrency(tdsAmount)}
                         </td>
                     </tr>
                     <tr className={purchaseOrderPreviewStyles.subTotalBg}>
@@ -100,12 +130,36 @@ export function ProfitSummary({
                             {formatExportCurrency(totalClientBilledAmount)}
                         </td>
                     </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Total Vendor GST
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
+                            {formatExportCurrency(totalVendorGst)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Total Vendor TDS
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                            -{formatExportCurrency(totalVendorTds)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                            Net Vendor Total
+                        </td>
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                            −{formatExportCurrency(totalVendorNet)}
+                        </td>
+                    </tr>
                     <tr className={purchaseOrderPreviewStyles.totalBg}>
                         <td className="border border-black px-3 py-2 font-bold" colSpan={4}>
                             Client Billed Amount without GST
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold"
+                            className="border border-black px-3 py-2 text-right font-bold text-green-800"
                             colSpan={4}
                         >
                             {formatExportCurrency(clientBilledWithoutGst)}
@@ -129,15 +183,44 @@ export function ProfitSummary({
                             {formatExportCurrency(profit)}
                         </td>
                     </tr>
-                    <tr className={purchaseOrderPreviewStyles.advanceBg}>
+                    <tr className={purchaseOrderPreviewStyles.balanceBg}>
                         <td className="border border-black px-3 py-2 font-bold" colSpan={4}>
                             Net Hand
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold"
+                            className={`border border-black px-3 py-2 text-right font-bold ${
+                                netHand < 0 ? "text-destructive" : "text-green-800"
+                            }`}
                             colSpan={4}
                         >
                             {formatExportCurrency(netHand)}
+                        </td>
+                    </tr>
+                    <tr className={purchaseOrderPreviewStyles.advanceBg}>
+                        <td className="border border-black px-3 py-2 font-bold" colSpan={4}>
+                            Total Expenses
+                        </td>
+                        <td
+                            className="border border-black px-3 py-2 text-right font-bold text-destructive"
+                            colSpan={4}
+                        >
+                            −{formatExportCurrency(totalExpenses)}
+                        </td>
+                    </tr>
+                    <tr className={purchaseOrderPreviewStyles.balanceBg}>
+                        <td
+                            className="border border-black px-3 py-2 font-bold text-sm text-green-800"
+                            colSpan={4}
+                        >
+                            Balance
+                        </td>
+                        <td
+                            className={`border border-black px-3 py-2 text-right font-bold text-sm ${
+                                balanceAfterExpenses < 0 ? "text-destructive" : "text-green-800"
+                            }`}
+                            colSpan={4}
+                        >
+                            {formatExportCurrency(balanceAfterExpenses)}
                         </td>
                     </tr>
                 </tbody>

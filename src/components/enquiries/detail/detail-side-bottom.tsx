@@ -8,6 +8,7 @@ import { CopyIcon, TrashIcon } from "@/components/ui/icons";
 interface P {
     e: Enquiry;
     canWrite: boolean;
+    canDelete: boolean;
     cloning: boolean;
     onClone: () => void;
     onDelete: () => void;
@@ -113,29 +114,33 @@ export function DetailSideBottom(p: P) {
                     Reminder
                 </a> */}
             </div>
-            {p.canWrite && (
+            {(p.canWrite || p.canDelete) && (
                 <div className="space-y-2 border-t border-border/70 pt-2.5">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-full text-[12px] font-semibold"
-                        icon={p.cloning ? undefined : <CopyIcon size={14} />}
-                        onClick={p.onClone}
-                        isLoading={p.cloning}
-                    >
-                        {p.cloning ? "Cloning…" : "Clone enquiry"}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        className="h-8 w-full text-[12px] font-semibold"
-                        icon={<TrashIcon size={14} />}
-                        onClick={p.onDelete}
-                    >
-                        Delete
-                    </Button>
+                    {p.canWrite && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-full text-[12px] font-semibold"
+                            icon={p.cloning ? undefined : <CopyIcon size={14} />}
+                            onClick={p.onClone}
+                            isLoading={p.cloning}
+                        >
+                            {p.cloning ? "Cloning…" : "Clone enquiry"}
+                        </Button>
+                    )}
+                    {p.canDelete && (
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="h-8 w-full text-[12px] font-semibold"
+                            icon={<TrashIcon size={14} />}
+                            onClick={p.onDelete}
+                        >
+                            Delete
+                        </Button>
+                    )}
                 </div>
             )}
         </>

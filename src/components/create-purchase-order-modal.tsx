@@ -43,6 +43,8 @@ interface RawEventItem {
     category?: string;
     subCategory?: string;
     unit?: string;
+    /** Present when the item is explicitly sourced from inventory. */
+    inventoryID?: string | number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -148,8 +150,12 @@ function groupItemsByCategory(
         const eventVendor = eventItem.vendor;
         let matches = false;
         if (vendorId === "SELF") {
-            // For SELF (inventory) items, match items with no vendor or vendor "SELF"
-            matches = !eventVendor || eventVendor === "SELF";
+            // Only explicitly-marked inventory items (inventoryID set) belong to SELF.
+            // Plain vendorless items (no vendor, no inventoryID) are not inventory.
+            matches = Boolean(eventItem.inventoryID);
+        } else if (vendorId === "UNASSIGNED") {
+            // Vendorless items (no vendor, no inventoryID) belong to Unassigned Vendor.
+            matches = !eventVendor && !eventItem.inventoryID;
         } else if (eventVendor) {
             matches = vendorId ? eventVendor === vendorId : true;
         }
@@ -214,17 +220,24 @@ function groupItemsByCategory(
 function getItemVendorIds(items: RawEventItem[] | undefined): Set<string> {
     const ids = new Set<string>();
     if (!items) return ids;
-    let hasSelfItems = false;
+    let hasInventoryItems = false;
+    let hasVendorlessItems = false;
     for (const item of items) {
         if (item.vendor) {
             ids.add(item.vendor);
+        } else if (item.inventoryID) {
+            // Only explicitly-marked inventory items count as SELF.
+            hasInventoryItems = true;
         } else {
-            hasSelfItems = true;
+            // Plain vendorless items (no vendor, no inventoryID) are unassigned.
+            hasVendorlessItems = true;
         }
     }
-    // If any items have no vendor (inventory/self), add "SELF" entry
-    if (hasSelfItems) {
+    if (hasInventoryItems) {
         ids.add("SELF");
+    }
+    if (hasVendorlessItems) {
+        ids.add("UNASSIGNED");
     }
     return ids;
 }
@@ -233,14 +246,19 @@ function getItemVendorIds(items: RawEventItem[] | undefined): Set<string> {
 function buildFinancialsFromSummary(
     vs: VendorSummary | undefined,
     computedSubtotal: number,
+    vendorId?: string,
 ): Financials {
+    // Inventory (Self) purchases are not taxable and carry no TDS or advance.
+    // Force these to zero so any stored values are ignored in calculations
+    // and downstream purchase-order preview / PDF / Excel exports.
+    const isSelf = vendorId === "SELF";
     if (vs) {
         return {
             subtotal: vs.totalAmount ?? computedSubtotal,
-            gstType: vs.gstType ?? "NONE",
-            gstPercent: vs.gst ?? 0,
-            tdsPercent: vs.tds ?? 0,
-            advance: vs.advanceAmount ?? 0,
+            gstType: isSelf ? "NONE" : (vs.gstType ?? "NONE"),
+            gstPercent: isSelf ? 0 : (vs.gst ?? 0),
+            tdsPercent: isSelf ? 0 : (vs.tds ?? 0),
+            advance: isSelf ? 0 : (vs.advanceAmount ?? 0),
             note: vs.changeSummary ?? "",
         };
     }
@@ -292,14 +310,13 @@ export function CreatePurchaseOrderModal({
 }: CreatePurchaseOrderModalProps) {
     const itemList = eventData?.items ?? [];
     const vendorSummary = eventData?.vendorSummary ?? [];
-    // Client / event display info, populated from the existing event/estimate data.
-    const clientName = eventData?.client || "—";
-    const eventName = eventData?.title || "—";
-    const eventDescription =
-        (eventData?.highlvelRequirement as string) ||
-        eventData?.venue ||
-        eventData?.location ||
-        "—";
+    // Client display info, populated from the existing event/estimate data.
+    const [clientName, setClientName] = useState(eventData?.client || "—");
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setClientName(eventData?.client || "—");
+    }, [isOpen, eventData?.client]);
     // Determine which vendors to show in the sidebar: all vendors from vendorList
     // that have items in itemList
     const activeVendorIds = useMemo(() => getItemVendorIds(itemList), [itemList]);
@@ -320,7 +337,16 @@ export function CreatePurchaseOrderModal({
             }
         }
 
-        // Add SELF (inventory) entry if there are items with no vendor
+        // Add Unassigned Vendor entry if there are vendorless items
+        if (activeVendorIds.has("UNASSIGNED")) {
+            result.push({
+                id: "UNASSIGNED",
+                name: "Unassigned Vendor",
+                status: "No Vendor Assigned",
+            });
+        }
+
+        // Add SELF (inventory) entry if there are inventory items
         if (activeVendorIds.has("SELF")) {
             result.push({
                 id: "SELF",
@@ -337,7 +363,7 @@ export function CreatePurchaseOrderModal({
     // Which sidebar tab is active: "client" renders the Client Details section,
     // "vendor" renders the selected vendor's items & financials. Client Details
     // is the initial standalone selection, independent of any vendor.
-    const [activeView, setActiveView] = useState<"client" | "vendor">("client");
+    const [activeView, setActiveView] = useState<"client" | "vendor">("vendor");
 
     /* ---------- Client / estimate financials ----------
      * Editable client billing details, pre-populated from the approved/final
@@ -351,20 +377,29 @@ export function CreatePurchaseOrderModal({
         billingAddress: "",
         tds: 0,
         receivedAmount: 0,
+        advanceAmt: 0,
+        amountRecievedFromClientDate: null,
     });
 
     useEffect(() => {
         if (!isOpen) return;
+        const gstType = eventData?.gstType ?? "NONE";
+        // Reconcile: when GST type is "No GST" (NONE), force GST percent to 0
+        // even if the backend sends a non-zero gst value, so the GST field
+        // shows blank/zero and stays disabled.
         setClientFinancials({
             serviceCharge: eventData?.serviceCharge ?? 0,
-            gstType: eventData?.gstType ?? "NONE",
-            gst: eventData?.gst ?? 0,
+            gstType,
+            gst: gstType === "NONE" ? 0 : (eventData?.gst ?? 0),
             discount: eventData?.discounts ?? 0,
             billingAddress: eventData?.billingAddress ?? "",
             tds: eventData?.tds ?? 0,
             // Amount already received from the client. Defaults to the
-            // recorded client advance when available.
-            receivedAmount: eventData?.advanceAmt ?? 0,
+            // recorded client advance when no client received amount is present.
+            receivedAmount: (eventData?.amountRecievedFromClient as number | undefined) ?? 0,
+            advanceAmt: eventData?.advanceAmt ?? 0,
+            amountRecievedFromClientDate:
+                (eventData?.amountRecievedFromClientDate as string | null) ?? null,
         });
     }, [isOpen]);
 
@@ -465,6 +500,10 @@ export function CreatePurchaseOrderModal({
                             // SELF items may have vendor "" or "SELF" in vendorSummary
                             return !s.vendor || s.vendor === "SELF";
                         }
+                        if (v.id === "UNASSIGNED") {
+                            // Unassigned vendor items have no vendorSummary entry.
+                            return false;
+                        }
                         return s.vendor === v.id;
                     });
                     const itemsForVendor = groupItemsByCategory(itemList, v.id);
@@ -473,24 +512,34 @@ export function CreatePurchaseOrderModal({
                             sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
                         0,
                     );
-                    next[v.id] = buildFinancialsFromSummary(vs, sub);
+                    next[v.id] = buildFinancialsFromSummary(vs, sub, v.id);
                 }
             }
             return next;
         });
     }, [vendors, vendorSummary, itemList]);
 
-    /* ---------- Keep subtotal in sync with computed value for the active vendor ---------- */
+    /* ---------- Keep subtotal in sync with computed value for all vendors ---------- */
     useEffect(() => {
         setFinancialsByVendor(prev => {
-            const current = prev[activeVendorId];
-            if (!current) return prev;
-            return {
-                ...prev,
-                [activeVendorId]: { ...current, subtotal: computedSubtotal },
-            };
+            const next = { ...prev };
+            let changed = false;
+            for (const v of vendors) {
+                const cats = groupItemsByCategory(editableItems, v.id);
+                const computed = cats.reduce(
+                    (sum, section) =>
+                        sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
+                    0,
+                );
+                const current = next[v.id];
+                if (current && Math.abs(current.subtotal - computed) > 0.01) {
+                    next[v.id] = { ...current, subtotal: computed };
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
         });
-    }, [computedSubtotal, activeVendorId]);
+    }, [vendors, editableItems]);
 
     /* ---------- Get financials for active vendor ---------- */
     const financials: Financials = useMemo(() => {
@@ -506,12 +555,40 @@ export function CreatePurchaseOrderModal({
         );
     }, [financialsByVendor, activeVendorId, computedSubtotal]);
 
+    /**
+     * Effective financials used for calculations and the saved payload.
+     * When "Inventory (Self)" is selected, GST, TDS and Advance Paid are
+     * not applicable: any stored values are ignored so they are not applied
+     * in net-total/balance calculations or in the purchase-order preview /
+     * PDF / Excel exports. The corresponding inputs are also disabled.
+     */
+    const effectiveFinancials: Financials = useMemo(() => {
+        if (activeVendorId === "SELF" || activeVendorId === "UNASSIGNED") {
+            return {
+                ...financials,
+                gstType: "NONE",
+                gstPercent: 0,
+                tdsPercent: 0,
+                advance: 0,
+            };
+        }
+        return financials;
+    }, [financials, activeVendorId]);
+
     /* ---------- Computed net total (subtotal + gst - tds) ---------- */
     const computedNetTotal = useMemo(() => {
-        const gstAmount = financials.subtotal * (financials.gstPercent / 100);
-        const tdsAmount = financials.subtotal * (financials.tdsPercent / 100);
-        return financials.subtotal + gstAmount - tdsAmount;
-    }, [financials.subtotal, financials.gstPercent, financials.tdsPercent]);
+        const gstAmount =
+            effectiveFinancials.gstType === "NONE"
+                ? 0
+                : effectiveFinancials.subtotal * (effectiveFinancials.gstPercent / 100);
+        const tdsAmount = effectiveFinancials.subtotal * (effectiveFinancials.tdsPercent / 100);
+        return effectiveFinancials.subtotal + gstAmount - tdsAmount;
+    }, [
+        effectiveFinancials.subtotal,
+        effectiveFinancials.gstPercent,
+        effectiveFinancials.gstType,
+        effectiveFinancials.tdsPercent,
+    ]);
 
     /* ---------- Subtotal mismatch warning ---------- */
     const hasSubtotalMismatch = useMemo(() => {
@@ -533,7 +610,16 @@ export function CreatePurchaseOrderModal({
     /* ---------- Client billing field handlers ---------- */
     const updateClientFinancial = (field: keyof ClientFinancials, value: string) => {
         setClientFinancials(prev => {
-            if (field === "gstType" || field === "billingAddress") {
+            if (field === "gstType") {
+                // When switching to "No GST", zero out the GST percent so it
+                // is not applied in calculations or saved to the backend.
+                return {
+                    ...prev,
+                    gstType: value,
+                    gst: value === "NONE" ? 0 : prev.gst,
+                };
+            }
+            if (field === "billingAddress" || field === "amountRecievedFromClientDate") {
                 return { ...prev, [field]: value };
             }
             if (value === "") return { ...prev, [field]: 0 };
@@ -547,48 +633,42 @@ export function CreatePurchaseOrderModal({
         return calculateEstimateSummary({
             totalAmount: totalClientEstimatedAmount,
             gst: clientFinancials.gst,
+            gstType: clientFinancials.gstType,
             serviceCharge: clientFinancials.serviceCharge,
             discounts: clientFinancials.discount,
         });
     }, [
         totalClientEstimatedAmount,
         clientFinancials.gst,
+        clientFinancials.gstType,
         clientFinancials.serviceCharge,
         clientFinancials.discount,
     ]);
 
-    // TDS is applied on the same base used for GST (total after service charge
-    // and discount adjustments), mirroring the vendor-side net total convention
-    // without mixing the two calculations.
+    // Client TDS is entered as a flat amount (not a percentage) and is applied
+    // directly against the GST-inclusive total. Vendor-side TDS calculation is
+    // unchanged.
     const clientTdsAmount = useMemo(() => {
-        const base =
-            totalClientEstimatedAmount +
-            clientSummary.serviceChargeAmount -
-            clientFinancials.discount;
-        return base * (clientFinancials.tds / 100);
-    }, [
-        totalClientEstimatedAmount,
-        clientSummary.serviceChargeAmount,
-        clientFinancials.discount,
-        clientFinancials.tds,
-    ]);
+        return clientFinancials.tds;
+    }, [clientFinancials.tds]);
 
     const clientTotal = clientSummary.totalWithGST - clientTdsAmount;
-    const clientOutstanding = clientTotal - clientFinancials.receivedAmount;
+    const clientOutstanding =
+        clientTotal - clientFinancials.receivedAmount - clientFinancials.advanceAmt;
 
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
-        const { subtotal, gstPercent, tdsPercent, advance } = financials;
-        const gstAmount = subtotal * (gstPercent / 100);
+        const { subtotal, gstPercent, gstType, tdsPercent, advance } = effectiveFinancials;
+        const gstAmount = gstType === "NONE" ? 0 : subtotal * (gstPercent / 100);
         const tdsAmount = subtotal * (tdsPercent / 100);
         const total = subtotal + gstAmount - tdsAmount;
         return total - advance;
-    }, [financials]);
+    }, [effectiveFinancials]);
 
     /* ---------- Breakdown details ---------- */
     const breakdownDetails = useMemo(() => {
-        const { subtotal, gstPercent, tdsPercent, advance } = financials;
-        const gstAmount = subtotal * (gstPercent / 100);
+        const { subtotal, gstPercent, gstType, tdsPercent, advance } = effectiveFinancials;
+        const gstAmount = gstType === "NONE" ? 0 : subtotal * (gstPercent / 100);
         const tdsAmount = subtotal * (tdsPercent / 100);
         const netTotal = subtotal + gstAmount - tdsAmount;
         const bal = netTotal - advance;
@@ -596,6 +676,7 @@ export function CreatePurchaseOrderModal({
             subtotal,
             gstAmount,
             gstPercent,
+            gstType,
             tdsAmount,
             tdsPercent,
             netTotal,
@@ -618,7 +699,15 @@ export function CreatePurchaseOrderModal({
             const current = prev[activeVendorId];
             if (!current) return prev;
             let updated: Financials;
-            if (field === "note" || field === "gstType") {
+            if (field === "gstType") {
+                // When switching to "No GST", zero out the GST percent so it
+                // is not applied in calculations or saved to the backend.
+                updated = {
+                    ...current,
+                    gstType: value,
+                    gstPercent: value === "NONE" ? 0 : current.gstPercent,
+                };
+            } else if (field === "note") {
                 updated = { ...current, [field]: value };
             } else if (value === "") {
                 updated = { ...current, [field]: value };
@@ -781,25 +870,43 @@ export function CreatePurchaseOrderModal({
                         }
                         return s.vendor === v.id;
                     });
-                    // Keep the stored vendor TDS unless this vendor's TDS
-                    // field was explicitly edited in this session.
-                    const tdsPercentToSave = tdsEditedVendorIds[v.id]
-                        ? f.tdsPercent
-                        : (originalVs?.tds ?? f.tdsPercent);
-                    const gstAmount = f.subtotal * (f.gstPercent / 100);
-                    const tdsAmount = f.subtotal * (tdsPercentToSave / 100);
-                    const netTotal = f.subtotal + gstAmount - tdsAmount;
-                    const bal = netTotal - f.advance;
+                    // Inventory (Self) purchases are not taxable and carry no
+                    // TDS or advance. Zero these out so they are not applied in
+                    // calculations or in the purchase-order preview / PDF /
+                    // Excel exports.
+                    const isSelf = v.id === "SELF";
+                    const sf: Financials = isSelf
+                        ? {
+                              ...f,
+                              gstType: "NONE",
+                              gstPercent: 0,
+                              tdsPercent: 0,
+                              advance: 0,
+                          }
+                        : f;
+                    const tdsPercentToSave = isSelf
+                        ? 0
+                        : tdsEditedVendorIds[v.id]
+                          ? sf.tdsPercent
+                          : (originalVs?.tds ?? sf.tdsPercent);
+                    // When GST type is "No GST" (NONE), do not apply any GST
+                    // even if a non-zero gstPercent is present in state.
+                    const vendorGstType = sf.gstType ?? "NONE";
+                    const gstAmount =
+                        vendorGstType === "NONE" ? 0 : sf.subtotal * (sf.gstPercent / 100);
+                    const tdsAmount = sf.subtotal * (tdsPercentToSave / 100);
+                    const netTotal = sf.subtotal + gstAmount - tdsAmount;
+                    const bal = netTotal - sf.advance;
                     return {
                         vendor: v.id,
-                        totalAmount: f.subtotal,
-                        advanceAmount: f.advance,
-                        gst: f.gstPercent,
-                        gstType: f.gstType ?? "NONE",
+                        totalAmount: sf.subtotal,
+                        advanceAmount: sf.advance,
+                        gst: vendorGstType === "NONE" ? 0 : sf.gstPercent,
+                        gstType: vendorGstType,
                         tds: tdsPercentToSave,
                         adjustedAmt: netTotal,
                         balance: bal,
-                        changeSummary: f.note,
+                        changeSummary: sf.note,
                     };
                 });
 
@@ -824,7 +931,10 @@ export function CreatePurchaseOrderModal({
                 serviceCharge: clientFinancials.serviceCharge,
                 discounts: clientFinancials.discount,
                 billingAddress: clientFinancials.billingAddress,
-                receivedAmount: clientFinancials.receivedAmount,
+                advanceAmt: clientFinancials.advanceAmt,
+                amountRecievedFromClient: clientFinancials.receivedAmount,
+                amountRecievedFromClientDate: clientFinancials.amountRecievedFromClientDate,
+                client: clientName,
             };
 
             // Use POST to create the event – requires the event id
@@ -842,7 +952,6 @@ export function CreatePurchaseOrderModal({
             if (res.ok) {
                 toast.success("Purchase order saved successfully");
                 onSave?.();
-                onClose();
             } else {
                 const errBody = await res.text().catch(() => "Unknown error");
                 console.error("Save purchase order failed:", errBody);
@@ -881,48 +990,10 @@ export function CreatePurchaseOrderModal({
                 {/* Left: Client + Vendor Sidebar */}
                 <aside className="w-72 border-r border-border bg-surface-container-low/30 overflow-y-auto shrink-0">
                     <nav className="p-2 space-y-5">
-                        {/* Client Detail section */}
-                        <div>
-                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                Client Detail
-                            </p>
-                            <button
-                                type="button"
-                                onClick={() => setActiveView("client")}
-                                className={cn(
-                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
-                                    activeView === "client"
-                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                        : "hover:bg-surface-container-high",
-                                )}
-                            >
-                                <span
-                                    className={cn(
-                                        "text-sm font-bold truncate",
-                                        activeView === "client"
-                                            ? "text-inherit"
-                                            : "text-foreground",
-                                    )}
-                                >
-                                    Billing & settlement
-                                </span>
-                                {/* <span
-                                    className={cn(
-                                        "text-xs italic",
-                                        activeView === "client"
-                                            ? "opacity-80"
-                                            : "text-muted-foreground",
-                                    )}
-                                >
-                                    Billing & settlement
-                                </span> */}
-                            </button>
-                        </div>
-
                         {/* Vendor Detail section */}
-                        <div className="border-t border-border pt-3">
+                        <div className="border-b border-border py-3">
                             <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                Vendor Detail
+                                Vendor Summary
                             </p>
                             <div className="space-y-2">
                                 {vendors.map(v => {
@@ -939,7 +1010,7 @@ export function CreatePurchaseOrderModal({
                                                 "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
                                                 isActive
                                                     ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                    : "hover:bg-surface-container-high",
+                                                    : "hover:bg-primary/10 hover:text-primary",
                                             )}
                                         >
                                             <span
@@ -970,6 +1041,44 @@ export function CreatePurchaseOrderModal({
                                 )}
                             </div>
                         </div>
+
+                        {/* Client Detail section */}
+                        <div>
+                            <p className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Client Summary
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setActiveView("client")}
+                                className={cn(
+                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl transition-all text-left cursor-pointer",
+                                    activeView === "client"
+                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                        : "hover:bg-primary/10 hover:text-primary",
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        "text-sm font-bold truncate",
+                                        activeView === "client"
+                                            ? "text-inherit"
+                                            : "text-foreground",
+                                    )}
+                                >
+                                    Billing information
+                                </span>
+                                <span
+                                    className={cn(
+                                        "text-xs italic",
+                                        activeView === "client"
+                                            ? "opacity-80"
+                                            : "text-muted-foreground",
+                                    )}
+                                >
+                                    Client Bill Summary
+                                </span>
+                            </button>
+                        </div>
                     </nav>
                 </aside>
 
@@ -979,8 +1088,7 @@ export function CreatePurchaseOrderModal({
                         {activeView === "client" ? (
                             <PurchaseOrderClientDetails
                                 clientName={clientName}
-                                eventName={eventName}
-                                eventDescription={eventDescription}
+                                onClientNameChange={setClientName}
                                 clientFinancials={clientFinancials}
                                 onFinancialChange={updateClientFinancial}
                                 estimates={estimates}
@@ -1087,6 +1195,10 @@ export function CreatePurchaseOrderModal({
                                                 )
                                             }
                                             smallLabel
+                                            isDisabled={
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-gst"
@@ -1102,7 +1214,11 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("gstPercent", e.target.value)
                                             }
                                             smallLabel
-                                            disabled={financials.gstType === "NONE"}
+                                            disabled={
+                                                financials.gstType === "NONE" ||
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-tds"
@@ -1116,6 +1232,10 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("tdsPercent", e.target.value)
                                             }
                                             smallLabel
+                                            disabled={
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-adjustment"
@@ -1134,7 +1254,10 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("advance", e.target.value)
                                             }
                                             smallLabel
-                                            disabled={activeVendorId === "SELF"}
+                                            disabled={
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-note"
@@ -1209,8 +1332,18 @@ export function CreatePurchaseOrderModal({
                                     ...(clientTdsAmount > 0
                                         ? [
                                               {
-                                                  label: `TDS (${clientFinancials.tds}%)`,
+                                                  label: "Applied TDS Amount",
                                                   amount: clientTdsAmount,
+                                                  tone: "negative" as const,
+                                                  prefix: "-",
+                                              },
+                                          ]
+                                        : []),
+                                    ...(clientFinancials.advanceAmt > 0
+                                        ? [
+                                              {
+                                                  label: "Advance",
+                                                  amount: clientFinancials.advanceAmt,
                                                   tone: "negative" as const,
                                                   prefix: "-",
                                               },

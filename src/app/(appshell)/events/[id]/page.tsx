@@ -716,7 +716,6 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                     onClose={() => setIsAddPurchaseOrderModalOpen(false)}
                     onSave={fetchEventData}
                     onViewPurchaseOrder={() => {
-                        setIsAddPurchaseOrderModalOpen(false);
                         setIsPurchaseOrderPreviewOpen(true);
                     }}
                     vendorList={vendorList}

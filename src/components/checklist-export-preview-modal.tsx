@@ -9,8 +9,8 @@ import {
     buildChecklistDocumentModel,
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
+    getChecklistDeadlineDisplay,
     getChecklistItemName,
-    getChecklistItemUnit,
     type ChecklistExportContext,
     type ChecklistExportRow,
 } from "@/lib/checklist-export/checklist-document";
@@ -18,7 +18,6 @@ import { downloadChecklistExcel } from "@/lib/checklist-export/checklist-excel";
 import { downloadChecklistPdf } from "@/lib/checklist-export/checklist-pdf";
 import { toast } from "sonner";
 import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
-import { formatShortDateTime } from "@/lib/utils/date";
 
 const previewStyles = {
     titleBg: "bg-[#e6e0f8]",
@@ -35,7 +34,7 @@ interface ChecklistExportPreviewModalProps {
     onClose: () => void;
 }
 
-const CATEGORY_COL_SPAN = CHECKLIST_EXPORT_COLUMNS.length - 1;
+const CATEGORY_COL_SPAN = CHECKLIST_EXPORT_COLUMNS.length;
 
 function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
     const tableRows = rows.filter(
@@ -69,12 +68,9 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                         if (row.type === "category") {
                             return (
                                 <tr key={`cat-${index}`} className={previewStyles.categoryBg}>
-                                    <td className="border border-black px-2 py-2 text-center font-medium">
-                                        {row.serial}
-                                    </td>
                                     <td
                                         colSpan={CATEGORY_COL_SPAN}
-                                        className="border border-black px-2 py-2 font-bold"
+                                        className="border border-black px-2 py-2 font-bold uppercase"
                                     >
                                         {row.name}
                                     </td>
@@ -84,12 +80,11 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                         if (row.type === "subCategory") {
                             return (
                                 <tr key={`sub-${index}`} className={previewStyles.subCategoryBg}>
-                                    <td className="border border-black px-2 py-2" />
                                     <td
                                         colSpan={CATEGORY_COL_SPAN}
                                         className="border border-black px-2 py-2 font-semibold"
                                     >
-                                        Sub Category: {row.name}
+                                        {row.name}
                                     </td>
                                 </tr>
                             );
@@ -107,14 +102,11 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                     <td className="border border-black px-2 py-2 align-top whitespace-pre-wrap">
                                         {getChecklistItemDetails(item)}
                                     </td>
-                                    <td className="border border-black px-2 py-2 text-right align-top">
+                                    <td className="border border-black px-2 py-2 text-center align-top">
                                         {item.quantity ?? 0}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-center align-top">
-                                        {getChecklistItemUnit(item)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.days ?? "—"}
+                                        {item.days ?? "-"}
                                     </td>
                                     <td className="border border-black px-2 py-2 align-top">
                                         {row.vendorDisplay}
@@ -123,9 +115,7 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                         {getChecklistStatusLabel(item.status)}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.deadlineDate
-                                            ? formatShortDateTime(item.deadlineDate)
-                                            : "—"}
+                                        {getChecklistDeadlineDisplay(item)}
                                     </td>
                                 </tr>
                             );
@@ -268,7 +258,6 @@ export function ChecklistExportPreviewModal({
                     Close
                 </Button>
                 <Button
-                    variant="outline"
                     onClick={handleDownloadPdf}
                     disabled={downloading !== null}
                     className="flex items-center gap-2"
@@ -277,7 +266,6 @@ export function ChecklistExportPreviewModal({
                     {downloading === "pdf" ? "Downloading…" : "Download PDF"}
                 </Button>
                 <Button
-                    variant="primary"
                     onClick={handleDownloadExcel}
                     disabled={downloading !== null}
                     className="flex items-center gap-2"

@@ -9,7 +9,7 @@ import { formatShortDate } from "@/lib/utils/date";
 import type { Column } from "@/components/ui/table";
 import type { Expense } from "@/types/expense";
 import type { MenuItem } from "@/types";
-import { EXPENSE_TYPE_LABELS, EXPENSE_STATUS_META } from "@/hooks/useExpenses";
+import { EXPENSE_STATUS_META } from "@/hooks/useExpenses";
 
 /* ------------------------------------------------------------------ */
 /*  Default column definitions (shared by both contexts)              */
@@ -28,17 +28,6 @@ const DEFAULT_COLUMNS: Column<Expense>[] = [
         render: item => {
             const amount = typeof item.amount === "string" ? Number(item.amount) : item.amount;
             return Number.isFinite(amount) ? formatCurrency(amount) : "—";
-        },
-    },
-    {
-        key: "expenseDescription",
-        header: "Type",
-        render: item => {
-            const type =
-                EXPENSE_TYPE_LABELS[item.expenseDescription ?? ""] ||
-                item.expenseDescription ||
-                "—";
-            return <Badge variant="info">{type}</Badge>;
         },
     },
     {

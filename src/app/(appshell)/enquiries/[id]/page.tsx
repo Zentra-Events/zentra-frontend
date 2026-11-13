@@ -97,7 +97,10 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
         if (enquiry.ennquiryStatus?.trim()) return;
         const legacy = (enquiry.status || "").trim().toUpperCase();
         const untouched =
-            legacy === "" || legacy === "ENQUIRY_CREATED" || legacy === "NEW" || legacy === "NEW_LEAD";
+            legacy === "" ||
+            legacy === "ENQUIRY_CREATED" ||
+            legacy === "NEW" ||
+            legacy === "NEW_LEAD";
         if (!untouched) return;
         void updateFields({ ennquiryStatus: DEFAULT_ENQUIRY_STATUS } as Partial<Enquiry>);
     }, [enquiry, updateFields]);
@@ -188,7 +191,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     title: enquiry.eventName || enquiry.title || "Event",
-                    status: "ENQUIRY_CREATED",
+                    status: "ESTIMATE_INPROGRESS",
                     enquiryDate: enquiry.date || new Date().toISOString(),
                     fromDate: enquiry.fromDate || enquiry.date || new Date().toISOString(),
                     toDate: enquiry.toDate || enquiry.date || new Date().toISOString(),
@@ -236,7 +239,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
     };
 
     const handleDelete = async () => {
-        if (!enquiry) return;
+        if (!isSuperAdmin || !enquiry) return;
         setDeleting(true);
         try {
             const res = await apiRequest(API_ENDPOINTS.enquiries.detail(String(enquiry.id)), {
@@ -373,6 +376,7 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
                         <DetailSideBottom
                             e={enquiry}
                             canWrite={canWrite}
+                            canDelete={isSuperAdmin}
                             cloning={cloning}
                             onClone={() => void handleClone()}
                             onDelete={() => setDeleteOpen(true)}
@@ -400,15 +404,17 @@ export default function EnquiryDetailPage({ params }: { params: Promise<{ id: st
                     void refresh();
                 }}
             />
-            <ConfirmationModal
-                open={deleteOpen}
-                onClose={() => setDeleteOpen(false)}
-                onConfirm={() => void handleDelete()}
-                title="Delete Enquiry"
-                description={`Are you sure you want to delete "${pageTitle}"? This action cannot be undone.`}
-                confirmText={deleting ? "Deleting…" : "Delete"}
-                isLoading={deleting}
-            />
+            {isSuperAdmin && (
+                <ConfirmationModal
+                    open={deleteOpen}
+                    onClose={() => setDeleteOpen(false)}
+                    onConfirm={() => void handleDelete()}
+                    title="Delete Enquiry"
+                    description={`Are you sure you want to delete "${pageTitle}"? This action cannot be undone.`}
+                    confirmText={deleting ? "Deleting…" : "Delete"}
+                    isLoading={deleting}
+                />
+            )}
             <span className="sr-only" role="status">
                 {statusBadgeMeta(normStatus).label} · Priority {priority}
             </span>

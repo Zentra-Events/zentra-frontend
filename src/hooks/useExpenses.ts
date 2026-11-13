@@ -17,11 +17,6 @@ import type { MenuItem } from "@/types";
 /*  Shared labels & status metadata                                   */
 /* ------------------------------------------------------------------ */
 
-export const EXPENSE_TYPE_LABELS: Record<string, string> = {
-    ESTIMATED_EXPENSE: "Estimated",
-    ACTUAL_EXPENSE: "Actual",
-};
-
 export const EXPENSE_STATUS_META: Record<
     string,
     {
@@ -71,8 +66,6 @@ interface UseExpensesReturn {
     formatAmount: (amount: unknown) => string;
     /** Format an expense date for display. */
     formatDate: (date: string | undefined) => string;
-    /** Get the label for an expense type. */
-    getTypeLabel: (type: string | undefined) => string;
     /** Get the status badge metadata for an expense status. */
     getStatusMeta: (status: string | undefined) => {
         label: string;
@@ -205,12 +198,6 @@ export function useExpenses({
         []
     );
 
-    const getTypeLabel = useCallback(
-        (type: string | undefined): string =>
-            EXPENSE_TYPE_LABELS[type ?? ""] || type || "—",
-        []
-    );
-
     const getStatusMeta = useCallback(
         (status: string | undefined) => {
             const s = String(status ?? "");
@@ -262,7 +249,6 @@ export function useExpenses({
         deleting,
         formatAmount,
         formatDate,
-        getTypeLabel,
         getStatusMeta,
         buildActionItems,
         handleFormSaved,

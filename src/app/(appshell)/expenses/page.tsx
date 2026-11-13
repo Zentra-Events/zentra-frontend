@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Download, RefreshCw, Search } from "lucide-react";
 
 import { usePagination } from "@/hooks/usePagination";
-import { useExpenses, EXPENSE_TYPE_LABELS, EXPENSE_STATUS_META } from "@/hooks/useExpenses";
+import { useExpenses, EXPENSE_STATUS_META } from "@/hooks/useExpenses";
 import { DEFAULT_PAGE_SIZE } from "@/constants";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
@@ -203,10 +203,6 @@ export default function ExpensesPage() {
                 eventNameMap.get(String(expense.eventID ?? "")) || expense.eventID || "",
             Amount:
                 typeof expense.amount === "number" ? expense.amount : Number(expense.amount) || 0,
-            Description:
-                EXPENSE_TYPE_LABELS[expense.expenseDescription ?? ""] ||
-                expense.expenseDescription ||
-                "",
             Comments: expense.comments || "",
             POC: expense.poc || "",
             "Expense Status":

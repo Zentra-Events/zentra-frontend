@@ -11,6 +11,7 @@ import {
 } from "./estimate-document";
 import type { EstimateDto } from "@/types/estimate";
 import { getEstimateLogoDataUrl } from "./estimate-logo";
+import { downloadBlob } from "@/lib/document-export/download";
 
 const LOGO_WIDTH_MM = 32;
 const LOGO_META_GAP_MM = 4;
@@ -286,10 +287,5 @@ export async function downloadEstimatePdf(
 ) {
     const model = buildEstimateDocumentModel(estimate, eventName);
     const blob = await generateEstimatePdfBlob(estimate, eventName, terms);
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${model.filenameBase}.pdf`;
-    anchor.click();
-    window.URL.revokeObjectURL(url);
+    downloadBlob(blob, `${model.filenameBase}.pdf`);
 }

@@ -3,6 +3,7 @@ import { Formik, Form } from "formik";
 import { FormikFieldInput } from "@/components/ui/formik-field-input";
 import { FormikFieldSelect } from "@/components/ui/formik-field-select";
 import { useRequestApi } from "@/hooks/useRequestApi";
+import { useUsers } from "@/hooks/useUsers";
 import { Modal, ModalFooter, ModalBody } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { getValidationSchema } from "@/lib/validations/user";
@@ -20,6 +21,7 @@ interface CreateUserModalProps {
 
 export default function CreateUserModal({ open, onClose, user, onSuccess }: CreateUserModalProps) {
     const { request, loading, error } = useRequestApi();
+    const { addUser, updateUser } = useUsers();
 
     const isEditMode = Boolean(user?.id);
 
@@ -47,6 +49,17 @@ export default function CreateUserModal({ open, onClose, user, onSuccess }: Crea
                     `Failed to ${isEditMode ? "update" : "create"} user. Please try again. ${error}`,
                 );
                 return;
+            }
+
+            // Synchronize the centralized store directly from the API response so
+            // every consumer (dropdowns, tables, detail panels) reflects the
+            // change immediately without a page reload. Do not touch the store
+            // when the operation failed (result === null, handled above).
+            const savedUser = result as User;
+            if (isEditMode) {
+                updateUser(savedUser);
+            } else {
+                addUser(savedUser);
             }
 
             if (onSuccess) onSuccess();

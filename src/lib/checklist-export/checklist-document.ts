@@ -3,17 +3,17 @@ import type { ChecklistItem } from "@/components/checklist-modal/types";
 import { groupByCategory } from "@/lib/utils";
 import { toRomanLower } from "@/lib/utils";
 import { ESTIMATE_EXPORT_COLORS } from "@/lib/estimate-export/estimate-document";
+import { formatLocalDateTime } from "@/lib/utils/date";
 
 export { ESTIMATE_EXPORT_COLORS as CHECKLIST_EXPORT_COLORS };
 
 export const CHECKLIST_EXPORT_COLUMNS = [
-    "Sl. No",
-    "Elements",
-    "Details",
-    "nos",
-    "Unit",
+    "No",
+    "Item Name",
+    "Description",
+    "Qty",
     "Days",
-    "Vendor",
+    "Vendor / Inventory",
     "Status",
     "Deadline",
 ] as const;
@@ -65,19 +65,23 @@ export function resolveChecklistVendorDisplay(
         return inv?.itemName ? `📦 ${inv.itemName}` : "Inventory";
     }
     const vendor = vendorList.find(v => String(v.id) === String(item.vendor));
-    return vendor?.name || item.vendor || "—";
+    return vendor?.name || item.vendor || "-";
 }
 
 export function getChecklistItemName(item: ChecklistItem): string {
-    return (item.item || "").trim() || "—";
+    return (item.item || "").trim() || "-";
 }
 
 export function getChecklistItemDetails(item: ChecklistItem): string {
-    return (item.description || "").trim() || "—";
+    return (item.description || "").trim() || "-";
 }
 
 export function getChecklistItemUnit(item: ChecklistItem): string {
     return (item.unit || "nos").trim() || "nos";
+}
+
+export function getChecklistDeadlineDisplay(item: ChecklistItem): string {
+    return item.deadlineDate ? formatLocalDateTime(item.deadlineDate) : "-";
 }
 
 function appendCategoryRows(
@@ -88,6 +92,8 @@ function appendCategoryRows(
     startCategoryIndex: number,
 ): number {
     let categoryIndex = startCategoryIndex;
+
+    let itemIndex = 0;
 
     groups.forEach(group => {
         const itemCount =
@@ -102,10 +108,11 @@ function appendCategoryRows(
             name: group.name,
         });
 
-        group.directItems.forEach((item, itemIndex) => {
+        group.directItems.forEach(item => {
+            itemIndex += 1;
             rows.push({
                 type: "item",
-                serial: itemIndex + 1,
+                serial: itemIndex,
                 item,
                 vendorDisplay: resolveChecklistVendorDisplay(item, vendorList, inventoryList),
             });
@@ -117,10 +124,11 @@ function appendCategoryRows(
                 name: sub.name,
             });
 
-            sub.items.forEach((item, itemIndex) => {
+            sub.items.forEach(item => {
+                itemIndex += 1;
                 rows.push({
                     type: "item",
-                    serial: itemIndex + 1,
+                    serial: itemIndex,
                     item,
                     vendorDisplay: resolveChecklistVendorDisplay(item, vendorList, inventoryList),
                 });

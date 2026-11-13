@@ -147,6 +147,72 @@ export function formatShortDateTime(value?: string | Date | null): string {
 }
 
 /**
+ * Serialize a picker date as a naive local ISO string (`YYYY-MM-DDTHH:mm:ss`)
+ * without converting to UTC. `date.toISOString()` shifts the wall-clock time
+ * by the browser's timezone offset (e.g. a 10:00 AM pick in IST is stored as
+ * 04:30 UTC), so the selected local time is preserved component-by-component.
+ * Consumers read these back with `new Date(...)`, which interprets naive
+ * strings as local time, keeping the value round-trip stable.
+ */
+export function toLocalISOString(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T` +
+        `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    );
+}
+
+/**
+ * Parse a stored datetime string into a Date whose wall-clock components are
+ * interpreted as local time. `new Date()` on a string that ends with `Z` or a
+ * timezone offset switches to UTC mode, which shifts the displayed time by the
+ * browser's offset (e.g. a `10:00:00Z` value shows as 04:30 AM in IST).
+ * Stripping the timezone marker keeps the wall-clock stable, matching how
+ * `toLocalISOString` serializes values on write.
+ */
+export function parseLocalDateTime(value?: string): Date | null {
+    if (!value) return null;
+    const clean = String(value)
+        .replace(/[Zz]$|[+-]\d{2}:?\d{2}$/, "")
+        .replace(/\.\d+$/, "");
+    const d = new Date(clean);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Format a naive local datetime string for display without shifting it by the
+ * browser's timezone offset. Unlike {@link formatShortDateTime}, this does NOT
+ * append a "Z" marker to timezone-less values, so the wall-clock components are
+ * interpreted as local time. Use this for checklist deadlines that are stored as
+ * naive local ISO strings.
+ *
+ * e.g. "4 Oct 2026, 02:30 pm".
+ */
+export function formatLocalDateTime(value?: string | Date | null): string {
+    if (!value) return "";
+    try {
+        const d =
+            value instanceof Date
+                ? value
+                : new Date(
+                      String(value)
+                          .replace(/[Zz]$|[+-]\d{2}:?\d{2}$/, "")
+                          .replace(/\.\d+$/, ""),
+                  );
+        if (isNaN(d.getTime())) return "";
+        return d.toLocaleString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    } catch {
+        return typeof value === "string" ? value : "";
+    };
+}
+
+/**
  * Format an event schedule from its start/end date-times.
  *
  * - When both are present: "<start date, time> – <end date, time>"

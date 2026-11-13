@@ -9,8 +9,6 @@
  * returning it, and clearly surfaces the gap while it does not.
  */
 
-export type ExpenseDescription = "ESTIMATED_EXPENSE" | "ACTUAL_EXPENSE";
-
 export type ExpenseStatus =
     | "ESTIMATE_SUBMITTED"
     | "ESTIMATE_REVIEW"
@@ -25,7 +23,6 @@ export interface Expense {
     amount: number;
     comments?: string | null;
     poc?: string | null;
-    expenseDescription?: ExpenseDescription | string;
     createdDate?: string | null;
     lastUpdateddDate?: string | null;
     expenseStatus?: ExpenseStatus | string;
@@ -35,4 +32,11 @@ export interface Expense {
     receiptFileName?: string | null;
     /** MIME type of the uploaded receipt (e.g. image/jpeg, application/pdf). */
     receiptContentType?: string | null;
+}
+
+/** Aggregated expense total returned by `GET /api/expenses/total`. */
+export interface ExpenseSummary {
+    eventID: string;
+    poc: string;
+    totalAmount: number;
 }

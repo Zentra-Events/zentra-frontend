@@ -2,20 +2,23 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { EstimateDto, EstimateVersionStatus, EstimateItem } from "@/types/estimate";
+import { Scope } from "@/types/auth";
 import {
-    Copy,
     Send,
     CheckCircle,
     Edit,
+    Trash2,
     ChevronDown,
     ChevronRight,
     Calendar,
     Eye,
     Merge,
+    MoreVerticalIcon,
 } from "lucide-react";
 import { apiRequest } from "@/lib/api/api-client";
 import { toast } from "sonner";
-import { Button, Modal, ModalBody, ModalFooter, Badge } from "./ui";
+import { Button, Modal, ModalBody, ModalFooter, Badge, MenuList } from "./ui";
+import { formatShortDate, formatShortDateTime } from "@/lib/utils/date";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { useRouter } from "next/navigation";
 import { AccessButton } from "./shared/access-button";
@@ -59,6 +62,8 @@ export function EstimateVersionsView({
     >(undefined);
     const [mergeTargetVersion, setMergeTargetVersion] = useState<EstimateDto | null>(null);
     const [isMerging, setIsMerging] = useState(false);
+    const [deleteTargetVersion, setDeleteTargetVersion] = useState<EstimateDto | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Fetch versions on mount
     useEffect(() => {
@@ -86,23 +91,6 @@ export function EstimateVersionsView({
             toast.error("Failed to load estimate versions");
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleClone = async (estimateId: string) => {
-        try {
-            const response = await apiRequest(`/api/estimates/${estimateId}/clone`, {
-                method: "POST",
-            });
-            if (!response.ok) {
-                throw new Error("Failed to clone estimate");
-            }
-            const newVersion = (await response.json()) as EstimateDto;
-            toast.success(`Created ${newVersion.version} successfully`);
-            await fetchVersions();
-        } catch (error) {
-            console.error("Error cloning estimate:", error);
-            toast.error("Failed to clone estimate");
         }
     };
 
@@ -323,6 +311,40 @@ export function EstimateVersionsView({
         }
     };
 
+    const handleDeleteVersion = (version: EstimateDto) => {
+        setDeleteTargetVersion(version);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!deleteTargetVersion?.id) {
+            setDeleteTargetVersion(null);
+            return;
+        }
+
+        const id = deleteTargetVersion.id;
+        setIsDeleting(true);
+        try {
+            const res = await apiRequest(API_ENDPOINTS.estimates.delete(id), {
+                method: "DELETE",
+            });
+            if (!res.ok) {
+                const txt = await res.text().catch(() => "");
+                throw new Error(`Delete failed: ${res.status} ${txt}`);
+            }
+            setVersions(prev => prev.filter(v => String(v.id || "") !== String(id)));
+            if (previewVersion?.id === id) setPreviewVersion(null);
+            if (emailVersion?.id === id) setEmailVersion(null);
+            toast.success("Estimate deleted successfully");
+            await fetchVersions();
+        } catch (error) {
+            console.error("Error deleting estimate:", error);
+            toast.error("Failed to delete estimate");
+        } finally {
+            setDeleteTargetVersion(null);
+            setIsDeleting(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -369,6 +391,27 @@ export function EstimateVersionsView({
                 variant="primary"
                 isLoading={isMerging}
             />
+            <ConfirmationModal
+                open={!!deleteTargetVersion}
+                onClose={() => {
+                    setDeleteTargetVersion(null);
+                }}
+                onConfirm={handleDeleteConfirm}
+                title="Delete Estimate"
+                description={
+                    deleteTargetVersion
+                        ? `Are you sure you want to delete "${
+                              deleteTargetVersion.versionTitle ||
+                              deleteTargetVersion.highlvelRequirement ||
+                              "this estimate"
+                          }"? This action cannot be undone.`
+                        : undefined
+                }
+                confirmText="Delete"
+                cancelText="Cancel"
+                variant="destructive"
+                isLoading={isDeleting}
+            />
             <CreateEstimateModal
                 isOpen={isCreateEstimateOpen}
                 isAdditionalEstimate={true}
@@ -401,9 +444,12 @@ export function EstimateVersionsView({
                             <div className="space-y-4">
                                 {sortedVersions.map(version => {
                                     const isExpanded = expandedVersions.has(version.id || "");
-                                    const isEventCreated =
-                                        version.estimateStatus === "EVENT_CREATED";
-                                    const isFinal = version.estimateStatus === "FINAL";
+                                    const estimateStatus = version.estimateStatus;
+                                    const isEventCreated = estimateStatus === "EVENT_CREATED";
+                                    const isDraft = estimateStatus === "DRAFT";
+                                    const isReview = estimateStatus === "UNDER_CLIENT_REVIEW";
+                                    const isFinal = estimateStatus === "FINAL";
+                                    const hasStatus = Boolean(estimateStatus);
 
                                     return (
                                         <div
@@ -459,51 +505,59 @@ export function EstimateVersionsView({
 
                                                 {/* Actions */}
                                                 <div className="flex gap-2">
+                                                    <AccessButton
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => setPreviewVersion(version)}
+                                                        className="flex items-center gap-1"
+                                                        scope={["w:estimates"]}
+                                                    >
+                                                        <Eye size={14} />
+                                                        Preview
+                                                    </AccessButton>
+                                                    {!isViewOnlyMode && (isDraft || !hasStatus ? (
+                                                        <AccessButton
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() =>
+                                                                onVersionSelect?.(version)
+                                                            }
+                                                            className="flex items-center gap-1"
+                                                            scope={["w:estimates"]}
+                                                        >
+                                                            <Edit size={14} />
+                                                            Edit
+                                                        </AccessButton>
+                                                    ) : isReview || isFinal ? (
+                                                        <AccessButton
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() =>
+                                                                handleStatusChange(
+                                                                    version.id || "",
+                                                                    "DRAFT",
+                                                                )
+                                                            }
+                                                            className="flex items-center gap-1"
+                                                            scope={["w:estimates"]}
+                                                        >
+                                                            Revert to Draft
+                                                        </AccessButton>
+                                                    ) : null)}
                                                     {!isViewOnlyMode && (
                                                         <>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                onClick={() =>
-                                                                    handleClone(version.id || "")
-                                                                }
-                                                                className="flex items-center gap-1"
-                                                            >
-                                                                <Copy size={14} />
-                                                                Clone
-                                                            </Button>
-                                                            {version.estimateStatus === "DRAFT" && (
-                                                                <>
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="outline"
-                                                                        onClick={() =>
-                                                                            setEmailVersion(version)
-                                                                        }
-                                                                        className="flex items-center gap-1"
-                                                                    >
-                                                                        <Send size={14} />
-                                                                        Send to Client
-                                                                    </Button>
-                                                                    <AccessButton
-                                                                        size="sm"
-                                                                        variant="outline"
-                                                                        onClick={() =>
-                                                                            onVersionSelect?.(
-                                                                                version,
-                                                                            )
-                                                                        }
-                                                                        className="flex items-center gap-1"
-                                                                        scope={["w:estimates"]}
-                                                                    >
-                                                                        <Edit size={14} />
-                                                                        Edit
-                                                                    </AccessButton>
-                                                                </>
-                                                            )}
-
-                                                            {version.estimateStatus ===
-                                                                "UNDER_CLIENT_REVIEW" && (
+                                                            {isDraft ? (
+                                                                <AccessButton
+                                                                    scope={["w:estimates"]}
+                                                                    size="sm"                                                                    onClick={() =>
+                                                                        setEmailVersion(version)
+                                                                    }
+                                                                    className="flex items-center gap-1"
+                                                                >
+                                                                    <Send size={14} />
+                                                                    Send to Client
+                                                                </AccessButton>
+                                                            ) : isReview ? (
                                                                 <>
                                                                     <AccessButton
                                                                         size="sm"
@@ -520,84 +574,95 @@ export function EstimateVersionsView({
                                                                         <CheckCircle size={14} />
                                                                         Mark as Final
                                                                     </AccessButton>
-                                                                    <AccessButton
-                                                                        size="sm"
-                                                                        variant="outline"
-                                                                        onClick={() =>
-                                                                            handleStatusChange(
-                                                                                version.id || "",
-                                                                                "DRAFT",
-                                                                            )
-                                                                        }
-                                                                        className="flex items-center gap-1"
-                                                                        scope={["w:estimates"]}
-                                                                    >
-                                                                        Revert to Draft
-                                                                    </AccessButton>
                                                                 </>
-                                                            )}
-
-                                                            {version.estimateStatus === "FINAL" && (
+                                                            ) : isFinal &&
+                                                              hasEventCreatedEstimate ? (
                                                                 <AccessButton
                                                                     size="sm"
-                                                                    variant="outline"
+                                                                    variant="primary"
+                                                                    className="flex items-center gap-1"
+                                                                    icon={<Merge size={14} />}
                                                                     onClick={() =>
-                                                                        handleStatusChange(
-                                                                            version.id || "",
-                                                                            "DRAFT",
+                                                                        setMergeTargetVersion(
+                                                                            version,
                                                                         )
                                                                     }
-                                                                    className="flex items-center gap-1"
                                                                     scope={["w:estimates"]}
                                                                 >
-                                                                    Revert to Draft
+                                                                    Merge
                                                                 </AccessButton>
-                                                            )}
+                                                            ) : isFinal &&
+                                                              !hasEventCreatedEstimate ? (
+                                                                <AccessButton
+                                                                    size="sm"
+                                                                    variant="primary"
+                                                                    className="flex items-center gap-1"
+                                                                    icon={<Calendar size={14} />}
+                                                                    onClick={() =>
+                                                                        handleCreateEvent(version)
+                                                                    }
+                                                                    scope={["w:events"]}
+                                                                >
+                                                                    Create Event
+                                                                </AccessButton>
+                                                            ) : null}
                                                         </>
                                                     )}
-
-                                                    <AccessButton
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => setPreviewVersion(version)}
-                                                        className="flex items-center gap-1"
-                                                        scope={["w:estimates"]}
-                                                    >
-                                                        <Eye size={14} />
-                                                        Preview
-                                                    </AccessButton>
-                                                    {version.estimateStatus === "FINAL" &&
-                                                        hasEventCreatedEstimate &&
-                                                        !isViewOnlyMode && (
-                                                            <AccessButton
+                                                    <MenuList
+                                                        trigger={
+                                                            <Button
                                                                 size="sm"
-                                                                variant="primary"
+                                                                variant="outline"
                                                                 className="flex items-center gap-1"
-                                                                icon={<Merge size={14} />}
-                                                                onClick={() =>
-                                                                    setMergeTargetVersion(version)
-                                                                }
-                                                                scope={["w:estimates"]}
                                                             >
-                                                                Merge
-                                                            </AccessButton>
-                                                        )}
-                                                    {version.estimateStatus === "FINAL" &&
-                                                        !hasEventCreatedEstimate &&
-                                                        !isViewOnlyMode && (
-                                                            <AccessButton
-                                                                size="sm"
-                                                                variant="primary"
-                                                                className="flex items-center gap-1"
-                                                                icon={<Calendar size={14} />}
-                                                                onClick={() =>
-                                                                    handleCreateEvent(version)
-                                                                }
-                                                                scope={["w:events"]}
-                                                            >
-                                                                Create Event
-                                                            </AccessButton>
-                                                        )}
+                                                                <MoreVerticalIcon size={14} />
+                                                            </Button>
+                                                        }
+                                                        items={[
+                                                            ...((isDraft || !hasStatus) &&
+                                                            !isViewOnlyMode
+                                                                ? [
+                                                                      {
+                                                                          key: "delete",
+                                                                          label: "Delete",
+                                                                          icon: (
+                                                                              <Trash2 size={14} />
+                                                                          ),
+                                                                          onClick: () =>
+                                                                              handleDeleteVersion(
+                                                                                  version,
+                                                                              ),
+                                                                          disabled:
+                                                                              isDeleting ||
+                                                                              deleteTargetVersion !==
+                                                                                  null,
+                                                                          scopes: [
+                                                                              "w:estimates",
+                                                                          ] as Scope[],
+                                                                          className:
+                                                                              "text-destructive",
+                                                                      },
+                                                                  ]
+                                                                : []),
+                                                            // Clone button commented down — not working properly
+                                                            // ...(hasStatus && !isViewOnlyMode
+                                                            // ? [
+                                                            //     {
+                                                            //         key: "clone",
+                                                            //         label: "Clone",
+                                                            //         icon: <Copy size={14} />,
+                                                            //         onClick: () =>
+                                                            //             handleClone(
+                                                            //                 version.id || "",
+                                                            //             ),
+                                                            //         scopes: [
+                                                            //             "w:estimates",
+                                                            //         ] as Scope[],
+                                                            //     },
+                                                            // ]
+                                                            // : []),
+                                                        ]}
+                                                    />
                                                 </div>
                                             </div>
 
@@ -627,9 +692,7 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.fromDate
-                                                                    ? new Date(
-                                                                          version.fromDate,
-                                                                      ).toLocaleDateString()
+                                                                    ? formatShortDate(version.fromDate)
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -639,9 +702,7 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.toDate
-                                                                    ? new Date(
-                                                                          version.toDate,
-                                                                      ).toLocaleDateString()
+                                                                    ? formatShortDate(version.toDate)
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -665,9 +726,7 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.createdAt
-                                                                    ? new Date(
-                                                                          version.createdAt,
-                                                                      ).toLocaleString()
+                                                                    ? formatShortDateTime(version.createdAt)
                                                                     : "N/A"}
                                                             </p>
                                                         </div>

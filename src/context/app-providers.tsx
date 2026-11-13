@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthProvider } from "@/context/auth";
+import { UserProvider } from "@/context/users";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "./theme-provider";
 
@@ -11,7 +12,9 @@ interface ProvidersProps {
 export function AppProviders({ children }: ProvidersProps) {
     return (
         <ThemeProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+                <UserProvider>{children}</UserProvider>
+            </AuthProvider>
         </ThemeProvider>
     );
 }

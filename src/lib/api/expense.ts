@@ -3,7 +3,7 @@
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toList } from "@/lib/utils";
-import type { Expense } from "@/types/expense";
+import type { Expense, ExpenseSummary } from "@/types/expense";
 
 /* ------------------------------------------------------------------ */
 /*  Expense API service                                               */
@@ -40,6 +40,19 @@ export async function fetchEventExpenses(eventID: string): Promise<Expense[]> {
     }
     const data = (await res.json()) as unknown;
     return toExpenseList(data);
+}
+
+/** Fetch the aggregated total expense for an event and point of contact. */
+export async function fetchExpenseTotal(
+    eventID: string,
+    poc: string,
+): Promise<ExpenseSummary[]> {
+    const res = await apiRequest(API_ENDPOINTS.expenses.total(eventID, poc));
+    if (!res.ok) {
+        throw new Error(`Failed to fetch expense total (status ${res.status})`);
+    }
+    const data = (await res.json()) as unknown;
+    return Array.isArray(data) ? (data as ExpenseSummary[]) : [];
 }
 
 /** Create a new expense. */
