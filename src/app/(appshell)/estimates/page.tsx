@@ -261,9 +261,11 @@ export default function EstimatesPage() {
 
             const finalVersion = sorted.find(v => v.estimateStatus === "FINAL");
             const representative = finalVersion || sorted[0];
+            const eventName = versions.find(v => v.eventName?.trim())?.eventName;
 
             representatives.push({
                 ...representative,
+                eventName: eventName || representative.eventName,
                 _versionsCount: versions.length,
                 _hasFinal: !!finalVersion,
             } as EstimateRecord & { _versionsCount: number; _hasFinal: boolean });
@@ -285,7 +287,7 @@ export default function EstimatesPage() {
         () => [
             {
                 key: "title",
-                header: "Event Name",
+                header: "Event Names",
                 render: row => (
                     <div
                         className="font-medium cursor-pointer hover:text-blue-600"

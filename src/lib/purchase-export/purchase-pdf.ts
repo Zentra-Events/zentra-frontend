@@ -13,6 +13,12 @@ import {
 } from "./purchase-document";
 import type { CategoryPurchaseRow, EventResponse, VendorFinancialRow } from "@/types/event";
 
+const AMOUNT_GREEN: [number, number, number] = [21, 128, 61];
+const AMOUNT_DARK_GREEN: [number, number, number] = [22, 101, 52];
+const AMOUNT_RED: [number, number, number] = [185, 28, 28];
+const AMOUNT_MUTED: [number, number, number] = [107, 114, 128];
+const TABLE_SECTION_GAP_MM = 10;
+
 function addDocumentHeader(doc: jsPDF, model: PurchaseOrderDocumentModel) {
     const margin = 10;
     const width = doc.internal.pageSize.getWidth() - margin * 2;
@@ -25,47 +31,67 @@ function addDocumentHeader(doc: jsPDF, model: PurchaseOrderDocumentModel) {
     });
 }
 
-function categoryTableRows(category: CategoryPurchaseRow): {
+function addSectionHeading(doc: jsPDF, title: string, y: number): number {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
+    doc.text(title.toUpperCase(), 10, y);
+    doc.setTextColor(0, 0, 0);
+    return y + 2;
+}
+
+function categoryTableRows(categories: CategoryPurchaseRow[]): {
     body: RowInput[];
-    fills: (string | null)[];
+    rowStyles: { fill?: string; bold?: boolean }[];
 } {
     const body: RowInput[] = [];
-    const fills: (string | null)[] = [];
-    let serial = 1;
-    const appendItem = (item: CategoryPurchaseRow["items"][number]) => {
+    const rowStyles: { fill?: string; bold?: boolean }[] = [];
+    categories.forEach((category, categoryIndex) => {
         body.push([
-            String(serial++),
-            item.itemName,
-            item.description || "—",
-            String(item.days),
-            String(item.qty),
-            item.unit || "nos",
-            formatExportCurrency(item.rate),
-            formatExportCurrency(item.amount),
-            item.gstAmount > 0 ? `+${formatExportCurrency(item.gstAmount)}` : "—",
-            item.tdsAmount > 0 ? `-${formatExportCurrency(item.tdsAmount)}` : "—",
-            formatExportCurrency(item.netTotal),
-            item.vendorName,
+            toRomanLower(categoryIndex + 1),
+            { content: category.category, colSpan: 10 },
+            `${category.items.length} item${category.items.length === 1 ? "" : "s"}`,
         ]);
-        fills.push(null);
-    };
-    category.directItems.forEach(appendItem);
-    category.subCategories.forEach(sub => {
-        body.push([`Sub Category: ${sub.name}`, ...Array(11).fill("")]);
-        fills.push(PURCHASE_EXPORT_COLORS.subCategoryBg);
-        sub.items.forEach(appendItem);
+        rowStyles.push({ fill: PURCHASE_EXPORT_COLORS.categoryBg, bold: true });
+
+        let serial = 1;
+        const appendItem = (item: CategoryPurchaseRow["items"][number]) => {
+            body.push([
+                String(serial++),
+                item.itemName,
+                item.description || "—",
+                String(item.days),
+                String(item.qty),
+                item.unit || "nos",
+                formatExportCurrency(item.rate),
+                formatExportCurrency(item.amount),
+                item.gstAmount > 0 ? `+${formatExportCurrency(item.gstAmount)}` : "—",
+                item.tdsAmount > 0 ? `-${formatExportCurrency(item.tdsAmount)}` : "—",
+                formatExportCurrency(item.netTotal),
+                item.vendorName,
+            ]);
+            rowStyles.push({});
+        };
+        category.directItems.forEach(appendItem);
+        category.subCategories.forEach(sub => {
+            body.push(["", { content: `Sub Category: ${sub.name}`, colSpan: 11 }]);
+            rowStyles.push({ fill: PURCHASE_EXPORT_COLORS.subCategoryBg, bold: true });
+            sub.items.forEach(appendItem);
+        });
+
+        const netSubtotal = category.items.reduce((sum, item) => sum + item.netTotal, 0);
+        body.push([
+            { content: "Category Subtotal", colSpan: 9 },
+            { content: formatExportCurrency(category.subtotal), colSpan: 3 },
+        ]);
+        rowStyles.push({ fill: PURCHASE_EXPORT_COLORS.subtotalBg });
+        body.push([
+            { content: "Net SubTotal", colSpan: 9 },
+            { content: formatExportCurrency(netSubtotal), colSpan: 3 },
+        ]);
+        rowStyles.push({ fill: PURCHASE_EXPORT_COLORS.totalBg, bold: true });
     });
-    const netSubtotal = category.items.reduce((sum, item) => sum + item.netTotal, 0);
-    body.push([
-        "",
-        "Category Subtotal",
-        ...Array(9).fill(""),
-        formatExportCurrency(category.subtotal),
-    ]);
-    fills.push(PURCHASE_EXPORT_COLORS.subtotalBg);
-    body.push(["", "Net Subtotal", ...Array(9).fill(""), formatExportCurrency(netSubtotal)]);
-    fills.push(PURCHASE_EXPORT_COLORS.totalBg);
-    return { body, fills };
+    return { body, rowStyles };
 }
 
 export async function generatePurchaseOrderPdfBlob(
@@ -112,109 +138,121 @@ export async function generatePurchaseOrderPdfBlob(
         doc.addImage(logo, "PNG", doc.internal.pageSize.getWidth() - 31, logoY, 21, logoHeight);
     }
     y += 2;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("Terms & Conditions", 10, y);
-    y += 2;
+    y = addSectionHeading(doc, "Terms & Conditions", y);
+    const termsWidth = doc.internal.pageSize.getWidth() - 20;
     autoTable(doc, {
         startY: y,
-        body: PURCHASE_PAYMENT_TERMS.map(([label, value]) => [label, value]),
-        tableWidth: doc.internal.pageSize.getWidth() - 20,
+        body: [
+            [
+                PURCHASE_PAYMENT_TERMS[0][0],
+                PURCHASE_PAYMENT_TERMS[0][1],
+                PURCHASE_PAYMENT_TERMS[1][0],
+                PURCHASE_PAYMENT_TERMS[1][1],
+            ],
+            [
+                PURCHASE_PAYMENT_TERMS[2][0],
+                PURCHASE_PAYMENT_TERMS[2][1],
+                PURCHASE_PAYMENT_TERMS[3][0],
+                PURCHASE_PAYMENT_TERMS[3][1],
+            ],
+        ],
+        tableWidth: termsWidth,
         theme: "grid",
-        styles: { fontSize: 7, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1 },
-        columnStyles: { 0: { fontStyle: "bold", cellWidth: 35 } },
+        styles: {
+            fontSize: 7.5,
+            cellPadding: 2,
+            lineColor: [209, 213, 219],
+            lineWidth: 0.1,
+            fillColor: [249, 250, 251],
+            textColor: [31, 41, 55],
+        },
+        columnStyles: {
+            0: { fontStyle: "bold", cellWidth: 30 },
+            1: { cellWidth: 108 },
+            2: { fontStyle: "bold", cellWidth: 30 },
+            3: { cellWidth: termsWidth - 168 },
+        },
         margin: { left: 10, right: 10 },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 4;
+    y = (doc as any).lastAutoTable.finalY + TABLE_SECTION_GAP_MM;
 
-    for (const [categoryIndex, category] of model.categories.entries()) {
-        const { body, fills } = categoryTableRows(category);
-        autoTable(doc, {
-            startY: y,
-            head: [
-                [
-                    {
-                        content: `${toRomanLower(categoryIndex + 1)}. ${category.category}`,
-                        colSpan: 11,
-                    },
-                    `${category.items.length} item${category.items.length === 1 ? "" : "s"}`,
-                ],
-                [
-                    "Sl. No",
-                    "Item",
-                    "Description",
-                    "Days",
-                    "Qty",
-                    "Unit",
-                    "Rate",
-                    "Total Amount",
-                    "GST Amount",
-                    "TDS Amount",
-                    "Net Total",
-                    "Vendor",
-                ],
-            ],
-            body,
-            tableWidth: doc.internal.pageSize.getWidth() - 20,
-            theme: "grid",
-            styles: {
-                fontSize: 6.5,
-                cellPadding: 1.3,
-                lineColor: [0, 0, 0],
-                lineWidth: 0.1,
-                overflow: "linebreak",
-            },
-            headStyles: {
-                fillColor: purchaseArgbToRgb(PURCHASE_EXPORT_COLORS.headerBg),
-                textColor: [0, 0, 0],
-                fontStyle: "bold",
-                halign: "center",
-            },
-            columnStyles: {
-                0: { cellWidth: 12, halign: "center" },
-                1: { cellWidth: 32 },
-                2: { cellWidth: 60 },
-                3: { cellWidth: 10, halign: "right" },
-                4: { cellWidth: 10, halign: "right" },
-                5: { cellWidth: 14 },
-                6: { cellWidth: 20, halign: "right" },
-                7: { cellWidth: 22, halign: "right" },
-                8: { cellWidth: 20, halign: "right" },
-                9: { cellWidth: 20, halign: "right" },
-                10: { cellWidth: 25, halign: "right" },
-                11: { cellWidth: 32 },
-            },
-            didParseCell: data => {
-                if (data.section === "head") {
-                    data.cell.styles.fillColor = purchaseArgbToRgb(
-                        data.row.index === 0
-                            ? PURCHASE_EXPORT_COLORS.categoryBg
-                            : PURCHASE_EXPORT_COLORS.headerBg,
-                    );
-                    if (data.row.index === 0) data.cell.styles.fontStyle = "bold";
-                    if (data.row.index === 0) {
-                        data.cell.styles.halign = data.column.index === 11 ? "right" : "left";
-                    }
-                    return;
-                }
-                const color = fills[data.row.index];
-                if (color) {
-                    data.cell.styles.fillColor = purchaseArgbToRgb(color);
-                    data.cell.styles.fontStyle = "bold";
-                }
-            },
-            margin: { left: 10, right: 10 },
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        y = (doc as any).lastAutoTable.finalY + 5;
-    }
+    y = addSectionHeading(doc, "Category-wise Item Breakdown", y);
+    const { body: categoryBody, rowStyles } = categoryTableRows(model.categories);
+    const contentWidth = doc.internal.pageSize.getWidth() - 20;
+    autoTable(doc, {
+        startY: y,
+        head: [[
+            "Sl. No",
+            "Item",
+            "Description",
+            "Days",
+            "Qty",
+            "Unit",
+            "Rate",
+            "Total Amount",
+            "GST(%)",
+            "TDS(%)",
+            "Net Total",
+            "Vendor",
+        ]],
+        body: categoryBody,
+        tableWidth: contentWidth,
+        theme: "grid",
+        styles: {
+            fontSize: 7.5,
+            cellPadding: 1.6,
+            lineColor: [0, 0, 0],
+            lineWidth: 0.1,
+            overflow: "linebreak",
+            textColor: [31, 41, 55],
+        },
+        headStyles: {
+            fillColor: purchaseArgbToRgb(PURCHASE_EXPORT_COLORS.headerBg),
+            textColor: [17, 24, 39],
+            fontStyle: "bold",
+            halign: "center",
+        },
+        columnStyles: {
+            0: { cellWidth: 12, halign: "center" },
+            1: { cellWidth: 42 },
+            2: { cellWidth: 56 },
+            3: { cellWidth: 9, halign: "right" },
+            4: { cellWidth: 9, halign: "right" },
+            5: { cellWidth: 13, halign: "center" },
+            6: { cellWidth: 21, halign: "right" },
+            7: { cellWidth: 23, halign: "right" },
+            8: { cellWidth: 20, halign: "right" },
+            9: { cellWidth: 20, halign: "right" },
+            10: { cellWidth: 25, halign: "right" },
+            11: { cellWidth: 27 },
+        },
+        didParseCell: data => {
+            if (data.section !== "body") return;
+            const style = rowStyles[data.row.index];
+            if (style?.fill) data.cell.styles.fillColor = purchaseArgbToRgb(style.fill);
+            if (style?.bold) data.cell.styles.fontStyle = "bold";
+            if (!style?.fill && data.column.index === 8) data.cell.styles.textColor = [21, 128, 61];
+            if (!style?.fill && data.column.index === 9) data.cell.styles.textColor = [185, 28, 28];
+            if (style?.fill === PURCHASE_EXPORT_COLORS.categoryBg) {
+                if (data.column.index === 0) data.cell.styles.halign = "center";
+                if (data.column.index === 11) data.cell.styles.halign = "right";
+            }
+            if (
+                style?.fill === PURCHASE_EXPORT_COLORS.subtotalBg ||
+                style?.fill === PURCHASE_EXPORT_COLORS.totalBg
+            ) {
+                if (data.column.index === 0) data.cell.styles.halign = "left";
+                if (data.column.index === 9) data.cell.styles.halign = "right";
+            }
+        },
+        margin: { left: 10, right: 10 },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + TABLE_SECTION_GAP_MM;
 
     if (model.vendorRows.length) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.text("Vendor-Wise Financial Summary", 10, y);
-        y += 2;
+        y = addSectionHeading(doc, "Vendor-Wise Financial Summary", y);
         autoTable(doc, {
             startY: y,
             head: [
@@ -265,15 +303,30 @@ export async function generatePurchaseOrderPdfBlob(
                 fontStyle: "bold",
             },
             didParseCell: data => {
-                if (data.section === "body" && data.row.index === model.vendorRows.length) {
+                if (data.section !== "body") return;
+                if (data.row.index === model.vendorRows.length) {
                     data.cell.styles.fillColor = purchaseArgbToRgb(PURCHASE_EXPORT_COLORS.totalBg);
                     data.cell.styles.fontStyle = "bold";
                 }
+                if (data.column.index === 2)
+                    data.cell.styles.textColor =
+                        data.row.index === model.vendorRows.length ||
+                        model.vendorRows[data.row.index]?.gstPercent > 0
+                            ? AMOUNT_GREEN
+                            : AMOUNT_MUTED;
+                if (data.column.index === 3)
+                    data.cell.styles.textColor =
+                        data.row.index === model.vendorRows.length ||
+                        model.vendorRows[data.row.index]?.tdsPercent > 0
+                            ? AMOUNT_RED
+                            : AMOUNT_MUTED;
+                if (data.column.index === 5) data.cell.styles.textColor = AMOUNT_RED;
+                if (data.column.index === 6) data.cell.styles.textColor = AMOUNT_DARK_GREEN;
             },
             margin: { left: 10, right: 10 },
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        y = (doc as any).lastAutoTable.finalY + 5;
+        y = (doc as any).lastAutoTable.finalY + TABLE_SECTION_GAP_MM;
     }
 
     const { subtotal, tds, afterTax, advance, outstanding } = model.totals;
@@ -296,10 +349,7 @@ export async function generatePurchaseOrderPdfBlob(
         doc.addPage();
         y = 14;
     }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("Consolidated Vendor Summary", 10, y);
-    y += 2;
+    y = addSectionHeading(doc, "Consolidated Vendor Summary", y);
     autoTable(doc, {
         startY: y,
         body: summary,
@@ -307,8 +357,8 @@ export async function generatePurchaseOrderPdfBlob(
         theme: "grid",
         styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
         columnStyles: {
-            0: { cellWidth: 220, fontStyle: "bold" },
-            1: { cellWidth: 57, halign: "right" },
+            0: { cellWidth: contentWidth * 0.625, fontStyle: "bold" },
+            1: { cellWidth: contentWidth * 0.375, halign: "right" },
         },
         didParseCell: data => {
             if (data.section !== "body") return;
@@ -325,6 +375,13 @@ export async function generatePurchaseOrderPdfBlob(
                           : PURCHASE_EXPORT_COLORS.summaryBg;
             data.cell.styles.fillColor = purchaseArgbToRgb(color);
             if (label.startsWith("GRAND")) data.cell.styles.fontStyle = "bold";
+            if (data.column.index === 1) {
+                if (label === "Total GST") data.cell.styles.textColor = AMOUNT_GREEN;
+                if (label === "Total TDS" || label === "Total Advance Paid")
+                    data.cell.styles.textColor = AMOUNT_RED;
+                if (label === "GRAND OUTSTANDING BALANCE")
+                    data.cell.styles.textColor = outstanding < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN;
+            }
         },
         margin: { left: 10, right: 10 },
     });
@@ -338,6 +395,7 @@ export async function generatePurchaseOrderPdfBlob(
         doc.text(model.amountInWords, 42, y);
         y += 5;
     }
+    y += TABLE_SECTION_GAP_MM;
     if (model.expenseSummary) {
         const es = model.expenseSummary;
         const dateRange = es.endDate ? `${es.startDate} - ${es.endDate}` : es.startDate;
@@ -346,10 +404,7 @@ export async function generatePurchaseOrderPdfBlob(
             doc.addPage();
             y = 14;
         }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.text("Expenses Summary", 10, y);
-        y += 2;
+        y = addSectionHeading(doc, "Expenses Summary", y);
         autoTable(doc, {
             startY: y,
             head: [["Event Date", "Total Amount"]],
@@ -360,8 +415,8 @@ export async function generatePurchaseOrderPdfBlob(
             theme: "grid",
             styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
             columnStyles: {
-                0: { cellWidth: 120, halign: "center" },
-                1: { cellWidth: 57, halign: "right" },
+                0: { cellWidth: contentWidth / 2, halign: "center" },
+                1: { cellWidth: contentWidth / 2, halign: "right" },
             },
             headStyles: {
                 fillColor: purchaseArgbToRgb(PURCHASE_EXPORT_COLORS.headerBg),
@@ -372,14 +427,14 @@ export async function generatePurchaseOrderPdfBlob(
             margin: { left: 10, right: 10 },
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        y = (doc as any).lastAutoTable.finalY + 4;
+        y = (doc as any).lastAutoTable.finalY + TABLE_SECTION_GAP_MM;
     }
     if (model.clientBillSummary) {
         const cb = model.clientBillSummary;
         const rows: [string, string][] = [
             ["Estimated Amount", formatExportCurrency(cb.estimatedAmount)],
             [
-                `Service Charge (${model.profitSummary?.serviceChargePercent ?? 0}%)`,
+                `Service Charge (${eventData.serviceCharge ?? 0}%)`,
                 formatExportCurrency(cb.serviceChargeAmount),
             ],
             ["Discount", `-${formatExportCurrency(cb.discountAmount)}`],
@@ -390,7 +445,7 @@ export async function generatePurchaseOrderPdfBlob(
                 `Amount Received from Client${model.amountRecievedFromClientDate ? ` (${formatShortDate(model.amountRecievedFromClientDate)})` : ""}`,
                 formatExportCurrency(cb.amountReceivedFromClient),
             ],
-            ["TDS Deducted by Client", formatExportCurrency(cb.tdsDeducted)],
+            ["TDS Deducted by Client", `-${formatExportCurrency(cb.tdsDeducted)}`],
             ["Final Amount", formatExportCurrency(cb.finalAmount)],
             ["Advance", formatExportCurrency(cb.advance)],
             ["Balance", formatExportCurrency(cb.balance)],
@@ -400,10 +455,7 @@ export async function generatePurchaseOrderPdfBlob(
             doc.addPage();
             y = 14;
         }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.text("Client Bill Summary", 10, y);
-        y += 2;
+        y = addSectionHeading(doc, "Client Bill Summary", y);
         autoTable(doc, {
             startY: y,
             body: rows,
@@ -411,8 +463,8 @@ export async function generatePurchaseOrderPdfBlob(
             theme: "grid",
             styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
             columnStyles: {
-                0: { cellWidth: 220, fontStyle: "bold" },
-                1: { cellWidth: 57, halign: "right" },
+                0: { cellWidth: contentWidth / 2 },
+                1: { cellWidth: contentWidth / 2, halign: "right" },
             },
             didParseCell: data => {
                 if (data.section !== "body") return;
@@ -431,11 +483,27 @@ export async function generatePurchaseOrderPdfBlob(
                 ) {
                     data.cell.styles.fontStyle = "bold";
                 }
+                if (data.column.index === 1) {
+                    if (
+                        label.startsWith("Service Charge") ||
+                        label === "GST Amount" ||
+                        label.startsWith("Amount Received from Client") ||
+                        label === "Advance"
+                    ) {
+                        data.cell.styles.textColor = AMOUNT_GREEN;
+                    } else if (label === "Discount" || label === "TDS Deducted by Client") {
+                        data.cell.styles.textColor = AMOUNT_RED;
+                    } else if (label === "Final Amount") {
+                        data.cell.styles.textColor = cb.finalAmount < 0 ? AMOUNT_RED : AMOUNT_GREEN;
+                    } else if (label === "Balance") {
+                        data.cell.styles.textColor = cb.balance < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN;
+                    }
+                }
             },
             margin: { left: 10, right: 10 },
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        y = (doc as any).lastAutoTable.finalY + 4;
+        y = (doc as any).lastAutoTable.finalY + TABLE_SECTION_GAP_MM;
     }
     if (model.profitSummary) {
         const profit = model.profitSummary;
@@ -444,18 +512,18 @@ export async function generatePurchaseOrderPdfBlob(
                 "Total (Original + GST)",
                 formatExportCurrency(profit.taxableAmount + profit.gstAmount),
             ],
-            ["Applied TDS Amount", `-${formatExportCurrency(profit.tdsAmount)}`],
+            ["TDS Deducted (Applied TDS Amount)", `-${formatExportCurrency(profit.tdsAmount)}`],
             ["Total Client Billed Amount", formatExportCurrency(profit.totalClientBilledAmount)],
             ["Total Vendor GST", formatExportCurrency(profit.totalVendorGst)],
             ["Total Vendor TDS", `-${formatExportCurrency(profit.totalVendorTds)}`],
-            ["Net Vendor Total", formatExportCurrency(profit.totalVendorNet)],
+            ["Net Vendor Total", `-${formatExportCurrency(profit.totalVendorNet)}`],
             [
                 "Client Billed Amount without GST",
                 formatExportCurrency(profit.clientBilledWithoutGst),
             ],
             ["Profit", formatExportCurrency(profit.profit)],
             ["Net Hand", formatExportCurrency(profit.netHand)],
-            ["Total Expenses", formatExportCurrency(profit.totalExpenses)],
+            ["Total Expenses", `-${formatExportCurrency(profit.totalExpenses)}`],
             ["Balance", formatExportCurrency(profit.balanceAfterExpenses)],
         ];
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -463,10 +531,7 @@ export async function generatePurchaseOrderPdfBlob(
             doc.addPage();
             y = 14;
         }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.text("Profit Summary", 10, y);
-        y += 2;
+        y = addSectionHeading(doc, "Profit Summary", y);
         autoTable(doc, {
             startY: y,
             body: rows,
@@ -478,7 +543,10 @@ export async function generatePurchaseOrderPdfBlob(
                 textColor: [0, 0, 0],
                 fontStyle: "bold",
             },
-            columnStyles: { 0: { cellWidth: 220 }, 1: { cellWidth: 57, halign: "right" } },
+            columnStyles: {
+                0: { cellWidth: contentWidth / 2 },
+                1: { cellWidth: contentWidth / 2, halign: "right" },
+            },
             didParseCell: data => {
                 if (data.section !== "body") return;
                 const label = rows[data.row.index][0];
@@ -496,13 +564,35 @@ export async function generatePurchaseOrderPdfBlob(
                               : label === "Profit"
                                 ? PURCHASE_EXPORT_COLORS.balanceBg
                                 : label === "Net Hand"
-                                  ? PURCHASE_EXPORT_COLORS.advanceBg
+                                  ? PURCHASE_EXPORT_COLORS.balanceBg
                                   : label === "Total Expenses"
                                     ? PURCHASE_EXPORT_COLORS.advanceBg
                                     : label === "Balance"
                                       ? PURCHASE_EXPORT_COLORS.balanceBg
                                       : PURCHASE_EXPORT_COLORS.summaryBg;
                 data.cell.styles.fillColor = purchaseArgbToRgb(color);
+                if (data.column.index === 1) {
+                    if (label === "Total Vendor GST") data.cell.styles.textColor = AMOUNT_GREEN;
+                    if (
+                        [
+                            "TDS Deducted (Applied TDS Amount)",
+                            "Total Vendor TDS",
+                            "Net Vendor Total",
+                            "Total Expenses",
+                        ].includes(label)
+                    ) {
+                        data.cell.styles.textColor = AMOUNT_RED;
+                    }
+                    if (label === "Client Billed Amount without GST")
+                        data.cell.styles.textColor = AMOUNT_DARK_GREEN;
+                    if (label === "Profit")
+                        data.cell.styles.textColor = profit.profit < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN;
+                    if (label === "Net Hand")
+                        data.cell.styles.textColor = profit.netHand < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN;
+                    if (label === "Balance")
+                        data.cell.styles.textColor =
+                            profit.balanceAfterExpenses < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN;
+                }
                 if (
                     label === "Profit" ||
                     label === "Net Hand" ||
@@ -516,6 +606,22 @@ export async function generatePurchaseOrderPdfBlob(
             },
             margin: { left: 10, right: 10 },
         });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const finalY = (doc as any).lastAutoTable.finalY as number;
+        const note =
+            "Internal view — event management team P&L (net revenue includes GST and any additional estimates; vendor cost includes tax).";
+        const noteLines = doc.splitTextToSize(note, contentWidth);
+        const noteY = finalY + 4;
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(7);
+        doc.setTextColor(107, 114, 128);
+        if (noteY + noteLines.length * 3.5 > doc.internal.pageSize.getHeight() - 8) {
+            doc.addPage();
+            doc.text(noteLines, 10, 14);
+        } else {
+            doc.text(noteLines, 10, noteY);
+        }
+        doc.setTextColor(0, 0, 0);
     }
     return doc.output("blob");
 }

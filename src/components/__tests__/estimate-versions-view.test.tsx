@@ -234,8 +234,8 @@ describe("EstimateVersionsView", () => {
         });
     });
 
-    describe("clone flow", () => {
-        it("clones a draft estimate and calls clone API", async () => {
+    describe("available estimate actions", () => {
+        it("does not offer Clone while the clone action is unavailable", async () => {
             const estimate = baseEstimate({
                 id: "est-1",
                 estimateStatus: "DRAFT" as EstimateVersionStatus,
@@ -249,15 +249,8 @@ describe("EstimateVersionsView", () => {
                 expect(screen.getByText("Version 1")).toBeInTheDocument();
             });
 
-            const cloneBtn = screen.getByRole("button", { name: /clone/i });
-            fireEvent.click(cloneBtn);
-
-            await waitFor(() => {
-                expect(mockApiRequest).toHaveBeenCalledWith(
-                    "/api/estimates/est-1/clone",
-                    { method: "POST" },
-                );
-            });
+            expect(screen.queryByRole("button", { name: /clone/i })).not.toBeInTheDocument();
+            expect(screen.queryByTestId("menu-item-clone")).not.toBeInTheDocument();
         });
     });
 

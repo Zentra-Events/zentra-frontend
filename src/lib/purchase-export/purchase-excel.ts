@@ -16,6 +16,10 @@ const BORDER: Partial<ExcelJS.Borders> = {
     bottom: { style: "thin", color: { argb: PURCHASE_EXPORT_COLORS.border } },
     right: { style: "thin", color: { argb: PURCHASE_EXPORT_COLORS.border } },
 };
+const AMOUNT_GREEN = "FF15803D";
+const AMOUNT_DARK_GREEN = "FF166534";
+const AMOUNT_RED = "FFB91C1C";
+const AMOUNT_MUTED = "FF6B7280";
 
 function fillRow(row: ExcelJS.Row, endColumn: number, color: string, bold = false) {
     for (let column = 1; column <= endColumn; column++) {
@@ -34,14 +38,11 @@ function addSectionTitle(
 ) {
     sheet.mergeCells(rowIndex, 1, rowIndex, endColumn);
     const cell = sheet.getCell(rowIndex, 1);
-    cell.value = title;
-    cell.font = { bold: true, size: 11 };
+    cell.value = title.toUpperCase();
+    cell.font = { bold: true, size: 11, color: { argb: "FF6B7280" } };
     cell.alignment = { vertical: "middle" };
-    cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: PURCHASE_EXPORT_COLORS.summaryBg },
-    };
+    for (let column = 1; column <= endColumn; column++)
+        sheet.getRow(rowIndex).getCell(column).border = {};
     sheet.getRow(rowIndex).height = 22;
 }
 
@@ -79,12 +80,12 @@ async function populatePurchaseOrderSheet(
         "Unit",
         "Rate",
         "Total Amount",
-        "GST Amount",
-        "TDS Amount",
+        "GST(%)",
+        "TDS(%)",
         "Net Total",
         "Vendor",
     ];
-    sheet.columns = [12, 28, 40, 10, 10, 12, 16, 18, 16, 16, 18, 24].map(width => ({ width }));
+    sheet.columns = [7, 19, 24, 7, 7, 9, 13, 15, 13, 13, 15, 16].map(width => ({ width }));
 
     sheet.mergeCells(1, 1, 1, 12);
     const titleCell = sheet.getCell(1, 1);
@@ -96,53 +97,65 @@ async function populatePurchaseOrderSheet(
     let rowIndex = 2;
     for (const meta of model.meta) {
         const row = sheet.getRow(rowIndex++);
+        sheet.mergeCells(row.number, 1, row.number, 2);
         row.getCell(1).value = `${meta.label}:`;
         row.getCell(1).font = { bold: true };
-        sheet.mergeCells(row.number, 2, row.number, 10);
-        row.getCell(2).value = meta.value;
-        row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+        sheet.mergeCells(row.number, 3, row.number, 10);
+        row.getCell(3).value = meta.value;
+        row.getCell(3).alignment = { wrapText: true, vertical: "top" };
         row.height = 20;
     }
 
     rowIndex += 1;
     addSectionTitle(sheet, rowIndex++, "Terms & Conditions", 12);
-    sheet.getCell(rowIndex - 1, 1).fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFF9FAFB" },
-    };
-    for (const [label, value] of PURCHASE_PAYMENT_TERMS) {
+    fillRow(sheet.getRow(rowIndex - 1), 12, "FFF9FAFB", true);
+    for (let termRow = 0; termRow < 2; termRow++) {
         const row = sheet.getRow(rowIndex++);
-        row.getCell(1).value = label;
+        const first = PURCHASE_PAYMENT_TERMS[termRow * 2];
+        const second = PURCHASE_PAYMENT_TERMS[termRow * 2 + 1];
+        sheet.mergeCells(row.number, 1, row.number, 2);
+        sheet.mergeCells(row.number, 3, row.number, 6);
+        sheet.mergeCells(row.number, 7, row.number, 8);
+        sheet.mergeCells(row.number, 9, row.number, 12);
+        row.getCell(1).value = `${first[0]}:`;
         row.getCell(1).font = { bold: true };
-        sheet.mergeCells(row.number, 2, row.number, 12);
-        row.getCell(2).value = value;
+        row.getCell(3).value = first[1];
+        row.getCell(7).value = `${second[0]}:`;
+        row.getCell(7).font = { bold: true };
+        row.getCell(9).value = second[1];
+        row.getCell(3).alignment = { wrapText: true, vertical: "top" };
+        row.getCell(9).alignment = { wrapText: true, vertical: "top" };
+        row.height = 24;
+        fillRow(row, 12, "FFF9FAFB");
     }
     rowIndex += 1;
 
+    addSectionTitle(sheet, rowIndex++, "Category-wise Item Breakdown", 12);
+    const header = sheet.getRow(rowIndex++);
+    headers.forEach((label, index) => {
+        const cell = header.getCell(index + 1);
+        cell.value = label;
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: PURCHASE_EXPORT_COLORS.headerBg },
+        };
+        cell.border = BORDER;
+    });
+    header.height = 30;
     model.categories.forEach((category, categoryIndex) => {
         const categoryRow = sheet.getRow(rowIndex++);
-        sheet.mergeCells(categoryRow.number, 1, categoryRow.number, 11);
-        categoryRow.getCell(1).value = `${toRomanLower(categoryIndex + 1)}. ${category.category}`;
-        categoryRow.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
+        categoryRow.getCell(1).value = toRomanLower(categoryIndex + 1);
+        categoryRow.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+        sheet.mergeCells(categoryRow.number, 2, categoryRow.number, 11);
+        categoryRow.getCell(2).value = category.category;
+        categoryRow.getCell(2).alignment = { horizontal: "left", vertical: "middle" };
         categoryRow.getCell(12).value =
             `${category.items.length} item${category.items.length === 1 ? "" : "s"}`;
-        categoryRow.getCell(12).alignment = { horizontal: "right" };
+        categoryRow.getCell(12).alignment = { horizontal: "right", vertical: "middle" };
         fillRow(categoryRow, 12, PURCHASE_EXPORT_COLORS.categoryBg, true);
-        const header = sheet.getRow(rowIndex++);
-        headers.forEach((label, index) => {
-            const cell = header.getCell(index + 1);
-            cell.value = label;
-            cell.font = { bold: true };
-            cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-            cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: PURCHASE_EXPORT_COLORS.headerBg },
-            };
-            cell.border = BORDER;
-        });
-        header.height = 30;
         let serial = 1;
         const appendItem = (item: CategoryPurchaseRow["items"][number]) => {
             const row = sheet.getRow(rowIndex++);
@@ -177,12 +190,17 @@ async function populatePurchaseOrderSheet(
                     cell.numFmt =
                         index === 8 || index === 9 ? '+#,##0.00;-#,##0.00;"—"' : "#,##0.00";
                 }
+                if (index === 8)
+                    cell.font = { ...cell.font, color: { argb: "FF15803D" } };
+                if (index === 9)
+                    cell.font = { ...cell.font, color: { argb: "FFB91C1C" } };
             });
             row.height = 30;
         };
         category.directItems.forEach(appendItem);
         category.subCategories.forEach(sub => {
             const subRow = sheet.getRow(rowIndex++);
+            sheet.mergeCells(subRow.number, 2, subRow.number, 12);
             subRow.getCell(2).value = `Sub Category: ${sub.name}`;
             fillRow(subRow, 12, PURCHASE_EXPORT_COLORS.subCategoryBg, true);
             sub.items.forEach(appendItem);
@@ -190,18 +208,17 @@ async function populatePurchaseOrderSheet(
         const netSubtotal = category.items.reduce((sum, item) => sum + item.netTotal, 0);
         for (const [label, value, color] of [
             ["Category Subtotal", category.subtotal, PURCHASE_EXPORT_COLORS.subtotalBg],
-            ["Net Subtotal", netSubtotal, PURCHASE_EXPORT_COLORS.totalBg],
+            ["Net SubTotal", netSubtotal, PURCHASE_EXPORT_COLORS.totalBg],
         ] as const) {
             const row = sheet.getRow(rowIndex++);
-            sheet.mergeCells(row.number, 1, row.number, 7);
+            sheet.mergeCells(row.number, 1, row.number, 9);
             row.getCell(1).value = label;
-            sheet.mergeCells(row.number, 8, row.number, 12);
-            row.getCell(8).value = value;
-            row.getCell(8).numFmt = "#,##0.00";
-            row.getCell(8).alignment = { horizontal: "right" };
+            sheet.mergeCells(row.number, 10, row.number, 12);
+            row.getCell(10).value = value;
+            row.getCell(10).numFmt = "#,##0.00";
+            row.getCell(10).alignment = { horizontal: "right" };
             fillRow(row, 12, color, true);
         }
-        rowIndex += 1;
     });
 
     if (model.vendorRows.length) {
@@ -270,6 +287,19 @@ async function populatePurchaseOrderSheet(
                     cell.alignment = { horizontal: "right", wrapText: [2, 3].includes(index) };
                     if ([1, 4, 5, 6].includes(index)) cell.numFmt = "#,##0.00";
                 }
+                if (index === 2)
+                    cell.font = {
+                        ...cell.font,
+                        color: { argb: vendor.gstPercent > 0 ? AMOUNT_GREEN : AMOUNT_MUTED },
+                    };
+                if (index === 3)
+                    cell.font = {
+                        ...cell.font,
+                        color: { argb: vendor.tdsPercent > 0 ? AMOUNT_RED : AMOUNT_MUTED },
+                    };
+                if (index === 5)
+                    cell.font = { ...cell.font, color: { argb: AMOUNT_RED } };
+                if (index === 6) cell.font = { ...cell.font, color: { argb: AMOUNT_DARK_GREEN } };
             });
             row.height = 28;
         });
@@ -304,12 +334,16 @@ async function populatePurchaseOrderSheet(
                 if ([2, 3].includes(index)) cell.numFmt = '+#,##0.00;-#,##0.00;"—"';
                 else if ([1, 4, 5, 6].includes(index)) cell.numFmt = "#,##0.00";
             }
+            if (index === 2) cell.font = { ...cell.font, color: { argb: AMOUNT_GREEN } };
+            if (index === 3 || index === 5)
+                cell.font = { ...cell.font, color: { argb: AMOUNT_RED } };
+            if (index === 6) cell.font = { ...cell.font, color: { argb: AMOUNT_DARK_GREEN } };
         });
         fillRow(vendorTotal, 12, PURCHASE_EXPORT_COLORS.totalBg, true);
     }
 
     rowIndex += 1;
-    addSectionTitle(sheet, rowIndex++, "Consolidated Vendor Summary", 8);
+    addSectionTitle(sheet, rowIndex++, "Consolidated Vendor Summary", 12);
     const { subtotal, tds, afterTax, advance, outstanding } = model.totals;
     const grandGstAmount = model.vendorRows.reduce(
         (sum, v) => sum + v.totalAmount * ((v.gstPercent ?? 0) / 100),
@@ -344,14 +378,22 @@ async function populatePurchaseOrderSheet(
     ];
     summaryRows.forEach(([label, value, color]) => {
         const row = sheet.getRow(rowIndex++);
-        sheet.mergeCells(row.number, 1, row.number, 6);
-        sheet.mergeCells(row.number, 7, row.number, 8);
+        sheet.mergeCells(row.number, 1, row.number, 7);
+        sheet.mergeCells(row.number, 8, row.number, 12);
         row.getCell(1).value = label;
-        row.getCell(7).value = value;
-        row.getCell(7).numFmt = "#,##0.00";
-        row.getCell(7).alignment = { horizontal: "right" };
+        row.getCell(8).value = value;
+        row.getCell(8).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
+        row.getCell(8).alignment = { horizontal: "right" };
         const rowColor = label === "Total Advance Paid" ? PURCHASE_EXPORT_COLORS.advanceBg : color;
-        fillRow(row, 8, rowColor, label.startsWith("GRAND"));
+        fillRow(row, 12, rowColor, label.startsWith("GRAND"));
+        if (label === "Total GST") row.getCell(8).font = { ...row.getCell(8).font, color: { argb: AMOUNT_GREEN } };
+        if (label === "Total TDS" || label === "Total Advance Paid")
+            row.getCell(8).font = { ...row.getCell(8).font, color: { argb: AMOUNT_RED } };
+        if (label === "GRAND OUTSTANDING BALANCE")
+            row.getCell(8).font = {
+                ...row.getCell(8).font,
+                color: { argb: value < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN },
+            };
     });
     if (model.amountInWords) {
         rowIndex += 1;
@@ -368,10 +410,10 @@ async function populatePurchaseOrderSheet(
         const es = model.expenseSummary;
         const dateRange = es.endDate ? `${es.startDate} - ${es.endDate}` : es.startDate;
         rowIndex += 1;
-        addSectionTitle(sheet, rowIndex++, "Expenses Summary", 8);
+        addSectionTitle(sheet, rowIndex++, "Expenses Summary", 12);
         const header = sheet.getRow(rowIndex++);
         sheet.mergeCells(header.number, 1, header.number, 6);
-        sheet.mergeCells(header.number, 7, header.number, 8);
+        sheet.mergeCells(header.number, 7, header.number, 12);
         ["Event Date", "Total Amount"].forEach((label, index) => {
             const cell = header.getCell(index === 0 ? 1 : 7);
             cell.value = label;
@@ -387,19 +429,19 @@ async function populatePurchaseOrderSheet(
                 fgColor: { argb: PURCHASE_EXPORT_COLORS.headerBg },
             };
             cell.border = BORDER;
-            for (let column = index === 0 ? 1 : 7; column <= (index === 0 ? 6 : 8); column++)
+            for (let column = index === 0 ? 1 : 7; column <= (index === 0 ? 6 : 12); column++)
                 header.getCell(column).border = BORDER;
         });
         header.height = 30;
         const row = sheet.getRow(rowIndex++);
         sheet.mergeCells(row.number, 1, row.number, 6);
-        sheet.mergeCells(row.number, 7, row.number, 8);
+        sheet.mergeCells(row.number, 7, row.number, 12);
         row.getCell(1).value = dateRange;
         row.getCell(1).alignment = { horizontal: "center", vertical: "top", wrapText: true };
         row.getCell(7).value = es.hasExpenses ? es.totalAmount : "No expenses";
         row.getCell(7).numFmt = "#,##0.00";
         row.getCell(7).alignment = { horizontal: "right", vertical: "top" };
-        fillRow(row, 8, PURCHASE_EXPORT_COLORS.summaryBg, false);
+        fillRow(row, 12, PURCHASE_EXPORT_COLORS.summaryBg, false);
         rowIndex += 1;
     }
 
@@ -415,7 +457,7 @@ async function populatePurchaseOrderSheet(
         const clientBillRows: [string, number, string][] = [
             ["Estimated Amount", cb.estimatedAmount, PURCHASE_EXPORT_COLORS.summaryBg],
             [
-                `Service Charge (${model.profitSummary?.serviceChargePercent ?? 0}%)`,
+                `Service Charge (${eventData.serviceCharge ?? 0}%)`,
                 cb.serviceChargeAmount,
                 PURCHASE_EXPORT_COLORS.summaryBg,
             ],
@@ -424,7 +466,7 @@ async function populatePurchaseOrderSheet(
             ["GST Amount", cb.gstAmount, PURCHASE_EXPORT_COLORS.summaryBg],
             ["Total (Original + GST)", cb.total, PURCHASE_EXPORT_COLORS.totalBg],
             [receivedLabel, cb.amountReceivedFromClient, PURCHASE_EXPORT_COLORS.summaryBg],
-            ["TDS Deducted by Client", cb.tdsDeducted, PURCHASE_EXPORT_COLORS.summaryBg],
+            ["TDS Deducted by Client", -cb.tdsDeducted, PURCHASE_EXPORT_COLORS.summaryBg],
             ["Final Amount", cb.finalAmount, PURCHASE_EXPORT_COLORS.summaryBg],
             ["Advance", cb.advance, PURCHASE_EXPORT_COLORS.summaryBg],
             ["Balance", cb.balance, PURCHASE_EXPORT_COLORS.balanceBg],
@@ -435,7 +477,7 @@ async function populatePurchaseOrderSheet(
             sheet.mergeCells(row.number, 7, row.number, 12);
             row.getCell(1).value = label;
             row.getCell(7).value = value;
-            row.getCell(7).numFmt = "#,##0.00";
+            row.getCell(7).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
             row.getCell(7).alignment = { horizontal: "right" };
             fillRow(
                 row,
@@ -445,6 +487,26 @@ async function populatePurchaseOrderSheet(
                     label === "Final Amount" ||
                     label === "Balance",
             );
+            const amountCell = row.getCell(7);
+            const amountColor =
+                label.startsWith("Service Charge (") ||
+                label === "GST Amount" ||
+                label.startsWith("Amount Received from Client") ||
+                label === "Advance"
+                    ? AMOUNT_GREEN
+                    : label === "Discount" || label === "TDS Deducted by Client"
+                      ? AMOUNT_RED
+                      : label === "Final Amount"
+                        ? value < 0
+                            ? AMOUNT_RED
+                            : AMOUNT_GREEN
+                        : label === "Balance"
+                          ? value < 0
+                              ? AMOUNT_RED
+                              : AMOUNT_DARK_GREEN
+                          : undefined;
+            if (amountColor)
+                amountCell.font = { ...amountCell.font, color: { argb: amountColor } };
         });
     }
 
@@ -458,7 +520,7 @@ async function populatePurchaseOrderSheet(
                 profit.taxableAmount + profit.gstAmount,
                 PURCHASE_EXPORT_COLORS.totalBg,
             ],
-            ["Applied TDS Amount", -profit.tdsAmount, PURCHASE_EXPORT_COLORS.summaryBg],
+            ["TDS Deducted (Applied TDS Amount)", -profit.tdsAmount, PURCHASE_EXPORT_COLORS.summaryBg],
             [
                 "Total Client Billed Amount",
                 profit.totalClientBilledAmount,
@@ -466,15 +528,15 @@ async function populatePurchaseOrderSheet(
             ],
             ["Total Vendor GST", profit.totalVendorGst, PURCHASE_EXPORT_COLORS.summaryBg],
             ["Total Vendor TDS", -profit.totalVendorTds, PURCHASE_EXPORT_COLORS.summaryBg],
-            ["Net Vendor Total", profit.totalVendorNet, PURCHASE_EXPORT_COLORS.summaryBg],
+            ["Net Vendor Total", -profit.totalVendorNet, PURCHASE_EXPORT_COLORS.summaryBg],
             [
                 "Client Billed Amount without GST",
                 profit.clientBilledWithoutGst,
                 PURCHASE_EXPORT_COLORS.totalBg,
             ],
             ["Profit", profit.profit, PURCHASE_EXPORT_COLORS.balanceBg],
-            ["Net Hand", profit.netHand, PURCHASE_EXPORT_COLORS.advanceBg],
-            ["Total Expenses", profit.totalExpenses, PURCHASE_EXPORT_COLORS.advanceBg],
+            ["Net Hand", profit.netHand, PURCHASE_EXPORT_COLORS.balanceBg],
+            ["Total Expenses", -profit.totalExpenses, PURCHASE_EXPORT_COLORS.advanceBg],
             ["Balance", profit.balanceAfterExpenses, PURCHASE_EXPORT_COLORS.balanceBg],
         ];
         profitRows.forEach(([label, value, color]) => {
@@ -483,7 +545,7 @@ async function populatePurchaseOrderSheet(
             sheet.mergeCells(row.number, 7, row.number, 12);
             row.getCell(1).value = label;
             row.getCell(7).value = value;
-            row.getCell(7).numFmt = '#,##0.00;[Red]-#,##0.00;"—"';
+            row.getCell(7).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
             row.getCell(7).alignment = { horizontal: "right" };
             fillRow(
                 row,
@@ -495,6 +557,24 @@ async function populatePurchaseOrderSheet(
                     label === "Net Hand" ||
                     label === "Balance",
             );
+            const amountCell = row.getCell(7);
+            const amountColor =
+                label === "Total Vendor GST"
+                    ? AMOUNT_GREEN
+                    : label === "TDS Deducted (Applied TDS Amount)" ||
+                        label === "Total Vendor TDS" ||
+                        label === "Net Vendor Total" ||
+                        label === "Total Expenses"
+                      ? AMOUNT_RED
+                      : label === "Client Billed Amount without GST"
+                        ? AMOUNT_DARK_GREEN
+                        : label === "Profit" || label === "Net Hand" || label === "Balance"
+                          ? value < 0
+                              ? AMOUNT_RED
+                              : AMOUNT_DARK_GREEN
+                          : undefined;
+            if (amountColor)
+                amountCell.font = { ...amountCell.font, color: { argb: amountColor } };
         });
         const note = sheet.getRow(rowIndex + 1);
         sheet.mergeCells(note.number, 1, note.number, 12);
@@ -521,7 +601,14 @@ async function populatePurchaseOrderSheet(
         });
     }
     sheet.views = [{ showGridLines: false, state: "frozen", ySplit: 1 }];
-    sheet.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    sheet.pageSetup = {
+        paperSize: 9,
+        orientation: "landscape",
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+    };
 }
 
 export async function generatePurchaseOrderExcelBuffer(

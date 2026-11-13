@@ -43,6 +43,8 @@ interface RawEventItem {
     category?: string;
     subCategory?: string;
     unit?: string;
+    /** Present when the item is explicitly sourced from inventory. */
+    inventoryID?: string | number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -148,8 +150,12 @@ function groupItemsByCategory(
         const eventVendor = eventItem.vendor;
         let matches = false;
         if (vendorId === "SELF") {
-            // For SELF (inventory) items, match items with no vendor or vendor "SELF"
-            matches = !eventVendor || eventVendor === "SELF";
+            // Only explicitly-marked inventory items (inventoryID set) belong to SELF.
+            // Plain vendorless items (no vendor, no inventoryID) are not inventory.
+            matches = Boolean(eventItem.inventoryID);
+        } else if (vendorId === "UNASSIGNED") {
+            // Vendorless items (no vendor, no inventoryID) belong to Unassigned Vendor.
+            matches = !eventVendor && !eventItem.inventoryID;
         } else if (eventVendor) {
             matches = vendorId ? eventVendor === vendorId : true;
         }
@@ -214,17 +220,24 @@ function groupItemsByCategory(
 function getItemVendorIds(items: RawEventItem[] | undefined): Set<string> {
     const ids = new Set<string>();
     if (!items) return ids;
-    let hasSelfItems = false;
+    let hasInventoryItems = false;
+    let hasVendorlessItems = false;
     for (const item of items) {
         if (item.vendor) {
             ids.add(item.vendor);
+        } else if (item.inventoryID) {
+            // Only explicitly-marked inventory items count as SELF.
+            hasInventoryItems = true;
         } else {
-            hasSelfItems = true;
+            // Plain vendorless items (no vendor, no inventoryID) are unassigned.
+            hasVendorlessItems = true;
         }
     }
-    // If any items have no vendor (inventory/self), add "SELF" entry
-    if (hasSelfItems) {
+    if (hasInventoryItems) {
         ids.add("SELF");
+    }
+    if (hasVendorlessItems) {
+        ids.add("UNASSIGNED");
     }
     return ids;
 }
@@ -243,9 +256,9 @@ function buildFinancialsFromSummary(
         return {
             subtotal: vs.totalAmount ?? computedSubtotal,
             gstType: isSelf ? "NONE" : (vs.gstType ?? "NONE"),
-            gstPercent: isSelf ? 0 : vs.gst ?? 0,
-            tdsPercent: isSelf ? 0 : vs.tds ?? 0,
-            advance: isSelf ? 0 : vs.advanceAmount ?? 0,
+            gstPercent: isSelf ? 0 : (vs.gst ?? 0),
+            tdsPercent: isSelf ? 0 : (vs.tds ?? 0),
+            advance: isSelf ? 0 : (vs.advanceAmount ?? 0),
             note: vs.changeSummary ?? "",
         };
     }
@@ -324,7 +337,16 @@ export function CreatePurchaseOrderModal({
             }
         }
 
-        // Add SELF (inventory) entry if there are items with no vendor
+        // Add Unassigned Vendor entry if there are vendorless items
+        if (activeVendorIds.has("UNASSIGNED")) {
+            result.push({
+                id: "UNASSIGNED",
+                name: "Unassigned Vendor",
+                status: "No Vendor Assigned",
+            });
+        }
+
+        // Add SELF (inventory) entry if there are inventory items
         if (activeVendorIds.has("SELF")) {
             result.push({
                 id: "SELF",
@@ -368,7 +390,7 @@ export function CreatePurchaseOrderModal({
         setClientFinancials({
             serviceCharge: eventData?.serviceCharge ?? 0,
             gstType,
-            gst: gstType === "NONE" ? 0 : eventData?.gst ?? 0,
+            gst: gstType === "NONE" ? 0 : (eventData?.gst ?? 0),
             discount: eventData?.discounts ?? 0,
             billingAddress: eventData?.billingAddress ?? "",
             tds: eventData?.tds ?? 0,
@@ -478,6 +500,10 @@ export function CreatePurchaseOrderModal({
                             // SELF items may have vendor "" or "SELF" in vendorSummary
                             return !s.vendor || s.vendor === "SELF";
                         }
+                        if (v.id === "UNASSIGNED") {
+                            // Unassigned vendor items have no vendorSummary entry.
+                            return false;
+                        }
                         return s.vendor === v.id;
                     });
                     const itemsForVendor = groupItemsByCategory(itemList, v.id);
@@ -537,7 +563,7 @@ export function CreatePurchaseOrderModal({
      * PDF / Excel exports. The corresponding inputs are also disabled.
      */
     const effectiveFinancials: Financials = useMemo(() => {
-        if (activeVendorId === "SELF") {
+        if (activeVendorId === "SELF" || activeVendorId === "UNASSIGNED") {
             return {
                 ...financials,
                 gstType: "NONE",
@@ -555,8 +581,7 @@ export function CreatePurchaseOrderModal({
             effectiveFinancials.gstType === "NONE"
                 ? 0
                 : effectiveFinancials.subtotal * (effectiveFinancials.gstPercent / 100);
-        const tdsAmount =
-            effectiveFinancials.subtotal * (effectiveFinancials.tdsPercent / 100);
+        const tdsAmount = effectiveFinancials.subtotal * (effectiveFinancials.tdsPercent / 100);
         return effectiveFinancials.subtotal + gstAmount - tdsAmount;
     }, [
         effectiveFinancials.subtotal,
@@ -628,17 +653,12 @@ export function CreatePurchaseOrderModal({
     }, [clientFinancials.tds]);
 
     const clientTotal = clientSummary.totalWithGST - clientTdsAmount;
-    const clientOutstanding = clientTotal - clientFinancials.receivedAmount - clientFinancials.advanceAmt;
+    const clientOutstanding =
+        clientTotal - clientFinancials.receivedAmount - clientFinancials.advanceAmt;
 
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
-        const {
-            subtotal,
-            gstPercent,
-            gstType,
-            tdsPercent,
-            advance,
-        } = effectiveFinancials;
+        const { subtotal, gstPercent, gstType, tdsPercent, advance } = effectiveFinancials;
         const gstAmount = gstType === "NONE" ? 0 : subtotal * (gstPercent / 100);
         const tdsAmount = subtotal * (tdsPercent / 100);
         const total = subtotal + gstAmount - tdsAmount;
@@ -647,13 +667,7 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Breakdown details ---------- */
     const breakdownDetails = useMemo(() => {
-        const {
-            subtotal,
-            gstPercent,
-            gstType,
-            tdsPercent,
-            advance,
-        } = effectiveFinancials;
+        const { subtotal, gstPercent, gstType, tdsPercent, advance } = effectiveFinancials;
         const gstAmount = gstType === "NONE" ? 0 : subtotal * (gstPercent / 100);
         const tdsAmount = subtotal * (tdsPercent / 100);
         const netTotal = subtotal + gstAmount - tdsAmount;
@@ -873,8 +887,8 @@ export function CreatePurchaseOrderModal({
                     const tdsPercentToSave = isSelf
                         ? 0
                         : tdsEditedVendorIds[v.id]
-                            ? sf.tdsPercent
-                            : (originalVs?.tds ?? sf.tdsPercent);
+                          ? sf.tdsPercent
+                          : (originalVs?.tds ?? sf.tdsPercent);
                     // When GST type is "No GST" (NONE), do not apply any GST
                     // even if a non-zero gstPercent is present in state.
                     const vendorGstType = sf.gstType ?? "NONE";
@@ -1181,7 +1195,10 @@ export function CreatePurchaseOrderModal({
                                                 )
                                             }
                                             smallLabel
-                                            isDisabled={activeVendorId === "SELF"}
+                                            isDisabled={
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-gst"
@@ -1199,7 +1216,8 @@ export function CreatePurchaseOrderModal({
                                             smallLabel
                                             disabled={
                                                 financials.gstType === "NONE" ||
-                                                activeVendorId === "SELF"
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
                                             }
                                         />
                                         <Input
@@ -1214,7 +1232,10 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("tdsPercent", e.target.value)
                                             }
                                             smallLabel
-                                            disabled={activeVendorId === "SELF"}
+                                            disabled={
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-adjustment"
@@ -1233,7 +1254,10 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("advance", e.target.value)
                                             }
                                             smallLabel
-                                            disabled={activeVendorId === "SELF"}
+                                            disabled={
+                                                activeVendorId === "SELF" ||
+                                                activeVendorId === "UNASSIGNED"
+                                            }
                                         />
                                         <Input
                                             id="financial-note"

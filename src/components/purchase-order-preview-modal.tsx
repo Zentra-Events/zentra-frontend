@@ -26,7 +26,7 @@
 /*  SEE ALSO: docs/purchase-order-preview-calculations.md              */
 /* ==================================================================- */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import type {
@@ -56,21 +56,28 @@ import { downloadPurchaseOrderPdf } from "@/lib/purchase-export/purchase-pdf";
 /* ------------------------------------------------------------------ */
 
 function getVendorDisplayName(
-    vendorId: string | undefined | null,
+    item: RawItemWithCategory,
     vendorList: Array<{ id?: string; name: string }> | undefined,
     inventoryList: Array<{ id?: string; name: string }> | undefined,
 ): string {
-    if (!vendorId) return "SELF";
+    // Inventory items are explicitly marked via inventoryID. They are never
+    // treated as plain vendorless items.
+    if (item.inventoryID) return "SELF";
 
-    // Check if this vendor matches an inventory (self) item
+    // Items with no vendor and no inventory marker are vendorless, not inventory.
+    if (!item.vendor) return "Unassigned Vendor";
+
+    // A vendor whose id/name matches an inventory entry is treated as SELF.
     const isSelf = inventoryList?.some(
-        inv => inv.id === vendorId || inv.name?.toLowerCase() === vendorId.toLowerCase(),
+        inv =>
+            inv.id === item.vendor ||
+            (item.vendor && inv.name?.toLowerCase() === item.vendor.toLowerCase()),
     );
     if (isSelf) return "SELF";
 
     // Look up vendor name
-    const vendor = vendorList?.find(v => v.id === vendorId);
-    return vendor?.name || vendorId;
+    const vendor = vendorList?.find(v => v.id === item.vendor);
+    return vendor?.name || item.vendor;
 }
 
 /** Raw item type that may carry category info from the API */
@@ -85,6 +92,8 @@ interface RawItemWithCategory {
     category?: string;
     subCategory?: string;
     unit?: string;
+    /** Present when the item is explicitly sourced from inventory. */
+    inventoryID?: string | number;
 }
 
 /**
@@ -93,15 +102,17 @@ interface RawItemWithCategory {
  *
  * CALCULATION (per raw item):
  *   amount      = (quantity ?? 1) × (pricePerItem ?? 0) × (days ?? 1)
- *   lookupKey   = vendor ?? "SELF"   // inventory items keyed as "SELF"
+ *   lookupKey   = "SELF" for inventory items (inventoryID set),
+ *                 item.vendor otherwise (vendorless items use "",
+ *                 which matches no vendor financials → GST/TDS = 0)
  *   gstPct      = vendorFinancials[lookupKey].gst   ?? 0
  *   tdsPct      = vendorFinancials[lookupKey].tds   ?? 0
  *   gstAmount   = amount × gstPct / 100
  *   tdsAmount   = amount × tdsPct / 100
  *   netTotal    = amount + gstAmount - tdsAmount
  *
- * vendorFinancials is built from eventData.vendorSummary keyed by vendor id
- * (or "SELF" when vendor is empty / "SELF").
+ * vendorFinancials is built from eventData.vendorSummary keyed by vendor id.
+ * Inventory entries (vendor empty or "SELF") are keyed as "SELF".
  *
  * OUTPUT (per category):
  *   category          — category name ("Uncategorized" if missing)
@@ -137,7 +148,9 @@ export function groupItemsByCategory(
 
     if (vendorSummary && vendorSummary.length > 0) {
         vendorSummary.forEach(vs => {
-            // Use "SELF" as the key for inventory items (vendor is empty or "SELF")
+            // Inventory entries (vendor empty or "SELF") are keyed as "SELF".
+            // Plain vendorless items (no inventoryID) do not create a "SELF"
+            // entry here; they get no vendor financials in groupItemsByCategory.
             const vendorId = !vs.vendor || vs.vendor === "SELF" ? "SELF" : vs.vendor;
             vendorFinancials.set(vendorId, {
                 gst: vs.gst ?? 0,
@@ -154,8 +167,10 @@ export function groupItemsByCategory(
     // For each item, look up its vendor in vendorSummary to get GST% and TDS%
     const allItems: PurchaseItemRow[] = rawItems.map((item, idx) => {
         const amount = (item.quantity ?? 1) * (item.pricePerItem ?? 0) * (item.days ?? 1);
-        // Use "SELF" lookup key for items with no vendor (inventory items)
-        const lookupKey = !item.vendor ? "SELF" : item.vendor;
+        // Only explicitly-marked inventory items use the "SELF" vendor financials.
+        // Plain vendorless items have no vendor financials, so GST/TDS = 0.
+        const isInventoryItem = Boolean(item.inventoryID);
+        const lookupKey = isInventoryItem ? "SELF" : item.vendor ?? "";
         const fin = vendorFinancials.get(lookupKey);
         const gstPct = fin?.gst ?? 0;
         const tdsPct = fin?.tds ?? 0;
@@ -175,7 +190,7 @@ export function groupItemsByCategory(
             gstAmount,
             tdsAmount,
             netTotal,
-            vendorName: getVendorDisplayName(item.vendor, vendorList, inventoryList),
+            vendorName: getVendorDisplayName(item, vendorList, inventoryList),
             vendorId: item.vendor,
         };
     });
@@ -375,7 +390,8 @@ function PaymentTermsSection() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Render one category's item table plus its subtotal / net subtotal.
+ * Render all category-grouped items in one table, with category and
+ * sub-category rows between item rows.
  *
  * COLUMNS (per item row):
  *   Sl. No      — running serial across direct items + sub-category groups
@@ -395,17 +411,7 @@ function PaymentTermsSection() {
  *   Category Subtotal   = Σ item.amount          (gross, excludes GST/TDS)
  *   Net SubTotal        = Σ item.netTotal        (= amount + GST - TDS)
  */
-function CategoryTable({
-    categoryData,
-    index,
-}: {
-    categoryData: CategoryPurchaseRow;
-    index: number;
-}) {
-    const { category, items, subtotal, directItems, subCategories } = categoryData;
-
-    const netSubTotal = items.reduce((sum, item) => sum + item.netTotal, 0);
-
+function CategoryItemsTable({ categories }: { categories: CategoryPurchaseRow[] }) {
     const renderItemRow = (item: PurchaseItemRow, key: string, serial: number) => (
         <tr key={key}>
             <td className="border border-black px-2 py-1.5 text-center align-top">{serial}</td>
@@ -449,114 +455,132 @@ function CategoryTable({
         </tr>
     );
 
-    // Running serial across direct items and each sub-category group.
-    let serialCounter = 1;
-    const itemRows: ReactNode[] = [];
-    directItems.forEach((item, idx) => {
-        itemRows.push(renderItemRow(item, `item-${idx}`, serialCounter));
-        serialCounter += 1;
-    });
-    subCategories.forEach(sub => {
-        itemRows.push(
-            <tr key={`sub-${sub.name}`} className={purchaseOrderPreviewStyles.subCategoryBg}>
-                <td colSpan={12} className="border border-black px-2 py-2 font-semibold text-left">
-                    Sub Category: {sub.name}
-                </td>
-            </tr>,
-        );
-        sub.items.forEach((item, idx) => {
-            itemRows.push(renderItemRow(item, `sub-${sub.name}-${idx}`, serialCounter));
-            serialCounter += 1;
-        });
-    });
-
     return (
-        <div className="mb-6">
-            {/* Category Header */}
-            <div
-                className={`flex items-center justify-between px-3 py-2 ${purchaseOrderPreviewStyles.categoryBg} border border-black`}
-            >
-                <span className="font-bold text-sm uppercase tracking-wider">
-                    {toRomanLower(index + 1)}. {category}
-                </span>
-                <span className="text-xs font-semibold text-muted-foreground">
-                    {items.length} item{items.length !== 1 ? "s" : ""}
-                </span>
-            </div>
+        <table className="w-full border-collapse text-xs border border-black">
+            <thead>
+                <tr className={purchaseOrderPreviewStyles.headerBg}>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-10">
+                        Sl. No
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold">
+                        Item
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold">
+                        Description
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-12">
+                        Days
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-12">
+                        Qty
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-16">
+                        Unit
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-20">
+                        Rate
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-20">
+                        Total Amount
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-16">
+                        GST(%)
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-14">
+                        TDS(%)
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-20">
+                        Net Total
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold">
+                        Vendor
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {categories.map((categoryData, categoryIndex) => {
+                    const { category, items, subtotal, directItems, subCategories } = categoryData;
+                    const netSubTotal = items.reduce((sum, item) => sum + item.netTotal, 0);
+                    let serialCounter = 1;
+                    const itemRows: ReactNode[] = [];
 
-            {/* Items Table */}
-            <table className="w-full border-collapse text-xs border border-black">
-                <thead>
-                    <tr className={purchaseOrderPreviewStyles.headerBg}>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-10">
-                            Sl. No
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold">
-                            Item
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold">
-                            Description
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-12">
-                            Days
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-12">
-                            Qty
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-16">
-                            Unit
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-20">
-                            Rate
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-20">
-                            Total Amount
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-16">
-                            GST(%)
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-14">
-                            TDS(%)
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold w-20">
-                            Net Total
-                        </th>
-                        <th className="border border-black px-2 py-2 text-center font-bold">
-                            Vendor
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>{itemRows}</tbody>
-            </table>
+                    directItems.forEach((item, idx) => {
+                        itemRows.push(renderItemRow(item, `item-${idx}`, serialCounter));
+                        serialCounter += 1;
+                    });
+                    subCategories.forEach(sub => {
+                        itemRows.push(
+                            <tr
+                                key={`sub-${categoryIndex}-${sub.name}`}
+                                className={purchaseOrderPreviewStyles.subCategoryBg}
+                            >
+                                <td className="border border-black px-2 py-2" />
+                                <td
+                                    colSpan={11}
+                                    className="border border-black px-2 py-2 font-semibold"
+                                >
+                                    Sub Category: {sub.name}
+                                </td>
+                            </tr>,
+                        );
+                        sub.items.forEach((item, idx) => {
+                            itemRows.push(
+                                renderItemRow(item, `sub-${sub.name}-${idx}`, serialCounter),
+                            );
+                            serialCounter += 1;
+                        });
+                    });
 
-            {/* Category Financial Summary - only Subtotal and Net SubTotal */}
-            <table className="w-full border-collapse text-xs border border-black mt-0">
-                <tbody>
-                    <tr className={purchaseOrderPreviewStyles.subTotalBg}>
-                        <td className="border border-black px-2 py-1.5 font-semibold" colSpan={9}>
-                            Category Subtotal
-                        </td>
-                        <td
-                            className="border border-black px-2 py-1.5 text-right font-semibold"
-                            colSpan={3}
-                        >
-                            {formatExportCurrency(subtotal)}
-                        </td>
-                    </tr>
-                    <tr className={purchaseOrderPreviewStyles.totalBg}>
-                        <td className="border border-black px-2 py-1.5 font-bold" colSpan={9}>
-                            Net SubTotal
-                        </td>
-                        <td
-                            className="border border-black px-2 py-1.5 text-right font-bold"
-                            colSpan={3}
-                        >
-                            {formatExportCurrency(netSubTotal)}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+                    return (
+                        <Fragment key={category}>
+                            <tr className={purchaseOrderPreviewStyles.categoryBg}>
+                                <td className="border border-black px-2 py-2 text-center font-medium">
+                                    {toRomanLower(categoryIndex + 1)}
+                                </td>
+                                <td
+                                    colSpan={11}
+                                    className="border border-black px-2 py-2 font-bold"
+                                >
+                                    {category}
+                                    <span className="float-right text-xs font-semibold">
+                                        {items.length} item{items.length !== 1 ? "s" : ""}
+                                    </span>
+                                </td>
+                            </tr>
+                            {itemRows}
+                            <tr className={purchaseOrderPreviewStyles.subTotalBg}>
+                                <td
+                                    className="border border-black px-2 py-1.5 font-semibold"
+                                    colSpan={9}
+                                >
+                                    Category Subtotal
+                                </td>
+                                <td
+                                    className="border border-black px-2 py-1.5 text-right font-semibold"
+                                    colSpan={3}
+                                >
+                                    {formatExportCurrency(subtotal)}
+                                </td>
+                            </tr>
+                            <tr className={purchaseOrderPreviewStyles.totalBg}>
+                                <td
+                                    className="border border-black px-2 py-1.5 font-bold"
+                                    colSpan={9}
+                                >
+                                    Net SubTotal
+                                </td>
+                                <td
+                                    className="border border-black px-2 py-1.5 text-right font-bold"
+                                    colSpan={3}
+                                >
+                                    {formatExportCurrency(netSubTotal)}
+                                </td>
+                            </tr>
+                        </Fragment>
+                    );
+                })}
+            </tbody>
+        </table>
     );
 }
 
@@ -720,8 +744,35 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
     );
 }
 
+export function buildUnassignedVendorRow(
+    items: EventResponse["items"],
+): VendorFinancialRow | null {
+    const rawItems = (items ?? []) as RawItemWithCategory[];
+    // Unassigned = no vendor and not explicitly sourced from inventory.
+    const unassigned = rawItems.filter(item => !item.vendor && !item.inventoryID);
+    if (unassigned.length === 0) return null;
+
+    const totalAmount = unassigned.reduce(
+        (sum, item) => sum + (item.quantity ?? 1) * (item.pricePerItem ?? 0) * (item.days ?? 1),
+        0,
+    );
+
+    // Unassigned items carry no vendor financials, so GST/TDS = 0 and
+    // netTotal == amount (adjustedAmt == totalAmount).
+    return {
+        vendorName: "Unassigned Vendor",
+        totalAmount,
+        gstPercent: 0,
+        gstType: "NONE",
+        tdsPercent: 0,
+        adjustedAmt: totalAmount,
+        advanceAmount: 0,
+        balance: totalAmount,
+    };
+}
+
 /* ------------------------------------------------------------------ */
-/*  Grand Summary                                                      */
+/*  Grand Summary                                                     */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -1006,7 +1057,7 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Service Charge ({eventData.serviceCharge ?? 0}%)
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
                             {formatExportCurrency(summary.serviceChargeAmount)}
                         </td>
                     </tr>
@@ -1014,7 +1065,7 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Discount
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
                             −{formatExportCurrency(summary.discountAmount)}
                         </td>
                     </tr>
@@ -1030,7 +1081,7 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             GST Amount
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
                             {formatExportCurrency(summary.gstAmount)}
                         </td>
                     </tr>
@@ -1052,7 +1103,7 @@ function ClientBillSummary({
                                 ? ` (${formatShortDate(amountRecievedFromClientDate)})`
                                 : null}
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
                             {formatExportCurrency(summary.amountReceivedFromClient)}
                         </td>
                     </tr>
@@ -1060,8 +1111,8 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             TDS Deducted by Client
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            {formatExportCurrency(summary.tdsDeducted)}
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                            −{formatExportCurrency(summary.tdsDeducted)}
                         </td>
                     </tr>
                     <tr>
@@ -1069,7 +1120,9 @@ function ClientBillSummary({
                             Final Amount
                         </td>
                         <td
-                            className="border border-black px-3 py-1.5 text-right font-bold"
+                            className={`border border-black px-3 py-1.5 text-right font-bold ${
+                                summary.finalAmount < 0 ? "text-destructive" : "text-green-700"
+                            }`}
                             colSpan={4}
                         >
                             {formatExportCurrency(summary.finalAmount)}
@@ -1079,7 +1132,7 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Advance
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
                             {formatExportCurrency(summary.advance)}
                         </td>
                     </tr>
@@ -1091,7 +1144,9 @@ function ClientBillSummary({
                             Balance
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold text-sm text-green-800"
+                            className={`border border-black px-3 py-2 text-right font-bold text-sm ${
+                                summary.balance < 0 ? "text-destructive" : "text-green-800"
+                            }`}
                             colSpan={4}
                         >
                             {formatExportCurrency(summary.balance)}
@@ -1151,9 +1206,10 @@ function PurchaseOrderPreviewContent({
             <PaymentTermsSection />
 
             {/* Category-wise Item Breakdown */}
-            {categories.map((cat, idx) => (
-                <CategoryTable key={cat.category} categoryData={cat} index={idx} />
-            ))}
+            <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
+                Category-wise Item Breakdown
+            </div>
+            <CategoryItemsTable categories={categories} />
 
             {/* Vendor-Wise Financial Summary */}
             {vendorFinancialRows.length > 0 && (
@@ -1228,10 +1284,11 @@ export function PurchaseOrderPreviewModal({
             ),
         [eventData.items, eventData.vendorSummary, vendorList, inventoryList],
     );
-    const vendorFinancialRows = useMemo(
-        () => buildVendorFinancials(eventData.vendorSummary, vendorList),
-        [eventData.vendorSummary, vendorList],
-    );
+    const vendorFinancialRows = useMemo(() => {
+        const rows = buildVendorFinancials(eventData.vendorSummary, vendorList);
+        const unassigned = buildUnassignedVendorRow(eventData.items);
+        return unassigned ? [...rows, unassigned] : rows;
+    }, [eventData.vendorSummary, vendorList, eventData.items]);
 
     // Amount received from the client, restored from the saved event data.
     const receivedAmount = toFiniteNumber(eventData.amountRecievedFromClient, 0);

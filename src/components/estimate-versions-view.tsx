@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { EstimateDto, EstimateVersionStatus, EstimateItem } from "@/types/estimate";
 import { Scope } from "@/types/auth";
 import {
-    Copy,
     Send,
     CheckCircle,
     Edit,
@@ -92,23 +91,6 @@ export function EstimateVersionsView({
             toast.error("Failed to load estimate versions");
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleClone = async (estimateId: string) => {
-        try {
-            const response = await apiRequest(`/api/estimates/${estimateId}/clone`, {
-                method: "POST",
-            });
-            if (!response.ok) {
-                throw new Error("Failed to clone estimate");
-            }
-            const newVersion = (await response.json()) as EstimateDto;
-            toast.success(`Created ${newVersion.version} successfully`);
-            await fetchVersions();
-        } catch (error) {
-            console.error("Error cloning estimate:", error);
-            toast.error("Failed to clone estimate");
         }
     };
 
@@ -662,22 +644,23 @@ export function EstimateVersionsView({
                                                                       },
                                                                   ]
                                                                 : []),
-                                                            ...(hasStatus && !isViewOnlyMode
-                                                                ? [
-                                                                      {
-                                                                          key: "clone",
-                                                                          label: "Clone",
-                                                                          icon: <Copy size={14} />,
-                                                                          onClick: () =>
-                                                                              handleClone(
-                                                                                  version.id || "",
-                                                                              ),
-                                                                          scopes: [
-                                                                              "w:estimates",
-                                                                          ] as Scope[],
-                                                                      },
-                                                                  ]
-                                                                : []),
+                                                            // Clone button commented down — not working properly
+                                                            // ...(hasStatus && !isViewOnlyMode
+                                                            // ? [
+                                                            //     {
+                                                            //         key: "clone",
+                                                            //         label: "Clone",
+                                                            //         icon: <Copy size={14} />,
+                                                            //         onClick: () =>
+                                                            //             handleClone(
+                                                            //                 version.id || "",
+                                                            //             ),
+                                                            //         scopes: [
+                                                            //             "w:estimates",
+                                                            //         ] as Scope[],
+                                                            //     },
+                                                            // ]
+                                                            // : []),
                                                         ]}
                                                     />
                                                 </div>

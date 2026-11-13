@@ -115,7 +115,7 @@ export function ProfitSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             TDS Deducted (Applied TDS Amount)
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
                             -{formatExportCurrency(tdsAmount)}
                         </td>
                     </tr>
@@ -134,7 +134,7 @@ export function ProfitSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Total Vendor GST
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
                             {formatExportCurrency(totalVendorGst)}
                         </td>
                     </tr>
@@ -142,7 +142,7 @@ export function ProfitSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Total Vendor TDS
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
                             -{formatExportCurrency(totalVendorTds)}
                         </td>
                     </tr>
@@ -150,8 +150,8 @@ export function ProfitSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Net Vendor Total
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
-                            {formatExportCurrency(totalVendorNet)}
+                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                            −{formatExportCurrency(totalVendorNet)}
                         </td>
                     </tr>
                     <tr className={purchaseOrderPreviewStyles.totalBg}>
@@ -159,7 +159,7 @@ export function ProfitSummary({
                             Client Billed Amount without GST
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold"
+                            className="border border-black px-3 py-2 text-right font-bold text-green-800"
                             colSpan={4}
                         >
                             {formatExportCurrency(clientBilledWithoutGst)}
@@ -188,7 +188,9 @@ export function ProfitSummary({
                             Net Hand
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold"
+                            className={`border border-black px-3 py-2 text-right font-bold ${
+                                netHand < 0 ? "text-destructive" : "text-green-800"
+                            }`}
                             colSpan={4}
                         >
                             {formatExportCurrency(netHand)}
@@ -199,10 +201,10 @@ export function ProfitSummary({
                             Total Expenses
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold"
+                            className="border border-black px-3 py-2 text-right font-bold text-destructive"
                             colSpan={4}
                         >
-                            {formatExportCurrency(totalExpenses)}
+                            −{formatExportCurrency(totalExpenses)}
                         </td>
                     </tr>
                     <tr className={purchaseOrderPreviewStyles.balanceBg}>
@@ -213,7 +215,9 @@ export function ProfitSummary({
                             Balance
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold text-sm text-green-800"
+                            className={`border border-black px-3 py-2 text-right font-bold text-sm ${
+                                balanceAfterExpenses < 0 ? "text-destructive" : "text-green-800"
+                            }`}
                             colSpan={4}
                         >
                             {formatExportCurrency(balanceAfterExpenses)}

@@ -8,11 +8,11 @@ import {
     getChecklistItemDetails,
     getChecklistDeadlineDisplay,
     getChecklistItemName,
-    getChecklistItemUnit,
     type ChecklistDocumentModel,
     type ChecklistExportContext,
 } from "./checklist-document";
 import { getEstimateLogoPngBase64 } from "@/lib/estimate-export/estimate-logo";
+import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
     top: { style: "thin", color: { argb: CHECKLIST_EXPORT_COLORS.border } },
@@ -21,10 +21,18 @@ const THIN_BORDER: Partial<ExcelJS.Borders> = {
     right: { style: "thin", color: { argb: CHECKLIST_EXPORT_COLORS.border } },
 };
 
-const SERIAL_COLUMN_WIDTH = 10;
-const LOGO_COLUMN_WIDTH = 18;
-const LOGO_COLUMN_INDEX = CHECKLIST_COLUMN_COUNT + 1;
-const META_VALUE_END_COL = CHECKLIST_COLUMN_COUNT - 1;
+const META_LABEL_END_COL = 2;
+const META_VALUE_START_COL = 3;
+const META_VALUE_END_COL = 5;
+const META_LOGO_START_COL = 7;
+const CHECKLIST_COLUMN_WIDTHS = [7, 24, 30, 8, 8, 22, 15, 22];
+
+function estimateWrappedLines(value: string, width: number): number {
+    return value.split("\n").reduce(
+        (total, line) => total + Math.max(1, Math.ceil(line.length / Math.max(width - 2, 1))),
+        0,
+    );
+}
 
 function clearCellBorders(cell: ExcelJS.Cell) {
     cell.border = {};
@@ -75,17 +83,6 @@ function fillHeaderRow(
     }
 }
 
-function setupLogoArea(sheet: ExcelJS.Worksheet, startRow: number, endRow: number) {
-    sheet.mergeCells(startRow, LOGO_COLUMN_INDEX, endRow, LOGO_COLUMN_INDEX);
-    const logoCell = sheet.getCell(startRow, LOGO_COLUMN_INDEX);
-    logoCell.alignment = { vertical: "middle", horizontal: "center", wrapText: false };
-    clearCellBorders(logoCell);
-    for (let r = startRow; r <= endRow; r++) {
-        clearBorderRange(sheet.getRow(r), 1, LOGO_COLUMN_INDEX);
-        sheet.getRow(r).height = Math.max(sheet.getRow(r).height ?? 0, 22);
-    }
-}
-
 async function embedLogoInWorksheet(
     workbook: ExcelJS.Workbook,
     sheet: ExcelJS.Worksheet,
@@ -100,24 +97,31 @@ async function embedLogoInWorksheet(
         extension: "png",
     });
 
-    const rowSpan = Math.max(endRow - startRow + 1, 1);
-    const imageHeightPx = Math.round(
-        Array.from({ length: rowSpan }, (_, index) => sheet.getRow(startRow + index).height ?? 18)
-            .reduce((height, rowHeight) => height + rowHeight, 0) * (96 / 72),
-    );
-    const imageWidthPx = imageHeightPx;
-    const logoColumnWidthPx = LOGO_COLUMN_WIDTH * 7;
-    const logoColumnOffset = Math.max(
-        (logoColumnWidthPx - imageWidthPx) / logoColumnWidthPx / 2,
+    // Reserve the two rightmost columns in the metadata area for the logo.
+    // The merged area stays within the table width, so it cannot add a blank
+    // worksheet column or push the logo past the checklist header.
+    sheet.mergeCells(startRow, META_LOGO_START_COL, endRow, CHECKLIST_COLUMN_COUNT);
+    const logoRegionWidthPx = CHECKLIST_COLUMN_WIDTHS.slice(META_LOGO_START_COL - 1).reduce(
+        (sum, width) => sum + width * 7,
         0,
     );
+    const rowHeights = Array.from(
+        { length: endRow - startRow + 1 },
+        (_, index) => sheet.getRow(startRow + index).height ?? 20,
+    );
+    const logoRegionHeightPx = rowHeights.reduce((sum, height) => sum + height, 0) * (96 / 72);
+    const imageSize = Math.min(100, logoRegionWidthPx - 12, logoRegionHeightPx - 12);
+    const horizontalOffset = Math.max((logoRegionWidthPx - imageSize) / 2, 0);
+    const verticalOffset = Math.max((logoRegionHeightPx - imageSize) / 2, 0);
+    const firstColumnWidthPx = CHECKLIST_COLUMN_WIDTHS[META_LOGO_START_COL - 1] * 7;
+    const firstRowHeightPx = rowHeights[0] * (96 / 72);
 
     sheet.addImage(imageId, {
         tl: {
-            col: LOGO_COLUMN_INDEX - 1 + logoColumnOffset,
-            row: startRow - 1,
+            col: META_LOGO_START_COL - 1 + horizontalOffset / firstColumnWidthPx,
+            row: startRow - 1 + verticalOffset / firstRowHeightPx,
         },
-        ext: { width: imageWidthPx, height: imageHeightPx },
+        ext: { width: imageSize, height: imageSize },
     });
 }
 
@@ -143,18 +147,9 @@ async function populateWorksheet(
     sheet: ExcelJS.Worksheet,
     model: ChecklistDocumentModel,
 ) {
-    sheet.columns = [
-        { width: SERIAL_COLUMN_WIDTH },
-        { width: 24 },
-        { width: 36 },
-        { width: 8 },
-        { width: 10 },
-        { width: 8 },
-        { width: 18 },
-        { width: 14 },
-        { width: 12 },
-        { width: LOGO_COLUMN_WIDTH },
-    ];
+    // Compact widths keep the sheet close to the on-screen preview instead
+    // of making long descriptions or the logo stretch the full worksheet.
+    sheet.columns = CHECKLIST_COLUMN_WIDTHS.map(width => ({ width }));
 
     let rowIndex = 1;
     let metaLogoStartRow: number | null = null;
@@ -184,16 +179,21 @@ async function populateWorksheet(
                 if (metaLogoStartRow === null) metaLogoStartRow = rowIndex;
                 metaLogoEndRow = rowIndex;
 
+                sheet.mergeCells(rowIndex, 1, rowIndex, META_LABEL_END_COL);
                 row.getCell(1).value = `${exportRow.label} :`;
                 row.getCell(1).font = { bold: true };
-                row.getCell(1).alignment = { horizontal: "left", vertical: "top", wrapText: true };
+                row.getCell(1).alignment = { horizontal: "left", vertical: "top", wrapText: false };
 
-                sheet.mergeCells(rowIndex, 2, rowIndex, META_VALUE_END_COL);
-                row.getCell(2).value = exportRow.value;
-                row.getCell(2).alignment = { wrapText: true, vertical: "top", horizontal: "left" };
+                sheet.mergeCells(rowIndex, META_VALUE_START_COL, rowIndex, META_VALUE_END_COL);
+                row.getCell(META_VALUE_START_COL).value = exportRow.value;
+                row.getCell(META_VALUE_START_COL).alignment = {
+                    wrapText: true,
+                    vertical: "top",
+                    horizontal: "left",
+                };
 
-                clearBorderRange(row, 1, LOGO_COLUMN_INDEX);
-                row.height = 18;
+                clearBorderRange(row, 1, CHECKLIST_COLUMN_COUNT);
+                row.height = 20;
                 rowIndex += 1;
                 break;
             }
@@ -204,22 +204,20 @@ async function populateWorksheet(
             }
             case "category": {
                 const row = sheet.getRow(rowIndex);
-                row.getCell(1).value = exportRow.serial;
-                row.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
-                row.getCell(2).value = exportRow.name;
-                row.getCell(2).font = { bold: true };
+                sheet.mergeCells(rowIndex, 1, rowIndex, CHECKLIST_COLUMN_COUNT);
+                row.getCell(1).value = exportRow.name.toUpperCase();
                 fillRow(row, 1, CHECKLIST_COLUMN_COUNT, CHECKLIST_EXPORT_COLORS.categoryBg);
-                row.getCell(2).font = { bold: true };
+                row.getCell(1).font = { bold: true };
                 row.height = 20;
                 rowIndex += 1;
                 break;
             }
             case "subCategory": {
                 const row = sheet.getRow(rowIndex);
-                row.getCell(2).value = `Sub Category: ${exportRow.name}`;
-                row.getCell(2).font = { bold: true };
+                sheet.mergeCells(rowIndex, 1, rowIndex, CHECKLIST_COLUMN_COUNT);
+                row.getCell(1).value = exportRow.name;
                 fillRow(row, 1, CHECKLIST_COLUMN_COUNT, CHECKLIST_EXPORT_COLORS.subCategoryBg);
-                row.getCell(2).font = { bold: true };
+                row.getCell(1).font = { bold: true };
                 row.height = 20;
                 rowIndex += 1;
                 break;
@@ -234,19 +232,23 @@ async function populateWorksheet(
                 row.getCell(3).value = getChecklistItemDetails(item);
                 row.getCell(3).alignment = { horizontal: "left", vertical: "top", wrapText: true };
                 row.getCell(4).value = item.quantity ?? 0;
-                row.getCell(4).alignment = { horizontal: "right", vertical: "top" };
-                row.getCell(5).value = getChecklistItemUnit(item);
+                row.getCell(4).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(5).value = item.days ?? "-";
                 row.getCell(5).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(6).value = item.days ?? "—";
-                row.getCell(6).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(7).value = exportRow.vendorDisplay;
-                row.getCell(7).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(8).value = item.status || "PENDING";
-                row.getCell(8).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(9).value = getChecklistDeadlineDisplay(item);
-                row.getCell(9).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(6).value = exportRow.vendorDisplay;
+                row.getCell(6).alignment = { horizontal: "left", vertical: "top", wrapText: true };
+                row.getCell(7).value = getChecklistStatusLabel(item.status);
+                row.getCell(7).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(8).value = getChecklistDeadlineDisplay(item);
+                row.getCell(8).alignment = { horizontal: "center", vertical: "top", wrapText: true };
                 applyBorderRange(row, 1, CHECKLIST_COLUMN_COUNT);
-                row.height = 28;
+                const wrappedLines = Math.max(
+                    estimateWrappedLines(String(row.getCell(2).value ?? ""), CHECKLIST_COLUMN_WIDTHS[1]),
+                    estimateWrappedLines(String(row.getCell(3).value ?? ""), CHECKLIST_COLUMN_WIDTHS[2]),
+                    estimateWrappedLines(String(row.getCell(6).value ?? ""), CHECKLIST_COLUMN_WIDTHS[5]),
+                    estimateWrappedLines(String(row.getCell(8).value ?? ""), CHECKLIST_COLUMN_WIDTHS[7]),
+                );
+                row.height = Math.max(28, wrappedLines * 14 + 8);
                 rowIndex += 1;
                 break;
             }
@@ -256,7 +258,6 @@ async function populateWorksheet(
     }
 
     if (metaLogoStartRow !== null && metaLogoEndRow !== null) {
-        setupLogoArea(sheet, metaLogoStartRow, metaLogoEndRow);
         await embedLogoInWorksheet(workbook, sheet, metaLogoStartRow, metaLogoEndRow);
     }
 }
