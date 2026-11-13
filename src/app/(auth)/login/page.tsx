@@ -9,6 +9,18 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/context/auth";
 import { toast } from "sonner";
 
+function getReturnTo(): string {
+    const requestedPath = new URLSearchParams(window.location.search).get("returnTo");
+    if (requestedPath?.startsWith("/") && !requestedPath.startsWith("//")) {
+        const target = new URL(requestedPath, window.location.origin);
+        // Only allow local app paths as redirect targets.
+        if (target.origin === window.location.origin && !target.pathname.startsWith("/login")) {
+            return `${target.pathname}${target.search}${target.hash}`;
+        }
+    }
+    return "/dashboard";
+}
+
 export default function LoginPage() {
     const router = useRouter();
     const { login, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -17,10 +29,13 @@ export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
     const [userID, setUserID] = useState("");
     const [password, setPassword] = useState("");
+    const [sessionExpired, setSessionExpired] = useState(false);
 
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        setSessionExpired(params.get("reason") === "expired");
         if (!authLoading && isAuthenticated) {
-            router.push("/dashboard");
+            router.replace(getReturnTo());
         }
     }, [isAuthenticated, authLoading, router]);
 
@@ -30,8 +45,8 @@ export default function LoginPage() {
         setError(null);
         try {
             await login(userID, password);
-            toast.success("Login successful! Redirecting to dashboard...");
-            router.push("/dashboard");
+            toast.success("Login successful! Redirecting...");
+            router.replace(getReturnTo());
         } catch (err) {
             const errorMessage =
                 err instanceof Error ? err.message : "Login failed. Please try again.";
@@ -69,6 +84,11 @@ export default function LoginPage() {
                     Welcome back! Let&apos;s get you signed in
                 </p>
             </div>
+            {sessionExpired && (
+                <div role="status" className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Your session has expired. Please log in again to continue.
+                </div>
+            )}
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mb-2 text-sm">
                     {error}

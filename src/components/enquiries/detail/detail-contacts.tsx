@@ -7,7 +7,7 @@ export function DetailContacts({ e }: { e: Enquiry }) {
     const list = [
         {
             name: e.clientPoC || e.clientName || e.client || "",
-            role: "Client-Contact",
+            role: "Client Contact",
             sub: "Primary Decision Maker",
             phone: e.enquiryPoCNumber || poc || "",
         },

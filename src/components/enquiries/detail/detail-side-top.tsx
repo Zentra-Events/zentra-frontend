@@ -162,6 +162,10 @@ export function DetailSideTop(p: P) {
                         <dd className="font-semibold text-foreground">{client}</dd>
                     </div>
                     <div className="flex justify-between gap-2">
+                        <dt className="text-muted-foreground">Client Contact</dt>
+                        <dd className="font-semibold text-foreground">{phone || "Unknown"}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
                         <dt className="text-muted-foreground">Enquiry POC</dt>
                         <dd className="font-semibold text-foreground">
                             {e.enquiryPoC || "Unknown"}
@@ -170,10 +174,6 @@ export function DetailSideTop(p: P) {
                     <div className="flex justify-between gap-2">
                         <dt className="text-muted-foreground">Event POC</dt>
                         <dd className="font-semibold text-foreground">{eventPoc || "Unknown"}</dd>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                        <dt className="text-muted-foreground">POC Phone</dt>
-                        <dd className="font-semibold text-foreground">{phone || "Unknown"}</dd>
                     </div>
                 </dl>
             </div>

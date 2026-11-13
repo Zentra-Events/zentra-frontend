@@ -1,18 +1,24 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const router = useRouter();
-    const { isAuthenticated, isLoading } = useAuth();
+    const pathname = usePathname();
+    const { isAuthenticated, isLoading, sessionExpired } = useAuth();
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
-            router.push("/login");
+            const returnTo = typeof window === "undefined"
+                ? pathname
+                : `${pathname}${window.location.search}${window.location.hash}`;
+            const query = new URLSearchParams({ returnTo });
+            if (sessionExpired) query.set("reason", "expired");
+            router.replace(`/login?${query.toString()}`);
         }
-    }, [isAuthenticated, isLoading, router]);
+    }, [isAuthenticated, isLoading, pathname, router, sessionExpired]);
 
     // Show loading state while checking authentication
     if (isLoading) {
