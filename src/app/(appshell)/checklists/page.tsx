@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-
+import type { Inventory } from "@/types/inventory";
+import { apiRequest } from "@/lib/api/api-client";
+import { ExecutionChecklistModal } from "@/components/checklist-modal";
+import { fetchVendors } from "@/lib/api/vendor";
+import type { Vendor } from "@/types/vendor";
 import { useRequestApi } from "@/hooks/useRequestApi";
 import { Button } from "@/components/ui/button";
 import { MenuList } from "@/components/ui";
@@ -12,7 +16,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { MobileCardList } from "@/components/shared/mobile-card-list";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import CreateChecklistModal from "@/components/create-checklist-modal";
-import { ChecklistFormData } from "@/types/checklist";
+import type { ChecklistFormData, EventItem ,EventDetails } from "@/types/checklist";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { downloadCSV } from "@/lib/utils/file";
 import { AccessButton } from "@/components/shared/access-button";
@@ -85,21 +89,21 @@ const columns = (
                     icon: <FileTextIcon size={16} />,
                     onClick: () => onView(row),
                 },
-                {
-                    key: "edit",
-                    label: "Edit",
-                    icon: <PencilIcon size={16} />,
-                    onClick: () => onEdit(row),
-                    scopes: ["w:checklists"],
-                },
-                {
-                    key: "delete",
-                    label: "Delete",
-                    icon: <TrashIcon size={16} />,
-                    onClick: () => onDelete(row),
-                    className: "text-destructive focus:text-destructive",
-                    scopes: ["w:checklists"],
-                },
+                // {
+                //     key: "edit",
+                //     label: "Edit",
+                //     icon: <PencilIcon size={16} />,
+                //     onClick: () => onEdit(row),
+                //     scopes: ["w:checklists"],
+                // },
+                // {
+                //     key: "delete",
+                //     label: "Delete",
+                //     icon: <TrashIcon size={16} />,
+                //     onClick: () => onDelete(row),
+                //     className: "text-destructive focus:text-destructive",
+                //     scopes: ["w:checklists"],
+                // },
             ];
 
             return (
@@ -119,27 +123,82 @@ const columns = (
     },
 ];
 
+
+
+export interface EventChecklistItem {
+    item: string;
+    inventoryID?: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    quantity?: number;
+    pricePerItem?: number;
+    deadlineDate?: string | null;
+    itemStatus?: boolean;
+    finalAmt?: number;
+    category?: string;
+    status?: string;
+    unit?: string;
+    subCategory?: string;
+    description?: string;
+    vendor?: string;
+    days?: number;
+}
 export default function ChecklistsPage() {
-    const { request, loading } = useRequestApi<ChecklistFormData[]>();
+    const { request, loading } = useRequestApi<EventItem[]>();
+    const {
+    request: requestEventDetails,
+    loading: loadingEventDetails,
+} = useRequestApi<EventDetails>();
     const [checklists, setChecklists] = useState<ChecklistFormData[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [_selectedChecklist, set_selectedChecklist] = useState<ChecklistFormData | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [checklistToDelete, setChecklistToDelete] = useState<ChecklistFormData | null>(null);
+    const [checklistModalOpen, setChecklistModalOpen] = useState(false);
+    const [selectedEvent, setSelectedEvent] = useState<EventDetails | null>(null);
+    const [vendorList, setVendorList] = useState<Vendor[]>([]);
+    const [loadingVendors, setLoadingVendors] = useState(false);
+    const [inventoryList, setInventoryList] = useState<Inventory[]>([]);
+    const [loadingInventory, setLoadingInventory] = useState(false);
+    // const fetchChecklists = useCallback(async () => {
+    //     try {
+    //         const res = await request(API_ENDPOINTS.checklists.list, {
+    //             method: "GET",
+    //         });
+    //         if (res !== null) {
+    //             setChecklists(res);
+    //         }
+    //     } catch (_err) {
+    //         toast.error("Failed to fetch checklists. Please try again.");
+    //     }
+    // }, [request]);
 
-    const fetchChecklists = useCallback(async () => {
-        try {
-            const res = await request(API_ENDPOINTS.checklists.list, {
-                method: "GET",
-            });
-            if (res !== null) {
-                setChecklists(res);
-            }
-        } catch (_err) {
-            toast.error("Failed to fetch checklists. Please try again.");
+
+ const fetchChecklists = useCallback(async () => {
+    try {
+        const res = await request(API_ENDPOINTS.events.list, {
+            method: "GET",
+        });
+
+        if (res) {
+            const checklistData: ChecklistFormData[] = res.map((event) => ({
+                id: event.eventID,
+                eventName: event.title,
+                enquiryDate: event.enquiryDate || "",
+                clientPoc: event.client || "-",
+                status: event.status || "Not Started",
+                gst: String(event.gst ?? ""),
+            }));
+
+            setChecklists(checklistData);
+        } else {
+            setChecklists([]);
         }
-    }, [request]);
-
+    } catch (error) {
+        console.error("Error fetching events:", error);
+        toast.error("Failed to load checklist data");
+    }
+}, [request]);
     useEffect(() => {
         fetchChecklists();
     }, [fetchChecklists]);
@@ -148,14 +207,77 @@ export default function ChecklistsPage() {
         setModalOpen(true);
     };
 
-    const handleView = (checklist: ChecklistFormData) => {
-        set_selectedChecklist(checklist);
-    };
+   const handleView = async (checklist: ChecklistFormData) => {
+    try {
+        if (!checklist.id) {
+            toast.error("Event ID not found");
+            return;
+        }
+
+        const eventDetails = await requestEventDetails(
+            API_ENDPOINTS.events.detail(String(checklist.id)),
+            {
+                method: "GET",
+            }
+        );
+
+        if (eventDetails) {
+            setSelectedEvent(eventDetails);
+            setChecklistModalOpen(true);
+        } else {
+            toast.error("Failed to load event details");
+        }
+    } catch (error) {
+        console.error("Error fetching event details:", error);
+        toast.error("Failed to load event details");
+    }
+};
+
+
+const fetchInventory = useCallback(async () => {
+    setLoadingInventory(true);
+
+    try {
+        const res = await apiRequest("/api/inventory");
+
+        if (!res.ok) {
+            throw new Error("Failed to fetch inventory");
+        }
+
+        const data: Inventory[] = await res.json();
+        setInventoryList(Array.isArray(data) ? data : []);
+    } catch (error) {
+        console.error("Error fetching inventory:", error);
+        setInventoryList([]);
+    } finally {
+        setLoadingInventory(false);
+    }
+}, []);
+
 
     const handleEdit = (checklist: ChecklistFormData) => {
         set_selectedChecklist(checklist);
         setModalOpen(true);
     };
+const loadVendors = useCallback(async () => {
+    setLoadingVendors(true);
+
+    try {
+        const vendors = await fetchVendors();
+        setVendorList(vendors);
+    } catch (error) {
+        console.error("Error fetching vendors:", error);
+        toast.error("Failed to load vendors");
+    } finally {
+        setLoadingVendors(false);
+    }
+   }, []);
+
+
+  useEffect(() => {
+    loadVendors();
+    fetchInventory();
+}, [loadVendors, fetchInventory]);
 
     const handleDeleteClick = (checklist: ChecklistFormData) => {
         setChecklistToDelete(checklist);
@@ -210,14 +332,14 @@ export default function ChecklistsPage() {
                         >
                             Export
                         </Button>
-                        <AccessButton
+                        {/* <AccessButton
                             scope={["w:checklists"]}
                             className="w-full sm:w-auto"
                             onClick={handleCreate}
                             icon={<SquarePlus size={16} />}
                         >
                             Create Checklist
-                        </AccessButton>
+                        </AccessButton> */}
                     </div>
                 }
             />
@@ -294,6 +416,23 @@ export default function ChecklistsPage() {
                         fetchChecklists();
                     }}
                 />
+                {selectedEvent && (
+    <ExecutionChecklistModal
+        isOpen={checklistModalOpen}
+        onClose={() => {
+            setChecklistModalOpen(false);
+            setSelectedEvent(null);
+        }}
+        eventData={selectedEvent}
+        onSave={() => {
+            fetchChecklists();
+        }}
+       vendorList={vendorList}
+       loadingVendors={loadingVendors}
+       inventoryList={inventoryList}
+       loadingInventory={loadingInventory}
+    />
+)}
                 <ConfirmationModal
                     open={deleteModalOpen}
                     onClose={handleDeleteCancel}
