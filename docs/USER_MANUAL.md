@@ -52,7 +52,7 @@ Main areas in the left-side menu:
 
 **Finances**
 
-- Expenses — currently “Coming Soon”
+- Expenses — view and manage event expenses, attach and view receipts
 - Bills — currently “Coming Soon”
 - Reports — currently “Coming Soon”
 
@@ -60,7 +60,7 @@ Main areas in the left-side menu:
 
 - Users — staff accounts and roles
 
-If you open Schedules, Expenses, Bills, or Reports you will see a
+If you open Schedules, Bills, or Reports you will see a
 “Coming Soon” page with a link back to Dashboard.
 
 ## 2. Getting Started
@@ -592,11 +592,51 @@ Inside Event Details you will also see:
   It also has a Send to client action that opens a proposal preview
   and a Gmail-style email draft (To, CC, Subject, Body).
 - Expenses: Item Name, Amount, Type (Estimated/Actual), Status
-  (Estimate Submitted/Approved/Rejected), Person, Comments.
-  Only complete rows with name and amount above zero are saved.
+  (Estimate Submitted/Under Review/Approved/Rejected), Person (Spent By),
+  Comments, Created Date. Only complete rows with name and amount above
+  zero are saved.
+- Expense Receipts: attach a receipt/bill (JPG, JPEG, PNG, PDF, up to
+  25 MB) when creating or editing an expense. From the Expenses list or
+  Event Finance modal, click View Receipt to preview the file and
+  Download to save it. Receipts can be replaced or removed while editing.
+- Fund Allocation: allocate funds to a staff user for an event. Enter the
+  Assignee, Allocated Amount, and Allocated Date. The Event Finance
+  summary shows Total Allocated, Total Expenses, and Available Balance
+  (allocated minus expenses). Allocations can be edited or deleted.
 - Billing & Tax / Billing Details: Billing Address, PAN, GST %,
   TDS %, Service Charge, Advance Amount, Discounts. Save Billing
   Details updates the event billing used in summaries.
+
+### Event Finance Modal
+
+Open the Event Finance modal from Event Details to manage funds and
+expenses together. It has two tabs:
+
+**Fund Allocation** — a table of allocations with Assignee, Allocated
+Amount, Expense Amount, Balance, Allocated Date, and a usage bar. Use
+Allocate Funds to create, Edit or Delete via the row menu.
+
+**Expenses** — a table of expenses for the event with Item Name, Amount,
+Type, Comments, Spent By, Status, Created Date, and a Receipt column.
+Use Create Expense to add one; Edit or Delete from the row menu.
+
+The summary cards at the top show Total Allocated, Total Expenses,
+Available Balance, and Pending Expenses.
+
+### Expenses Page (Expense Management)
+
+The global Expenses page (Finances menu) lists expenses across all
+events. It supports:
+
+- Search by item name, POC, comments, or event
+- Filter by event
+- Export the filtered list to CSV
+- Add an expense (you must first select the event it belongs to)
+- Edit or delete an expense (when the API returns an expense ID)
+- View and download an attached receipt
+
+Every expense must belong to an event, so creating one from the global
+page opens an event picker first.
 
 
 
@@ -737,7 +777,8 @@ if balances look off.
   Profit Summary, admin-visible.
 - Why cannot download estimate? Enter Terms and Conditions first.
 - Why no vendor/stock warning? Informational; save and assign later.
-- Bills/Expenses/Reports? Currently Coming Soon; use Export.
+- Bills/Expenses/Reports? Expenses is active; Bills and Reports are
+  still Coming Soon. Use Export on each list for records.
 
 ## 21. Troubleshooting / Common User Issues
 
@@ -754,6 +795,9 @@ if balances look off.
 | No vendors in checklist/purchase | Add vendors in Vendors first |
 | Comparison warnings | Read badge/message; remove duplicate or accept merge effect |
 | Balance looks wrong | Update Received/Advance, GST/TDS, discount, vendor advances |
+| Expense cannot be edited/deleted | The API did not return an expense ID for that record |
+| Receipt will not open | Check file type (JPG/JPEG/PNG/PDF, max 25 MB); try Download |
+| Funds not showing in Event Finance | Open the modal from Event Details; allocations and expenses are per event |
 | Coming Soon page | That module is not active; return to Dashboard |
 | Delete confirmation | Cancel to keep; Delete is permanent |
 
@@ -782,6 +826,8 @@ if balances look off.
 | Profit / Net Hand | Earnings and cash position summary |
 | Terms and Conditions | Commercial terms on estimate |
 | Role | Access level: Admin, User, or Customer (Super Admin hidden) |
+| Expense | Money spent on an event; has type (Estimated/Actual), status, person, and optional receipt |
+| Fund Allocation | Funds assigned to a staff user for an event; tracked against expenses to show available balance |
 
 *End of Guide. Keep this manual for training, onboarding, and
 daily operations.*
