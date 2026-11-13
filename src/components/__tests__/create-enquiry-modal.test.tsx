@@ -13,6 +13,19 @@ vi.mock("@/hooks/useClients", () => ({
     })),
 }));
 
+vi.mock("@/hooks/useUsers", () => ({
+    useUsers: vi.fn(() => ({
+        users: [],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+        addUser: vi.fn(),
+        updateUser: vi.fn(),
+        deleteUser: vi.fn(),
+        setUsers: vi.fn(),
+    })),
+}));
+
 vi.mock("@/lib/api/api-client", () => ({
     apiRequest: vi.fn(),
 }));

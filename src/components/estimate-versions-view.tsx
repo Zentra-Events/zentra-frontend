@@ -19,6 +19,7 @@ import {
 import { apiRequest } from "@/lib/api/api-client";
 import { toast } from "sonner";
 import { Button, Modal, ModalBody, ModalFooter, Badge, MenuList } from "./ui";
+import { formatShortDate, formatShortDateTime } from "@/lib/utils/date";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { useRouter } from "next/navigation";
 import { AccessButton } from "./shared/access-button";
@@ -708,9 +709,7 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.fromDate
-                                                                    ? new Date(
-                                                                          version.fromDate,
-                                                                      ).toLocaleDateString()
+                                                                    ? formatShortDate(version.fromDate)
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -720,9 +719,7 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.toDate
-                                                                    ? new Date(
-                                                                          version.toDate,
-                                                                      ).toLocaleDateString()
+                                                                    ? formatShortDate(version.toDate)
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -746,9 +743,7 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.createdAt
-                                                                    ? new Date(
-                                                                          version.createdAt,
-                                                                      ).toLocaleString()
+                                                                    ? formatShortDateTime(version.createdAt)
                                                                     : "N/A"}
                                                             </p>
                                                         </div>

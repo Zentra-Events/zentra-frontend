@@ -455,6 +455,8 @@ export async function generatePurchaseOrderPdfBlob(
             ],
             ["Profit", formatExportCurrency(profit.profit)],
             ["Net Hand", formatExportCurrency(profit.netHand)],
+            ["Total Expenses", formatExportCurrency(profit.totalExpenses)],
+            ["Balance", formatExportCurrency(profit.balanceAfterExpenses)],
         ];
         const pageHeight = doc.internal.pageSize.getHeight();
         if (pageHeight - y < 45) {
@@ -495,11 +497,16 @@ export async function generatePurchaseOrderPdfBlob(
                                 ? PURCHASE_EXPORT_COLORS.balanceBg
                                 : label === "Net Hand"
                                   ? PURCHASE_EXPORT_COLORS.advanceBg
-                                  : PURCHASE_EXPORT_COLORS.summaryBg;
+                                  : label === "Total Expenses"
+                                    ? PURCHASE_EXPORT_COLORS.advanceBg
+                                    : label === "Balance"
+                                      ? PURCHASE_EXPORT_COLORS.balanceBg
+                                      : PURCHASE_EXPORT_COLORS.summaryBg;
                 data.cell.styles.fillColor = purchaseArgbToRgb(color);
                 if (
                     label === "Profit" ||
                     label === "Net Hand" ||
+                    label === "Balance" ||
                     label.startsWith("Total Client") ||
                     label.startsWith("Client Billed") ||
                     label === "Total (Original + GST)"

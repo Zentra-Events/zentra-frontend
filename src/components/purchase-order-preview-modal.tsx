@@ -1192,7 +1192,11 @@ function PurchaseOrderPreviewContent({
                     <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
                         Profit Summary
                     </div>
-                    <ProfitSummary eventData={eventData} totalEstimatedCost={totalEstimatedCost} />
+                    <ProfitSummary
+                        eventData={eventData}
+                        totalEstimatedCost={totalEstimatedCost}
+                        expenseSummary={expenseSummary}
+                    />
                 </div>
             </Access>
         </div>

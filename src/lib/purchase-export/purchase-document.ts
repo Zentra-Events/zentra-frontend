@@ -74,6 +74,10 @@ export interface PurchaseOrderDocumentModel {
         totalVendorNet: number;
         profit: number;
         netHand: number;
+        /** Aggregated expense total (same as Expenses Summary total amount). */
+        totalExpenses: number;
+        /** Net Hand - Total Expenses. */
+        balanceAfterExpenses: number;
     };
     clientBillSummary?: PurchaseOrderClientBillSummary;
     /** Aggregated expense total fetched from `GET /api/expenses/total`. */
@@ -133,7 +137,7 @@ export function buildPurchaseOrderDocumentModel(
     const afterTax = vendorRows.reduce((sum, vendor) => sum + vendor.adjustedAmt, 0);
     const advance = vendorRows.reduce((sum, vendor) => sum + vendor.advanceAmount, 0);
     const outstanding = afterTax - advance;
-    const profitSummary = options?.includeProfitSummary
+    const profitBase = options?.includeProfitSummary
         ? calculateEventProfitAndLoss({
               totalEstimatedCost: options.totalEstimatedCost ?? 0,
               gstPercent: eventData.gst ?? 0,
@@ -143,6 +147,14 @@ export function buildPurchaseOrderDocumentModel(
               discountAmount: eventData.discounts ?? 0,
               vendorSummaries: eventData.vendorSummary ?? [],
           })
+        : undefined;
+    const totalExpenses = profitBase ? options?.expenseSummary?.totalAmount ?? 0 : 0;
+    const profitSummary = profitBase
+        ? {
+              ...profitBase,
+              totalExpenses,
+              balanceAfterExpenses: profitBase.netHand - totalExpenses,
+          }
         : undefined;
 
     const clientBillSummary = calculateClientBillSummary({

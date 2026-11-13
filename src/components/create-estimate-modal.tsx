@@ -22,6 +22,7 @@ import { EventItem } from "@/types/event";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { calculateEstimateSummary } from "@/lib/utils/estimate";
+import { parseApiDate } from "@/lib/utils/date";
 import { groupLinesByCategory } from "@/lib/utils/artifact-utils";
 import { groupEventItemsByCategory } from "@/lib/utils/estimate-comparison";
 import AdditionalEstimateConfirmationModal from "@/components/ui/additional-estimate-confirmation-modal";
@@ -166,7 +167,7 @@ const validationSchema = Yup.object({
 
 function normalizeDate(value?: string | null) {
     if (!value) return null;
-    const parsed = new Date(value);
+    const parsed = parseApiDate(value);
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed;
 }

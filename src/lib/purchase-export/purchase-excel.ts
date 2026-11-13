@@ -354,22 +354,26 @@ async function populatePurchaseOrderSheet(
         fillRow(row, 8, rowColor, label.startsWith("GRAND"));
     });
     if (model.amountInWords) {
-        const row = sheet.getRow(rowIndex + 1);
+        rowIndex += 1;
+        const row = sheet.getRow(rowIndex);
         row.getCell(1).value = "Amount in Words:";
         row.getCell(1).font = { bold: true };
         sheet.mergeCells(row.number, 2, row.number, 12);
         row.getCell(2).value = model.amountInWords;
         row.getCell(2).alignment = { wrapText: true };
+        rowIndex += 1;
     }
 
     if (model.expenseSummary) {
         const es = model.expenseSummary;
         const dateRange = es.endDate ? `${es.startDate} - ${es.endDate}` : es.startDate;
         rowIndex += 1;
-        addSectionTitle(sheet, rowIndex++, "Expenses Summary", 12);
+        addSectionTitle(sheet, rowIndex++, "Expenses Summary", 8);
         const header = sheet.getRow(rowIndex++);
+        sheet.mergeCells(header.number, 1, header.number, 6);
+        sheet.mergeCells(header.number, 7, header.number, 8);
         ["Event Date", "Total Amount"].forEach((label, index) => {
-            const cell = header.getCell(index + 1);
+            const cell = header.getCell(index === 0 ? 1 : 7);
             cell.value = label;
             cell.font = { bold: true };
             cell.alignment = {
@@ -383,17 +387,19 @@ async function populatePurchaseOrderSheet(
                 fgColor: { argb: PURCHASE_EXPORT_COLORS.headerBg },
             };
             cell.border = BORDER;
+            for (let column = index === 0 ? 1 : 7; column <= (index === 0 ? 6 : 8); column++)
+                header.getCell(column).border = BORDER;
         });
         header.height = 30;
         const row = sheet.getRow(rowIndex++);
         sheet.mergeCells(row.number, 1, row.number, 6);
-        sheet.mergeCells(row.number, 7, row.number, 12);
+        sheet.mergeCells(row.number, 7, row.number, 8);
         row.getCell(1).value = dateRange;
         row.getCell(1).alignment = { horizontal: "center", vertical: "top", wrapText: true };
         row.getCell(7).value = es.hasExpenses ? es.totalAmount : "No expenses";
         row.getCell(7).numFmt = "#,##0.00";
         row.getCell(7).alignment = { horizontal: "right", vertical: "top" };
-        fillRow(row, 12, PURCHASE_EXPORT_COLORS.summaryBg, false);
+        fillRow(row, 8, PURCHASE_EXPORT_COLORS.summaryBg, false);
         rowIndex += 1;
     }
 
@@ -468,6 +474,8 @@ async function populatePurchaseOrderSheet(
             ],
             ["Profit", profit.profit, PURCHASE_EXPORT_COLORS.balanceBg],
             ["Net Hand", profit.netHand, PURCHASE_EXPORT_COLORS.advanceBg],
+            ["Total Expenses", profit.totalExpenses, PURCHASE_EXPORT_COLORS.advanceBg],
+            ["Balance", profit.balanceAfterExpenses, PURCHASE_EXPORT_COLORS.balanceBg],
         ];
         profitRows.forEach(([label, value, color]) => {
             const row = sheet.getRow(rowIndex++);
@@ -484,7 +492,8 @@ async function populatePurchaseOrderSheet(
                 label === "Total Client Billed Amount" ||
                     label === "Client Billed Amount without GST" ||
                     label === "Profit" ||
-                    label === "Net Hand",
+                    label === "Net Hand" ||
+                    label === "Balance",
             );
         });
         const note = sheet.getRow(rowIndex + 1);

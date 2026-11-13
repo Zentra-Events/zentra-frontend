@@ -233,14 +233,19 @@ function getItemVendorIds(items: RawEventItem[] | undefined): Set<string> {
 function buildFinancialsFromSummary(
     vs: VendorSummary | undefined,
     computedSubtotal: number,
+    vendorId?: string,
 ): Financials {
+    // Inventory (Self) purchases are not taxable and carry no TDS or advance.
+    // Force these to zero so any stored values are ignored in calculations
+    // and downstream purchase-order preview / PDF / Excel exports.
+    const isSelf = vendorId === "SELF";
     if (vs) {
         return {
             subtotal: vs.totalAmount ?? computedSubtotal,
-            gstType: vs.gstType ?? "NONE",
-            gstPercent: vs.gst ?? 0,
-            tdsPercent: vs.tds ?? 0,
-            advance: vs.advanceAmount ?? 0,
+            gstType: isSelf ? "NONE" : (vs.gstType ?? "NONE"),
+            gstPercent: isSelf ? 0 : vs.gst ?? 0,
+            tdsPercent: isSelf ? 0 : vs.tds ?? 0,
+            advance: isSelf ? 0 : vs.advanceAmount ?? 0,
             note: vs.changeSummary ?? "",
         };
     }
@@ -356,10 +361,14 @@ export function CreatePurchaseOrderModal({
 
     useEffect(() => {
         if (!isOpen) return;
+        const gstType = eventData?.gstType ?? "NONE";
+        // Reconcile: when GST type is "No GST" (NONE), force GST percent to 0
+        // even if the backend sends a non-zero gst value, so the GST field
+        // shows blank/zero and stays disabled.
         setClientFinancials({
             serviceCharge: eventData?.serviceCharge ?? 0,
-            gstType: eventData?.gstType ?? "NONE",
-            gst: eventData?.gst ?? 0,
+            gstType,
+            gst: gstType === "NONE" ? 0 : eventData?.gst ?? 0,
             discount: eventData?.discounts ?? 0,
             billingAddress: eventData?.billingAddress ?? "",
             tds: eventData?.tds ?? 0,
@@ -477,7 +486,7 @@ export function CreatePurchaseOrderModal({
                             sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
                         0,
                     );
-                    next[v.id] = buildFinancialsFromSummary(vs, sub);
+                    next[v.id] = buildFinancialsFromSummary(vs, sub, v.id);
                 }
             }
             return next;
@@ -520,12 +529,41 @@ export function CreatePurchaseOrderModal({
         );
     }, [financialsByVendor, activeVendorId, computedSubtotal]);
 
+    /**
+     * Effective financials used for calculations and the saved payload.
+     * When "Inventory (Self)" is selected, GST, TDS and Advance Paid are
+     * not applicable: any stored values are ignored so they are not applied
+     * in net-total/balance calculations or in the purchase-order preview /
+     * PDF / Excel exports. The corresponding inputs are also disabled.
+     */
+    const effectiveFinancials: Financials = useMemo(() => {
+        if (activeVendorId === "SELF") {
+            return {
+                ...financials,
+                gstType: "NONE",
+                gstPercent: 0,
+                tdsPercent: 0,
+                advance: 0,
+            };
+        }
+        return financials;
+    }, [financials, activeVendorId]);
+
     /* ---------- Computed net total (subtotal + gst - tds) ---------- */
     const computedNetTotal = useMemo(() => {
-        const gstAmount = financials.subtotal * (financials.gstPercent / 100);
-        const tdsAmount = financials.subtotal * (financials.tdsPercent / 100);
-        return financials.subtotal + gstAmount - tdsAmount;
-    }, [financials.subtotal, financials.gstPercent, financials.tdsPercent]);
+        const gstAmount =
+            effectiveFinancials.gstType === "NONE"
+                ? 0
+                : effectiveFinancials.subtotal * (effectiveFinancials.gstPercent / 100);
+        const tdsAmount =
+            effectiveFinancials.subtotal * (effectiveFinancials.tdsPercent / 100);
+        return effectiveFinancials.subtotal + gstAmount - tdsAmount;
+    }, [
+        effectiveFinancials.subtotal,
+        effectiveFinancials.gstPercent,
+        effectiveFinancials.gstType,
+        effectiveFinancials.tdsPercent,
+    ]);
 
     /* ---------- Subtotal mismatch warning ---------- */
     const hasSubtotalMismatch = useMemo(() => {
@@ -547,11 +585,16 @@ export function CreatePurchaseOrderModal({
     /* ---------- Client billing field handlers ---------- */
     const updateClientFinancial = (field: keyof ClientFinancials, value: string) => {
         setClientFinancials(prev => {
-            if (
-                field === "gstType" ||
-                field === "billingAddress" ||
-                field === "amountRecievedFromClientDate"
-            ) {
+            if (field === "gstType") {
+                // When switching to "No GST", zero out the GST percent so it
+                // is not applied in calculations or saved to the backend.
+                return {
+                    ...prev,
+                    gstType: value,
+                    gst: value === "NONE" ? 0 : prev.gst,
+                };
+            }
+            if (field === "billingAddress" || field === "amountRecievedFromClientDate") {
                 return { ...prev, [field]: value };
             }
             if (value === "") return { ...prev, [field]: 0 };
@@ -565,12 +608,14 @@ export function CreatePurchaseOrderModal({
         return calculateEstimateSummary({
             totalAmount: totalClientEstimatedAmount,
             gst: clientFinancials.gst,
+            gstType: clientFinancials.gstType,
             serviceCharge: clientFinancials.serviceCharge,
             discounts: clientFinancials.discount,
         });
     }, [
         totalClientEstimatedAmount,
         clientFinancials.gst,
+        clientFinancials.gstType,
         clientFinancials.serviceCharge,
         clientFinancials.discount,
     ]);
@@ -587,17 +632,29 @@ export function CreatePurchaseOrderModal({
 
     /* ---------- Balance calculation ---------- */
     const balance = useCallback(() => {
-        const { subtotal, gstPercent, tdsPercent, advance } = financials;
-        const gstAmount = subtotal * (gstPercent / 100);
+        const {
+            subtotal,
+            gstPercent,
+            gstType,
+            tdsPercent,
+            advance,
+        } = effectiveFinancials;
+        const gstAmount = gstType === "NONE" ? 0 : subtotal * (gstPercent / 100);
         const tdsAmount = subtotal * (tdsPercent / 100);
         const total = subtotal + gstAmount - tdsAmount;
         return total - advance;
-    }, [financials]);
+    }, [effectiveFinancials]);
 
     /* ---------- Breakdown details ---------- */
     const breakdownDetails = useMemo(() => {
-        const { subtotal, gstPercent, tdsPercent, advance } = financials;
-        const gstAmount = subtotal * (gstPercent / 100);
+        const {
+            subtotal,
+            gstPercent,
+            gstType,
+            tdsPercent,
+            advance,
+        } = effectiveFinancials;
+        const gstAmount = gstType === "NONE" ? 0 : subtotal * (gstPercent / 100);
         const tdsAmount = subtotal * (tdsPercent / 100);
         const netTotal = subtotal + gstAmount - tdsAmount;
         const bal = netTotal - advance;
@@ -605,6 +662,7 @@ export function CreatePurchaseOrderModal({
             subtotal,
             gstAmount,
             gstPercent,
+            gstType,
             tdsAmount,
             tdsPercent,
             netTotal,
@@ -627,7 +685,15 @@ export function CreatePurchaseOrderModal({
             const current = prev[activeVendorId];
             if (!current) return prev;
             let updated: Financials;
-            if (field === "note" || field === "gstType") {
+            if (field === "gstType") {
+                // When switching to "No GST", zero out the GST percent so it
+                // is not applied in calculations or saved to the backend.
+                updated = {
+                    ...current,
+                    gstType: value,
+                    gstPercent: value === "NONE" ? 0 : current.gstPercent,
+                };
+            } else if (field === "note") {
                 updated = { ...current, [field]: value };
             } else if (value === "") {
                 updated = { ...current, [field]: value };
@@ -790,25 +856,43 @@ export function CreatePurchaseOrderModal({
                         }
                         return s.vendor === v.id;
                     });
-                    // Keep the stored vendor TDS unless this vendor's TDS
-                    // field was explicitly edited in this session.
-                    const tdsPercentToSave = tdsEditedVendorIds[v.id]
-                        ? f.tdsPercent
-                        : (originalVs?.tds ?? f.tdsPercent);
-                    const gstAmount = f.subtotal * (f.gstPercent / 100);
-                    const tdsAmount = f.subtotal * (tdsPercentToSave / 100);
-                    const netTotal = f.subtotal + gstAmount - tdsAmount;
-                    const bal = netTotal - f.advance;
+                    // Inventory (Self) purchases are not taxable and carry no
+                    // TDS or advance. Zero these out so they are not applied in
+                    // calculations or in the purchase-order preview / PDF /
+                    // Excel exports.
+                    const isSelf = v.id === "SELF";
+                    const sf: Financials = isSelf
+                        ? {
+                              ...f,
+                              gstType: "NONE",
+                              gstPercent: 0,
+                              tdsPercent: 0,
+                              advance: 0,
+                          }
+                        : f;
+                    const tdsPercentToSave = isSelf
+                        ? 0
+                        : tdsEditedVendorIds[v.id]
+                            ? sf.tdsPercent
+                            : (originalVs?.tds ?? sf.tdsPercent);
+                    // When GST type is "No GST" (NONE), do not apply any GST
+                    // even if a non-zero gstPercent is present in state.
+                    const vendorGstType = sf.gstType ?? "NONE";
+                    const gstAmount =
+                        vendorGstType === "NONE" ? 0 : sf.subtotal * (sf.gstPercent / 100);
+                    const tdsAmount = sf.subtotal * (tdsPercentToSave / 100);
+                    const netTotal = sf.subtotal + gstAmount - tdsAmount;
+                    const bal = netTotal - sf.advance;
                     return {
                         vendor: v.id,
-                        totalAmount: f.subtotal,
-                        advanceAmount: f.advance,
-                        gst: f.gstPercent,
-                        gstType: f.gstType ?? "NONE",
+                        totalAmount: sf.subtotal,
+                        advanceAmount: sf.advance,
+                        gst: vendorGstType === "NONE" ? 0 : sf.gstPercent,
+                        gstType: vendorGstType,
                         tds: tdsPercentToSave,
                         adjustedAmt: netTotal,
                         balance: bal,
-                        changeSummary: f.note,
+                        changeSummary: sf.note,
                     };
                 });
 
@@ -1097,6 +1181,7 @@ export function CreatePurchaseOrderModal({
                                                 )
                                             }
                                             smallLabel
+                                            isDisabled={activeVendorId === "SELF"}
                                         />
                                         <Input
                                             id="financial-gst"
@@ -1112,7 +1197,10 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("gstPercent", e.target.value)
                                             }
                                             smallLabel
-                                            disabled={financials.gstType === "NONE"}
+                                            disabled={
+                                                financials.gstType === "NONE" ||
+                                                activeVendorId === "SELF"
+                                            }
                                         />
                                         <Input
                                             id="financial-tds"
@@ -1126,6 +1214,7 @@ export function CreatePurchaseOrderModal({
                                                 updateFinancial("tdsPercent", e.target.value)
                                             }
                                             smallLabel
+                                            disabled={activeVendorId === "SELF"}
                                         />
                                         <Input
                                             id="financial-adjustment"
