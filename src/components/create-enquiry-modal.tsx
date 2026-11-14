@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils/cn";
 import { parseApiDate } from "@/lib/utils/date";
 import { EnquiryFormData, CreateEnquiryModalProps } from "@/types/enquiry";
 import { useClients } from "@/hooks/useClients";
+// import { useUsers } from "@/hooks/useUsers";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api/api-client";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
@@ -171,6 +172,7 @@ export default function CreateEnquiryModal({
     onSaveSuccess,
 }: CreateEnquiryModalProps) {
     const { clients, loading: clientsLoading } = useClients();
+    // const { refresh: refreshUsers } = useUsers();
 
     // Formik ref so we can set fields from outside when clients finish loading
     const formikRef = useRef<FormikProps<EnquiryFormData> | null>(null);
@@ -412,6 +414,16 @@ export default function CreateEnquiryModal({
             formik.setFieldValue("client", "");
         }
     }, [isOpen, clientsLoading, editData?.client, editData?.clientName, clients]);
+
+    // Refresh the shared users cache whenever the modal opens so the assignee
+    // dropdown always reflects newly added users without requiring a page reload.
+    // `useUsers` keeps a module-level cache, so this invalidates it for every
+    // consumer (create and edit flows alike) and re-fetches the latest user list.
+    // useEffect(() => {
+    //     if (isOpen) {
+    //         refreshUsers();
+    //     }
+    // }, [isOpen, refreshUsers]);
 
     if (!isOpen) return null;
 

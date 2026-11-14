@@ -31,4 +31,6 @@ export interface CreateVendorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: () => void;
+    mode?: "create" | "edit";
+    vendor?: Vendor | null;
 }

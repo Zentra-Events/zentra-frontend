@@ -7,6 +7,7 @@
  */
 
 import { getSecureItem, removeSecureItem } from "../secure-storage";
+import { notifySessionExpired } from "@/lib/auth/session";
 
 const AUTH_STORAGE_KEY = "zentra_auth";
 
@@ -14,6 +15,12 @@ interface AuthData {
     token: string;
     tokenType: string;
     expiresAt: number;
+}
+
+function handleUnauthorized(hasAuthToken: boolean): void {
+    if (!hasAuthToken || typeof window === "undefined") return;
+    removeSecureItem(AUTH_STORAGE_KEY);
+    notifySessionExpired();
 }
 
 /**
@@ -27,6 +34,7 @@ export function getAuthHeader(): string | null {
         // Check if token is expired
         if (stored.expiresAt && Date.now() >= stored.expiresAt) {
             removeSecureItem(AUTH_STORAGE_KEY);
+            notifySessionExpired();
             return null;
         }
 
@@ -64,13 +72,9 @@ export async function authenticatedFetch(
         headers,
     });
 
-    // If unauthorized, clear auth and optionally redirect
+    // Let the auth provider move the user to login and preserve their current page.
     if (response.status === 401) {
-        removeSecureItem(AUTH_STORAGE_KEY);
-        // Optionally redirect to login
-        if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
-            window.location.href = "/login";
-        }
+        handleUnauthorized(Boolean(authHeader));
     }
 
     return response;
@@ -98,8 +102,11 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}): P
         headers.set("Content-Type", "application/json");
     }
 
-    return fetch(endpoint, {
+    const response = await fetch(endpoint, {
         ...options,
         headers,
     });
+
+    if (response.status === 401) handleUnauthorized(Boolean(authHeader));
+    return response;
 }

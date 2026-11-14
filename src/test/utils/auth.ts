@@ -13,6 +13,7 @@ export interface MockAuthState {
     } | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    sessionExpired: boolean;
     login: (userID: string, password: string) => Promise<void>;
     logout: () => void;
     getAuthHeader: () => string | null;
@@ -33,6 +34,7 @@ export const mockAuthState: MockAuthState = {
     },
     isAuthenticated: true,
     isLoading: false,
+    sessionExpired: false,
     login: async () => {},
     logout: () => {},
     getAuthHeader: () => "Bearer test-token",
@@ -45,6 +47,7 @@ export const mockUnauthenticatedState: MockAuthState = {
     user: null,
     isAuthenticated: false,
     isLoading: false,
+    sessionExpired: false,
     login: async () => {},
     logout: () => {},
     getAuthHeader: () => null,

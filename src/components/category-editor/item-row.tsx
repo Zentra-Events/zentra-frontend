@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
 import { InlineEdit, InlineNumber, InlineUnitSelect } from "@/components/ui";
@@ -57,6 +57,16 @@ export function CategoryItemRow<L extends CategoryEditorLine>({
     registerFocus,
 }: CategoryItemRowProps<L>) {
     const rowRef = useRef<HTMLTableRowElement>(null);
+
+    // Validation should bring an invalid row into view when the error appears,
+    // but ordinary edits to that row must not repeatedly reset the user's scroll.
+    useEffect(() => {
+        const row = rowRef.current;
+        if (hasError && row?.isConnected) {
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+            row.focus({ preventScroll: true });
+        }
+    }, [hasError]);
 
     const fieldOrder = useMemo(() => buildEditableFieldOrder(columns), [columns]);
 
@@ -188,10 +198,6 @@ return (
         <tr
             ref={(el: HTMLTableRowElement | null) => {
                 rowRef.current = el;
-                if (hasError && el?.isConnected) {
-                    el.scrollIntoView({ behavior: "smooth", block: "center" });
-                    el.focus({ preventScroll: true });
-                }
             }}
             className={cn(
                 "group transition-colors hover:bg-gray-50/50",

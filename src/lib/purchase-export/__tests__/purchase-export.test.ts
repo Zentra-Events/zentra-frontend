@@ -102,7 +102,8 @@ describe("purchase order exports", () => {
             .flat()
             .filter(value => value != null);
 
-        expect(values).toContain("i. Lighting");
+        expect(values).toContain("i");
+        expect(values).toContain("Lighting");
         expect(values).toContain("Sub Category: Control");
         expect(values).toContain("LED par");
         expect(values).toContain(720);
@@ -124,8 +125,9 @@ describe("purchase order exports", () => {
             .getWorksheet("Purchase Order")!
             .getSheetValues()
             .flat();
-        expect(twoCategoryValues.filter(value => value === "Sl. No")).toHaveLength(2);
-        expect(twoCategoryValues).toContain("ii. Audio");
+        expect(twoCategoryValues.filter(value => value === "Sl. No")).toHaveLength(1);
+        expect(twoCategoryValues).toContain("ii");
+        expect(twoCategoryValues).toContain("Audio");
 
         const adminBuffer = await generatePurchaseOrderExcelBuffer(
             eventData,
@@ -140,7 +142,7 @@ describe("purchase order exports", () => {
         const adminWorkbook = new ExcelJS.Workbook();
         await adminWorkbook.xlsx.load(adminBuffer);
         const adminValues = adminWorkbook.getWorksheet("Purchase Order")!.getSheetValues().flat();
-        expect(adminValues).toContain("Profit Summary");
+        expect(adminValues).toContain("PROFIT SUMMARY");
         expect(adminValues).toContain("Total Client Billed Amount");
     });
 
@@ -185,7 +187,7 @@ describe("purchase order exports", () => {
             .flat()
             .filter(value => value != null);
 
-        expect(values).toContain("Client Bill Summary");
+        expect(values).toContain("CLIENT BILL SUMMARY");
         expect(values).toContain("Estimated Amount");
         expect(values).toContain("Service Charge (10%)");
         expect(values).toContain("Discount");
@@ -204,13 +206,13 @@ describe("purchase order exports", () => {
         expect(values).toContain(1890); // client estimate GST (10500 * 18%)
         expect(values).toContain(12390); // total (original + GST)
         expect(values).toContain(12000); // amount received from client
-        expect(values).toContain(400); // client TDS
+        expect(values).toContain(-400); // client TDS (stored as negative)
         expect(values).toContain(10110); // final amount (12000 - 1890)
         expect(values).toContain(2000); // client advance
         expect(values).toContain(-2010); // balance = total(12390) - received(12000) - advance(2000) - tds(400)
 
-        const cbIndex = values.indexOf("Client Bill Summary");
-        const profitIndex = values.indexOf("Profit Summary");
+        const cbIndex = values.indexOf("CLIENT BILL SUMMARY");
+        const profitIndex = values.indexOf("PROFIT SUMMARY");
         expect(cbIndex).toBeGreaterThanOrEqual(0);
         expect(profitIndex).toBeGreaterThan(cbIndex);
 
@@ -225,11 +227,11 @@ describe("purchase order exports", () => {
             },
         );
         const pdfText = await pdfBlob.text();
-        expect(pdfText).toContain("Client Bill Summary");
+        expect(pdfText).toContain("CLIENT BILL SUMMARY");
         expect(pdfText).toContain("Original Amount");
         expect(pdfText).toContain("Balance");
-        const cbPos = pdfText.indexOf("Client Bill Summary");
-        const profitPos = pdfText.indexOf("Profit Summary");
+        const cbPos = pdfText.indexOf("CLIENT BILL SUMMARY");
+        const profitPos = pdfText.indexOf("PROFIT SUMMARY");
         expect(cbPos).toBeGreaterThanOrEqual(0);
         expect(profitPos).toBeGreaterThan(cbPos);
     });

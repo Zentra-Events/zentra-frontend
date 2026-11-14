@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -11,12 +11,14 @@ import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { UserSelectDropdown } from "@/components/user-select-dropdown";
 import { ChecklistHierarchy, type ChecklistHierarchyActions } from "./checklist-hierarchy";
-import { ChecklistItemEditor } from "./checklist-item-editor";
+import { ChecklistItemEditor, type ChecklistItemEditorHandle } from "./checklist-item-editor";
 import { ChecklistFooter } from "./checklist-footer";
 import {
     validateChecklistItem,
     hasVendorOrInventory,
+    validateInventoryStock,
     type ChecklistItemValidation,
+    type InventoryStockLookup,
 } from "./validation";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import type { ChecklistItem, ChecklistModalProps, ChecklistSummary, EventItem } from "./types";
@@ -46,6 +48,7 @@ export function ExecutionChecklistModal({
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedUid, setSelectedUid] = useState<string | null>(null);
     const [focusTarget, setFocusTarget] = useState<string | null>(null);
+    const editorRef = useRef<ChecklistItemEditorHandle>(null);
     const [convertUid, setConvertUid] = useState<string | null>(null);
     const [validationModalOpen, setValidationModalOpen] = useState(false);
     // Non-blocking confirmation shown on Save listing items with no Vendor and
@@ -146,6 +149,20 @@ export function ExecutionChecklistModal({
         return { total, completed, remaining: total - completed };
     }, [checklistData]);
 
+    // Stock lookup built from the already-loaded inventoryList so validation
+    // reuses existing data (no additional API calls) and always reflects the
+    // latest available stock whenever inventoryList changes.
+    const stockLookup = useMemo<InventoryStockLookup>(() => {
+        const availableStockById: Record<string, number> = {};
+        const itemNameById: Record<string, string> = {};
+        inventoryList.forEach(inv => {
+            const id = String(inv.id);
+            availableStockById[id] = Number(inv.quantity) || 0;
+            itemNameById[id] = inv.itemName;
+        });
+        return { availableStockById, itemNameById };
+    }, [inventoryList]);
+
     // Validation is derived from checklistData on every render so inline errors
     // and hierarchy highlighting update immediately as the user corrects values
     // (no need to click Save again to clear errors). Only items that would be
@@ -163,11 +180,14 @@ export function ExecutionChecklistModal({
         const map: Record<string, ChecklistItemValidation> = {};
         persistableItems.forEach(it => {
             if (!it._uid) return;
-            const errors = validateChecklistItem(it);
+            const errors = {
+                ...validateChecklistItem(it),
+                ...validateInventoryStock(it, stockLookup),
+            };
             if (Object.keys(errors).length > 0) map[it._uid] = errors;
         });
         return map;
-    }, [persistableItems]);
+    }, [persistableItems, stockLookup]);
 
     const invalidUids = useMemo(() => new Set<string>(Object.keys(errorMap)), [errorMap]);
 
@@ -457,6 +477,10 @@ export function ExecutionChecklistModal({
 
         if (res.ok) {
             toast.success("Checklist saved successfully");
+            const itemNames = persistableItems
+                .map(it => it.item?.trim())
+                .filter((name): name is string => name.length > 0);
+            editorRef.current?.commitItemNames(itemNames);
             onSave();
             onClose();
         } else {
@@ -521,8 +545,9 @@ export function ExecutionChecklistModal({
                 {/* Right panel: item editor */}
                 <div className="flex-1 overflow-hidden">
                     {selectedItem ? (
-                        
-                         <ChecklistItemEditor   item={selectedItem}
+                        <ChecklistItemEditor
+                            ref={editorRef}
+                            item={selectedItem}
                             vendorList={vendorList}
                             inventoryList={inventoryList}
                             loadingVendors={loadingVendors}

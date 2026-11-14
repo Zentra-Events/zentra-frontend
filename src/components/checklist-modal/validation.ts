@@ -67,6 +67,60 @@ export function validateChecklistItem(item: ChecklistItem): ChecklistItemValidat
 }
 
 /**
+ * Lookup used to validate a checklist item's requested quantity against the
+ * available stock of its assigned inventory item. Built from the already-loaded
+ * `inventoryList` so no additional API calls are required.
+ */
+export interface InventoryStockLookup {
+    /** inventory id -> available stock quantity */
+    availableStockById: Record<string, number>;
+    /** inventory id -> display name */
+    itemNameById: Record<string, string>;
+}
+
+/**
+ * Validate a single checklist item's requested quantity against the available
+ * stock of its assigned inventory item.
+ *
+ * Returns a `ChecklistItemValidation` fragment (empty = valid). When the
+ * requested quantity exceeds available stock the error is keyed to `quantity`
+ * and includes the item name, requested quantity, and available quantity.
+ *
+ * If the item is flagged as an inventory item but stock data is unavailable
+ * for its inventory id (e.g. inventory data failed to load), an error is
+ * returned so an unvalidated save is never silently allowed.
+ */
+export function validateInventoryStock(
+    item: ChecklistItem,
+    lookup: InventoryStockLookup,
+): ChecklistItemValidation {
+    const errors: ChecklistItemValidation = {};
+
+    if (!item.isInventoryItem || !item.inventoryID) return errors;
+
+    const invId = String(item.inventoryID);
+    const available = lookup.availableStockById[invId];
+
+    // Stock data unavailable for this inventory item — cannot confirm
+    // availability, so do not silently permit an unvalidated save.
+    if (available == null) {
+        const name = lookup.itemNameById[invId] || String(item.inventoryID);
+        errors.quantity = `Unable to validate available stock for "${name}". Inventory data is unavailable.`;
+        return errors;
+    }
+
+    const requested = Number(item.quantity);
+    if (!Number.isFinite(requested) || requested <= 0) return errors;
+
+    if (requested > available) {
+        const name = lookup.itemNameById[invId] || String(item.inventoryID);
+        errors.quantity = `Insufficient stock for "${name}": requested ${requested}, only ${available} available.`;
+    }
+
+    return errors;
+}
+
+/**
  * True when the item has a Vendor (when inventory is not used) OR an Inventory
  * (when "Use Inventory" is enabled). Both are optional, so this only drives an
  * informational confirmation on Save — it never blocks persisting the item.

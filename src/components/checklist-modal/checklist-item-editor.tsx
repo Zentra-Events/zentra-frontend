@@ -1,13 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, DatePickerField, Switch, InlineUnitSelect } from "@/components/ui";
 import { VendorDropdown } from "@/components/vendor-dropdown";
+import { AutocompleteInput, type AutocompleteInputHandle } from "@/components/autocomplete";
 import { QUANTITY_UNITS } from "@/lib/utils/artifact-utils";
+import { toLocalISOString, parseLocalDateTime } from "@/lib/utils/date";
 import { ChecklistBreadcrumb } from "./checklist-breadcrumb";
 import { statusOptions } from "./types";
 import type { ChecklistItem } from "./types";
@@ -40,6 +42,13 @@ export interface ChecklistItemEditorProps {
     onFocused?: () => void;
 }
 
+export interface ChecklistItemEditorHandle {
+    /** Persist the currently edited item name to suggestion history (call after successful save). */
+    commitItemName: (value: string) => void;
+    /** Persist all item names from the final checklist state to suggestion history (call after successful bulk save). */
+    commitItemNames: (values: string[]) => void;
+}
+
 function SectionHeader({ children }: { children: React.ReactNode }) {
     return (
         <h4 className="mb-1.5 border-b border-border/40 pb-1.5 text-xs font-bold uppercase tracking-widest text-primary">
@@ -53,28 +62,42 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
  * currently selected item. `Rate` and a `Sub Category` selector are not
  * rendered (the parent Category / Sub Category is shown via the breadcrumb).
  */
-export function ChecklistItemEditor({
-    item,
-    vendorList,
-    inventoryList,
-    loadingVendors = false,
-    loadingInventory = false,
-    onUpdate,
-    onCheckboxChange,
-    errors = {},
-    focusTarget,
-    onFocused,
-}: ChecklistItemEditorProps) {
-    const nameInputRef = useRef<HTMLInputElement>(null);
+export const ChecklistItemEditor = forwardRef<
+    ChecklistItemEditorHandle,
+    ChecklistItemEditorProps
+>(
+    function ChecklistItemEditor({
+        item,
+        vendorList,
+        inventoryList,
+        loadingVendors = false,
+        loadingInventory = false,
+        onUpdate,
+        onCheckboxChange,
+        errors = {},
+        focusTarget,
+        onFocused,
+    }: ChecklistItemEditorProps,
+    ref) {
+        const autocompleteRef = useRef<AutocompleteInputHandle>(null);
 
-    // Place the cursor in the Item Name field when this item is the focus
-    // target (e.g. after "Convert to Sub Category" created a new child item).
-    useEffect(() => {
-        if (focusTarget && focusTarget === item._uid) {
-            nameInputRef.current?.focus();
-            onFocused?.();
-        }
-    }, [focusTarget, item._uid, onFocused]);
+        useImperativeHandle(ref, () => ({
+            commitItemName: (value: string) => {
+                autocompleteRef.current?.commit(value);
+            },
+            commitItemNames: (values: string[]) => {
+                autocompleteRef.current?.commitMany(values);
+            },
+        }), [autocompleteRef]);
+
+        // Place the cursor in the Item Name field when this item is the focus
+        // target (e.g. after "Convert to Sub Category" created a new child item).
+        useEffect(() => {
+            if (focusTarget && focusTarget === item._uid) {
+                autocompleteRef.current?.focus();
+                onFocused?.();
+            }
+        }, [focusTarget, item._uid, onFocused, autocompleteRef]);
 
     return (
         <div className="flex h-full flex-col">
@@ -91,16 +114,17 @@ export function ChecklistItemEditor({
                             <SectionHeader>Basic Info</SectionHeader>
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                                 <div className="md:col-span-2">
-                                    <Input
-                                        ref={nameInputRef}
-                                        value={item.item}
-                                        onChange={e => onUpdate("item", e.target.value)}
-                                        label="Item Name"
-                                        placeholder="Enter item name"
-                                        smallLabel
-                                        error={errors.item}
-                                        id="checklist-item-name"
-                                    />
+                                <AutocompleteInput
+                                    ref={autocompleteRef}
+                                    storageKey="item-name-history"
+                                    value={item.item}
+                                    onChange={value => onUpdate("item", value)}
+                                    label="Item Name"
+                                    placeholder="Enter item name"
+                                    smallLabel
+                                    error={errors.item}
+                                    id="checklist-item-name"
+                                />
                                 </div>
                                 <div>
                                     <Select
@@ -179,9 +203,14 @@ export function ChecklistItemEditor({
                                                           }
                                                         : null
                                                 }
-                                                onChange={selectedValue =>
-                                                    onUpdate("inventoryID", selectedValue)
-                                                }
+                                                onChange={selectedValue => {
+                                                    const invId = selectedValue ?? "";
+                                                    const inv = inventoryList.find(i => String(i.id) === String(invId));
+                                                    onUpdate("inventoryID", invId);
+                                                    if (inv && inv.price != null) {
+                                                        onUpdate("pricePerItem", inv.price);
+                                                    }
+                                                }}
                                                 placeholder={
                                                     loadingInventory
                                                         ? "Loading..."
@@ -271,7 +300,7 @@ export function ChecklistItemEditor({
                                 <DatePickerField
                                     value={item.startDate ? new Date(item.startDate) : null}
                                     onChange={date => {
-                                        const value = date ? date.toISOString() : "";
+                                        const value = date ? toLocalISOString(date) : "";
                                         onUpdate("startDate", value);
                                     }}
                                     placeholderText="Start date & time"
@@ -282,7 +311,7 @@ export function ChecklistItemEditor({
                                 <DatePickerField
                                     value={item.endDate ? new Date(item.endDate) : null}
                                     onChange={date => {
-                                        const value = date ? date.toISOString() : "";
+                                        const value = date ? toLocalISOString(date) : "";
                                         onUpdate("endDate", value);
                                     }}
                                     placeholderText="End date & time"
@@ -291,9 +320,9 @@ export function ChecklistItemEditor({
                                     label="End Date"
                                 />
                                 <DatePickerField
-                                    value={item.deadlineDate ? new Date(item.deadlineDate) : null}
+                                    value={parseLocalDateTime(item.deadlineDate)}
                                     onChange={date => {
-                                        const value = date ? date.toISOString() : "";
+                                        const value = date ? toLocalISOString(date) : "";
                                         onUpdate("deadlineDate", value);
                                     }}
                                     placeholderText="Deadline date & time"
@@ -308,4 +337,5 @@ export function ChecklistItemEditor({
             </div>
         </div>
     );
-}
+},
+);

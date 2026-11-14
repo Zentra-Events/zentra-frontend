@@ -6,7 +6,7 @@ import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { groupByCategory } from "@/lib/utils";
-import { formatShortDateTime } from "@/lib/utils/date";
+import { formatLocalDateTime } from "@/lib/utils/date";
 import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
 import type { ChecklistItem } from "@/components/checklist-modal/types";
 import type { ChecklistExportContext } from "@/lib/checklist-export/checklist-document";
@@ -53,10 +53,6 @@ export function ChecklistPreviewModal({
         pastDeadline: checklistData.filter(
             i => i.deadlineDate && checkPastDate(i.deadlineDate),
         ).length,
-        totalValue: checklistData.reduce(
-            (sum, item) => sum + (item.pricePerItem || 0) * (item.quantity || 1),
-            0,
-        ),
     };
 
     // Hierarchical grouping: Category → Sub Category → Items (shared utility).
@@ -141,7 +137,7 @@ export function ChecklistPreviewModal({
                                 checkPastDate(item.deadlineDate) ? "text-red-500 font-medium" : ""
                             }
                         >
-                            {formatShortDateTime(item.deadlineDate)}
+                            {formatLocalDateTime(item.deadlineDate)}
                         </span>
                     ) : (
                         "-"

@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { EstimateDto, EstimateVersionStatus, EstimateItem } from "@/types/estimate";
 import { Scope } from "@/types/auth";
 import {
-    Copy,
     Send,
     CheckCircle,
     Edit,
@@ -19,6 +18,7 @@ import {
 import { apiRequest } from "@/lib/api/api-client";
 import { toast } from "sonner";
 import { Button, Modal, ModalBody, ModalFooter, Badge, MenuList } from "./ui";
+import { formatShortDate, formatShortDateTime } from "@/lib/utils/date";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { useRouter } from "next/navigation";
 import { AccessButton } from "./shared/access-button";
@@ -91,23 +91,6 @@ export function EstimateVersionsView({
             toast.error("Failed to load estimate versions");
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleClone = async (estimateId: string) => {
-        try {
-            const response = await apiRequest(`/api/estimates/${estimateId}/clone`, {
-                method: "POST",
-            });
-            if (!response.ok) {
-                throw new Error("Failed to clone estimate");
-            }
-            const newVersion = (await response.json()) as EstimateDto;
-            toast.success(`Created ${newVersion.version} successfully`);
-            await fetchVersions();
-        } catch (error) {
-            console.error("Error cloning estimate:", error);
-            toast.error("Failed to clone estimate");
         }
     };
 
@@ -464,7 +447,16 @@ export function EstimateVersionsView({
                                     const estimateStatus = version.estimateStatus;
                                     const isEventCreated = estimateStatus === "EVENT_CREATED";
                                     const isDraft = estimateStatus === "DRAFT";
-                                    const isReview = estimateStatus === "UNDER_CLIENT_REVIEW";
+                                    const normalizedEstimateStatus = String(estimateStatus ?? "")
+                                        .toUpperCase()
+                                        .replace(/[\s-]+/g, "_");
+                                    const isReview =
+                                        normalizedEstimateStatus === "UNDER_CLIENT_REVIEW" ||
+                                        normalizedEstimateStatus.includes("UNDER_REVIEW") ||
+                                        normalizedEstimateStatus.includes("SENT_TO_CLIENT");
+
+                                    console.log({ isReview });
+
                                     const isFinal = estimateStatus === "FINAL";
                                     const hasStatus = Boolean(estimateStatus);
 
@@ -532,20 +524,22 @@ export function EstimateVersionsView({
                                                         <Eye size={14} />
                                                         Preview
                                                     </AccessButton>
-                                                    {!isViewOnlyMode && (isDraft || !hasStatus ? (
-                                                        <AccessButton
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() =>
-                                                                onVersionSelect?.(version)
-                                                            }
-                                                            className="flex items-center gap-1"
-                                                            scope={["w:estimates"]}
-                                                        >
-                                                            <Edit size={14} />
-                                                            Edit
-                                                        </AccessButton>
-                                                    ) : isReview || isFinal ? (
+                                                    {!isViewOnlyMode &&
+                                                        (isDraft || !hasStatus || isReview) && (
+                                                            <AccessButton
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() =>
+                                                                    onVersionSelect?.(version)
+                                                                }
+                                                                className="flex items-center gap-1"
+                                                                scope={["w:estimates"]}
+                                                            >
+                                                                <Edit size={14} />
+                                                                Edit
+                                                            </AccessButton>
+                                                        )}
+                                                    {!isViewOnlyMode && (isReview || isFinal) && (
                                                         <AccessButton
                                                             size="sm"
                                                             variant="outline"
@@ -560,13 +554,14 @@ export function EstimateVersionsView({
                                                         >
                                                             Revert to Draft
                                                         </AccessButton>
-                                                    ) : null)}
+                                                    )}
                                                     {!isViewOnlyMode && (
                                                         <>
                                                             {isDraft ? (
                                                                 <AccessButton
                                                                     scope={["w:estimates"]}
-                                                                    size="sm"                                                                    onClick={() =>
+                                                                    size="sm"
+                                                                    onClick={() =>
                                                                         setEmailVersion(version)
                                                                     }
                                                                     className="flex items-center gap-1"
@@ -661,22 +656,23 @@ export function EstimateVersionsView({
                                                                       },
                                                                   ]
                                                                 : []),
-                                                            ...(hasStatus && !isViewOnlyMode
-                                                                ? [
-                                                                      {
-                                                                          key: "clone",
-                                                                          label: "Clone",
-                                                                          icon: <Copy size={14} />,
-                                                                          onClick: () =>
-                                                                              handleClone(
-                                                                                  version.id || "",
-                                                                              ),
-                                                                          scopes: [
-                                                                              "w:estimates",
-                                                                          ] as Scope[],
-                                                                      },
-                                                                  ]
-                                                                : []),
+                                                            // Clone button commented down — not working properly
+                                                            // ...(hasStatus && !isViewOnlyMode
+                                                            // ? [
+                                                            //     {
+                                                            //         key: "clone",
+                                                            //         label: "Clone",
+                                                            //         icon: <Copy size={14} />,
+                                                            //         onClick: () =>
+                                                            //             handleClone(
+                                                            //                 version.id || "",
+                                                            //             ),
+                                                            //         scopes: [
+                                                            //             "w:estimates",
+                                                            //         ] as Scope[],
+                                                            //     },
+                                                            // ]
+                                                            // : []),
                                                         ]}
                                                     />
                                                 </div>
@@ -708,9 +704,9 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.fromDate
-                                                                    ? new Date(
+                                                                    ? formatShortDate(
                                                                           version.fromDate,
-                                                                      ).toLocaleDateString()
+                                                                      )
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -720,9 +716,9 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.toDate
-                                                                    ? new Date(
+                                                                    ? formatShortDate(
                                                                           version.toDate,
-                                                                      ).toLocaleDateString()
+                                                                      )
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -746,9 +742,9 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.createdAt
-                                                                    ? new Date(
+                                                                    ? formatShortDateTime(
                                                                           version.createdAt,
-                                                                      ).toLocaleString()
+                                                                      )
                                                                     : "N/A"}
                                                             </p>
                                                         </div>

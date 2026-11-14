@@ -52,7 +52,7 @@ Main areas in the left-side menu:
 
 **Finances**
 
-- Expenses — currently “Coming Soon”
+- Expenses — view and manage event expenses, attach and view receipts
 - Bills — currently “Coming Soon”
 - Reports — currently “Coming Soon”
 
@@ -60,7 +60,7 @@ Main areas in the left-side menu:
 
 - Users — staff accounts and roles
 
-If you open Schedules, Expenses, Bills, or Reports you will see a
+If you open Schedules, Bills, or Reports you will see a
 “Coming Soon” page with a link back to Dashboard.
 
 ## 2. Getting Started
@@ -337,6 +337,19 @@ Amount, followed by subtotals and the grand summary. Terms and
 Conditions appear on the preview and are required before download
 or email. The preview offers Download PDF and Download Excel.
 
+### Recovering an unsaved estimate
+
+While you edit an estimate, Zentra keeps a local draft in this
+browser. If you reopen the same estimate or enquiry and a local
+draft is available, a **Recover Unsaved Estimate?** window shows
+the estimate and last-modified time. Choose **Recover Draft** to
+continue with those changes, or **Discard Draft** to remove them.
+Saving the estimate submits it to the application so other users
+can see it. If you close the editor with unsaved changes, choose
+**Continue Editing** or **Discard Changes**; discarding also removes
+the local draft. A local draft is stored in this browser and is not
+a substitute for saving the estimate.
+
 ## 7. Estimate Approval and Versions
 
 ### Purpose
@@ -483,6 +496,8 @@ Statuses: Pending, In Progress, Completed.
 Saving updates event items used by purchase orders. If some items
 have no vendor/stock, a confirmation lists them; you can still
 save and assign later. Export Preview offers PDF/Excel download.
+The Item Name field can suggest names used in earlier checklists;
+select a suggestion or continue typing a new name.
 
 ## 11. Vendors
 
@@ -540,7 +555,9 @@ vendor-wise needs.
 4. Review categories/items for that vendor.
 5. Adjust quantity, rate, days, unit where allowed.
 6. Set vendor GST Type/%, TDS %, Advance, Note.
-7. Save.
+7. Click **Save Purchase Order**. If line-item values changed,
+   confirm the checklist update when prompted; this applies the
+   purchase-order changes to the event checklist.
 8. Open Purchase Order Preview for category breakdown,
    vendor-wise financial summary, consolidated summary, and
    profit summary.
@@ -592,11 +609,51 @@ Inside Event Details you will also see:
   It also has a Send to client action that opens a proposal preview
   and a Gmail-style email draft (To, CC, Subject, Body).
 - Expenses: Item Name, Amount, Type (Estimated/Actual), Status
-  (Estimate Submitted/Approved/Rejected), Person, Comments.
-  Only complete rows with name and amount above zero are saved.
+  (Estimate Submitted/Under Review/Approved/Rejected), Person (Spent By),
+  Comments, Created Date. Only complete rows with name and amount above
+  zero are saved.
+- Expense Receipts: attach a receipt/bill (JPG, JPEG, PNG, PDF, up to
+  25 MB) when creating or editing an expense. From the Expenses list or
+  Event Finance modal, click View Receipt to preview the file and
+  Download to save it. Receipts can be replaced or removed while editing.
+- Fund Allocation: allocate funds to a staff user for an event. Enter the
+  Assignee, Allocated Amount, and Allocated Date. The Event Finance
+  summary shows Total Allocated, Total Expenses, and Available Balance
+  (allocated minus expenses). Allocations can be edited or deleted.
 - Billing & Tax / Billing Details: Billing Address, PAN, GST %,
   TDS %, Service Charge, Advance Amount, Discounts. Save Billing
   Details updates the event billing used in summaries.
+
+### Event Finance Modal
+
+Open the Event Finance modal from Event Details to manage funds and
+expenses together. It has two tabs:
+
+**Fund Allocation** — a table of allocations with Assignee, Allocated
+Amount, Expense Amount, Balance, Allocated Date, and a usage bar. Use
+Allocate Funds to create, Edit or Delete via the row menu.
+
+**Expenses** — a table of expenses for the event with Item Name, Amount,
+Type, Comments, Spent By, Status, Created Date, and a Receipt column.
+Use Create Expense to add one; Edit or Delete from the row menu.
+
+The summary cards at the top show Total Allocated, Total Expenses,
+Available Balance, and Pending Expenses.
+
+### Expenses Page (Expense Management)
+
+The global Expenses page (Finances menu) lists expenses across all
+events. It supports:
+
+- Search by item name, POC, comments, or event
+- Filter by event
+- Export the filtered list to CSV
+- Add an expense (you must first select the event it belongs to)
+- Edit or delete an expense (when the API returns an expense ID)
+- View and download an attached receipt
+
+Every expense must belong to an event, so creating one from the global
+page opens an event picker first.
 
 
 
@@ -625,6 +682,8 @@ This section is view-only — do not edit profit figures directly.
 | Client Billed Amount without GST | Client bill minus GST | Revenue base used for profit comparison |
 | Profit | Client revenue without GST + vendor GST − (vendor TDS + vendor net cost) | Positive means you earned; red/negative means a loss |
 | Net Hand | Client revenue without GST − (vendor TDS + vendor net cost) | Cash position after vendor payables |
+| Total Expenses | Expenses recorded for the event | Included in the final balance calculation |
+| Balance | Net Hand − Total Expenses | Remaining amount after recorded expenses |
 
 Vendor GST/TDS feed vendor net costs. Additional estimates are
 included once merged. Ask finance/admin if a figure looks wrong;
@@ -680,7 +739,8 @@ released.
 8. Every Delete needs confirmation and cannot be undone.
 9. Terms and Conditions required before estimate download/email.
 10. Profit Summary is view-only and admin-visible.
-11. Schedules, Expenses, Bills, Reports are not active yet.
+11. Schedules, Bills, and Reports currently show “Coming Soon”.
+    Expenses is active under Finances.
 
 ## 19. Common Business Scenarios
 
@@ -737,7 +797,8 @@ if balances look off.
   Profit Summary, admin-visible.
 - Why cannot download estimate? Enter Terms and Conditions first.
 - Why no vendor/stock warning? Informational; save and assign later.
-- Bills/Expenses/Reports? Currently Coming Soon; use Export.
+- Bills/Expenses/Reports? Expenses is active; Bills and Reports are
+  still Coming Soon. Use Export on each list for records.
 
 ## 21. Troubleshooting / Common User Issues
 
@@ -754,6 +815,9 @@ if balances look off.
 | No vendors in checklist/purchase | Add vendors in Vendors first |
 | Comparison warnings | Read badge/message; remove duplicate or accept merge effect |
 | Balance looks wrong | Update Received/Advance, GST/TDS, discount, vendor advances |
+| Expense cannot be edited/deleted | The API did not return an expense ID for that record |
+| Receipt will not open | Check file type (JPG/JPEG/PNG/PDF, max 25 MB); try Download |
+| Funds not showing in Event Finance | Open the modal from Event Details; allocations and expenses are per event |
 | Coming Soon page | That module is not active; return to Dashboard |
 | Delete confirmation | Cancel to keep; Delete is permanent |
 
@@ -782,6 +846,8 @@ if balances look off.
 | Profit / Net Hand | Earnings and cash position summary |
 | Terms and Conditions | Commercial terms on estimate |
 | Role | Access level: Admin, User, or Customer (Super Admin hidden) |
+| Expense | Money spent on an event; has type (Estimated/Actual), status, person, and optional receipt |
+| Fund Allocation | Funds assigned to a staff user for an event; tracked against expenses to show available balance |
 
 *End of Guide. Keep this manual for training, onboarding, and
 daily operations.*

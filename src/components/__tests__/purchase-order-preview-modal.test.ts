@@ -193,13 +193,41 @@ describe("groupItemsByCategory", () => {
         expect(lighting.items.length).toBe(2);
     });
 
-    it("matches inventory (no vendor) items to SELF", () => {
+    it("treats vendorless (non-inventory) items as Unassigned Vendor, not SELF", () => {
         const result = groupItemsByCategory(baseItems, vendorList, inventoryList, vendorSummary);
 
         const furniture = result.find(c => c.category === "Furniture")!;
         const chair = furniture.items[0];
-        expect(chair.vendorName).toBe("SELF");
+        expect(chair.vendorName).toBe("Unassigned Vendor");
         expect(chair.vendorId).toBe("");
+    });
+
+    it("treats explicitly-marked inventory items as SELF", () => {
+        const inventoryItems = [
+            ...(baseItems ?? []),
+            {
+                item: "Inventory Table",
+                description: "From inventory",
+                quantity: 2,
+                pricePerItem: 500,
+                days: 1,
+                vendor: "",
+                inventoryID: "inv-1",
+                category: "Furniture",
+                unit: "nos",
+            },
+        ] as unknown as EventResponse["items"];
+        const result = groupItemsByCategory(
+            inventoryItems,
+            vendorList,
+            inventoryList,
+            vendorSummary,
+        );
+
+        const furniture = result.find(c => c.category === "Furniture")!;
+        const invItem = furniture.items.find(i => i.itemName === "Inventory Table")!;
+        expect(invItem.vendorName).toBe("SELF");
+        expect(invItem.vendorId).toBe("");
     });
 
     it("computes category subtotal from item amounts", () => {
@@ -218,7 +246,7 @@ describe("groupItemsByCategory", () => {
 
         expect(result.length).toBe(1);
         expect(result[0].category).toBe("Uncategorized");
-        expect(result[0].items[0].vendorName).toBe("SELF");
+        expect(result[0].items[0].vendorName).toBe("Unassigned Vendor");
     });
 
     it("defaults unit to nos when missing", () => {

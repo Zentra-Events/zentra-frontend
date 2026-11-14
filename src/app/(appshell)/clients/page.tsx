@@ -153,6 +153,7 @@ export default function ClientsPage() {
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [search, setSearch] = useState("");
     const [typeFilter, setTypeFilter] = useState("");
 
@@ -237,6 +238,7 @@ export default function ClientsPage() {
 
     const handleDeleteConfirm = async () => {
         if (!clientToDelete) return;
+        setDeleting(true);
         try {
             await request(`${API_ENDPOINTS.clients.detail(clientToDelete.id)}`, {
                 method: "DELETE",
@@ -247,6 +249,7 @@ export default function ClientsPage() {
         } catch {
             toast.error("Failed to delete client. Please try again.");
         } finally {
+            setDeleting(false);
             setDeleteModalOpen(false);
             setClientToDelete(null);
         }
@@ -426,8 +429,9 @@ export default function ClientsPage() {
                             ? `Are you sure you want to delete "${clientToDelete.name}"? This action cannot be undone.`
                             : undefined
                     }
-                    confirmText="Delete"
+                    confirmText={deleting ? "Deleting..." : "Delete"}
                     cancelText="Cancel"
+                    isLoading={deleting}
                 />
                 {/* View Client Modal */}
                 <Modal

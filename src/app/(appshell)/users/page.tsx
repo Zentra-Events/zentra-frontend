@@ -4,13 +4,13 @@ import { useFormik } from "formik";
 import { toast } from "sonner";
 
 import { useRequestApi } from "@/hooks/useRequestApi";
+import { useUsers } from "@/hooks/useUsers";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, PageHeader } from "@/components/ui";
 import { MenuList } from "@/components/ui";
 import { Avatar } from "@/components/ui/avatar";
 import { MoreVerticalIcon, PencilIcon, TrashIcon, UserPlusIcon } from "@/components/ui/icons";
 import CreateUserModal from "@/components/create-user-modal";
-import { PageHeader } from "@/components/ui";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { MobileCardList } from "@/components/shared/mobile-card-list";
 import { UsersTableFilters } from "@/components/users-table-filters";
@@ -29,7 +29,11 @@ import { Download } from "lucide-react";
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
-const columns = (onEdit: (user: User) => void, onDelete: (row: User) => void, canEdit: boolean = false): Column<User>[] => [
+const columns = (
+    onEdit: (user: User) => void,
+    onDelete: (row: User) => void,
+    canEdit: boolean = false,
+): Column<User>[] => [
     {
         key: "name",
         header: "Name",
@@ -126,11 +130,13 @@ export default function UsersPage() {
     const { user: currentUser } = useAuth();
     const canEditUsers = currentUser?.role === "admin" || currentUser?.role === "super_admin";
     const { request, loading } = useRequestApi<APIResponse<User[]>>();
+    const { users: allUsers, deleteUser } = useUsers();
     const [result, setResult] = useState<APIResponse<User[]>>();
     const [modalOpen, setModalOpen] = useState(false);
     const [editUser, setEditUser] = useState<User | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const users = result?.content || [];
     const totalElements = result?.totalElements || 0;
@@ -156,6 +162,10 @@ export default function UsersPage() {
         setCurrentPage(1);
     }, [formik, setCurrentPage]);
 
+    // Search, role filter and sort are applied by the backend via query params,
+    // and pagination is handled by the backend too. The centralized store is only
+    // used here to sync deletes (drop the user from `UserSelectDropdown` etc.) and
+    // to export the master user list.
     const fetchUsers = useCallback(async () => {
         try {
             const url = buildQueryUrl(API_ENDPOINTS.users, {
@@ -202,6 +212,7 @@ export default function UsersPage() {
 
     const handleDeleteConfirm = async () => {
         if (!userToDelete) return;
+        setDeleting(true);
         try {
             const result = await request(`${API_ENDPOINTS.users}/${userToDelete.id}`, {
                 method: "DELETE",
@@ -214,10 +225,14 @@ export default function UsersPage() {
             }
 
             toast.success("User deleted successfully!");
-            fetchUsers();
+            // Synchronize the centralized store so the dropdown drops the deleted user.
+            deleteUser(userToDelete.id);
+            // Refresh the table so the paginated backend list reflects the deletion.
+            await fetchUsers();
         } catch {
             toast.error("Failed to delete user. Please try again.");
         } finally {
+            setDeleting(false);
             setDeleteModalOpen(false);
             setUserToDelete(null);
         }
@@ -229,7 +244,7 @@ export default function UsersPage() {
     };
 
     const handleExport = () => {
-        const exportData = users.map(user => ({
+        const exportData = allUsers.map(user => ({
             Name: user.name,
             Username: user.uid,
             Role: user.role,
@@ -278,7 +293,6 @@ export default function UsersPage() {
                         onPageChange={handlePageChange}
                         isLoading={loading}
                     />
-
                     {/* Mobile cards */}
                 </div>
                 <MobileCardList
@@ -306,7 +320,11 @@ export default function UsersPage() {
                     renderActions={user => (
                         <div className="flex gap-2 justify-end">
                             {canEditUsers && (
-                                <Button variant="outline" size="sm" onClick={() => handleEdit(user)}>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEdit(user)}
+                                >
                                     Edit
                                 </Button>
                             )}
@@ -328,7 +346,9 @@ export default function UsersPage() {
                     open={modalOpen}
                     onClose={() => setModalOpen(false)}
                     user={editUser}
-                    onSuccess={fetchUsers}
+                    // The modal synchronizes the centralized store directly from
+                    // the API response on create/update via `addUser`/`updateUser`,
+                    // so the assignee dropdown stays in sync without a full refetch.
                 />
                 <ConfirmationModal
                     open={deleteModalOpen}
@@ -340,8 +360,9 @@ export default function UsersPage() {
                             ? `Are you sure you want to delete "${userToDelete.name}"? This action cannot be undone.`
                             : undefined
                     }
-                    confirmText="Delete"
+                    confirmText={deleting ? "Deleting..." : "Delete"}
                     cancelText="Cancel"
+                    isLoading={deleting}
                 />
             </div>
         </div>

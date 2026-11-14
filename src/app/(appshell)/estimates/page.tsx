@@ -28,6 +28,17 @@ const statusLabelMap: Record<StatusTab, string> = {
     closed: "Closed",
 };
 
+const isUnderReviewEstimate = (estimate: Partial<EstimateDto>): boolean => {
+    const status = String(estimate.estimateStatus ?? estimate.status ?? "")
+        .toUpperCase()
+        .replace(/[\s-]+/g, "_");
+    return (
+        status === "UNDER_CLIENT_REVIEW" ||
+        status.includes("UNDER_REVIEW") ||
+        status.includes("SENT_TO_CLIENT")
+    );
+};
+
 const getStatusVariant = (
     status?: string,
 ): "default" | "success" | "warning" | "danger" | "info" => {
@@ -136,10 +147,12 @@ export default function EstimatesPage() {
     const [estimates, setEstimates] = useState<EstimateRecord[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [createNewVersionOnSave, setCreateNewVersionOnSave] = useState(false);
     const [prefill, setPrefill] = useState<
         (Partial<EstimateDto> & { enquiryId?: string }) | undefined
     >(undefined);
     const [versionsViewEnquiryId, setVersionsViewEnquiryId] = useState<string | null>(null);
+    const [returnToVersionsEnquiryId, setReturnToVersionsEnquiryId] = useState<string | null>(null);
 
     const refreshEstimates = useCallback(async () => {
         setLoading(true);
@@ -198,6 +211,7 @@ export default function EstimatesPage() {
     useEffect(() => {
         if (contextPrefill) {
             setPrefill(contextPrefill);
+            setCreateNewVersionOnSave(false);
             setIsModalOpen(true);
             clearPrefill();
         }
@@ -214,7 +228,7 @@ export default function EstimatesPage() {
                 router.replace("/estimates");
             }
         }
-    }, [searchParams, router, estimates]);
+    }, [searchParams, router]);
 
     const counts = useMemo(() => {
         const counter: Record<StatusTab, number> = {
@@ -261,9 +275,11 @@ export default function EstimatesPage() {
 
             const finalVersion = sorted.find(v => v.estimateStatus === "FINAL");
             const representative = finalVersion || sorted[0];
+            const eventName = versions.find(v => v.eventName?.trim())?.eventName;
 
             representatives.push({
                 ...representative,
+                eventName: eventName || representative.eventName,
                 _versionsCount: versions.length,
                 _hasFinal: !!finalVersion,
             } as EstimateRecord & { _versionsCount: number; _hasFinal: boolean });
@@ -275,17 +291,41 @@ export default function EstimatesPage() {
     const handleSavedEstimate = async () => {
         setIsModalOpen(false);
         setPrefill(undefined);
+        setCreateNewVersionOnSave(false);
         await refreshEstimates().catch(err =>
             console.warn("Failed to refresh estimates after save", err),
         );
+        if (returnToVersionsEnquiryId) {
+            setVersionsViewEnquiryId(returnToVersionsEnquiryId);
+            setReturnToVersionsEnquiryId(null);
+        }
         toast.success("Estimate saved successfully");
     };
+
+    const handleEditEstimate = useCallback(async (row: EstimateRecord) => {
+        if (!row.id) return;
+        let detail: Partial<EstimateDto> & { enquiryId?: string };
+        try {
+            const response = await apiRequest(API_ENDPOINTS.estimates.detail(row.id), {
+                cache: "no-store",
+            });
+            if (!response.ok) throw new Error(`Failed to load estimate (${response.status})`);
+            detail = (await response.json()) as Partial<EstimateDto> & { enquiryId?: string };
+            setPrefill({ ...detail, enquiryId: detail.enquiryId ?? row.enquiryId });
+        } catch (error) {
+            console.error("Failed to load estimate for editing", error);
+            toast.error("Failed to load estimate details");
+            return;
+        }
+        setCreateNewVersionOnSave(isUnderReviewEstimate(row) || isUnderReviewEstimate(detail));
+        setIsModalOpen(true);
+    }, []);
 
     const columns = useMemo<Column<EstimateRecord>[]>(
         () => [
             {
                 key: "title",
-                header: "Event Name",
+                header: "Event Names",
                 render: row => (
                     <div
                         className="font-medium cursor-pointer hover:text-blue-600"
@@ -376,6 +416,26 @@ export default function EstimatesPage() {
                 ),
             },
             // {
+            //     key: "actions",
+            //     header: "Actions",
+            //     render: row => {
+            //         const canEdit =
+            //             row.estimateStatus === "DRAFT" ||
+            //             isUnderReviewEstimate(row) ||
+            //             !row.estimateStatus;
+            //         return canEdit ? (
+            //             <AccessButton
+            //                 size="sm"
+            //                 variant="outline"
+            //                 scope={["w:estimates"]}
+            //                 onClick={() => void handleEditEstimate(row)}
+            //             >
+            //                 Edit
+            //             </AccessButton>
+            //         ) : null;
+            //     },
+            // },
+            // {
             //     key: "assignee",
             //     header: "Assignee",
             //     render: row => (
@@ -388,7 +448,7 @@ export default function EstimatesPage() {
             //     ),
             // },
         ],
-        [],
+        [handleEditEstimate],
     );
 
     return (
@@ -409,7 +469,10 @@ export default function EstimatesPage() {
                         <AccessButton
                             scope={["w:estimates"]}
                             className="w-full sm:w-auto"
-                            onClick={() => setIsModalOpen(true)}
+                            onClick={() => {
+                                setCreateNewVersionOnSave(false);
+                                setIsModalOpen(true);
+                            }}
                             icon={<FilePlus2Icon size={16} />}
                         >
                             Create Estimate
@@ -515,6 +578,20 @@ export default function EstimatesPage() {
                                         </span>
                                     </div>
                                 )}
+                            {/* {(est.estimateStatus === "DRAFT" ||
+                                isUnderReviewEstimate(est) ||
+                                !est.estimateStatus) && (
+                                <div className="mt-3">
+                                    <AccessButton
+                                        size="sm"
+                                        variant="outline"
+                                        scope={["w:estimates"]}
+                                        onClick={() => void handleEditEstimate(est)}
+                                    >
+                                        Edit
+                                    </AccessButton>
+                                </div>
+                            )} */}
                         </>
                     )}
                     emptyMessage="No estimates found."
@@ -527,12 +604,18 @@ export default function EstimatesPage() {
                 onClose={async () => {
                     setIsModalOpen(false);
                     setPrefill(undefined);
+                    setCreateNewVersionOnSave(false);
                     clearPrefill();
                     await refreshEstimates().catch(err =>
                         console.warn("Failed to refresh estimates on close", err),
                     );
+                    if (returnToVersionsEnquiryId) {
+                        setVersionsViewEnquiryId(returnToVersionsEnquiryId);
+                        setReturnToVersionsEnquiryId(null);
+                    }
                 }}
                 initialData={prefill}
+                createNewVersionOnSave={createNewVersionOnSave}
                 onSaved={handleSavedEstimate}
             />
 
@@ -541,14 +624,13 @@ export default function EstimatesPage() {
                     enquiryId={versionsViewEnquiryId}
                     onVersionSelect={estimate => {
                         setPrefill(estimate);
+                        setCreateNewVersionOnSave(isUnderReviewEstimate(estimate));
                         setIsModalOpen(true);
                         setVersionsViewEnquiryId(null);
+                        setReturnToVersionsEnquiryId(estimate.enquiryId ?? null);
                     }}
-                    onClose={async () => {
+                    onClose={() => {
                         setVersionsViewEnquiryId(null);
-                        await refreshEstimates().catch(err =>
-                            console.warn("Failed to refresh estimates on versions close", err),
-                        );
                     }}
                 />
             )}
