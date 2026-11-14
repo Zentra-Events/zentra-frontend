@@ -9,121 +9,100 @@ import { fetchVendors } from "@/lib/api/vendor";
 import type { Vendor } from "@/types/vendor";
 import { useRequestApi } from "@/hooks/useRequestApi";
 import { Button } from "@/components/ui/button";
-import { MenuList } from "@/components/ui";
-import { MoreVerticalIcon, TrashIcon, FileTextIcon, PencilIcon } from "@/components/ui/icons";
+import { CheckSquareIcon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { MobileCardList } from "@/components/shared/mobile-card-list";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import CreateChecklistModal from "@/components/create-checklist-modal";
-import type { ChecklistFormData, EventItem ,EventDetails } from "@/types/checklist";
+import type { ChecklistFormData, EventItem, EventDetails } from "@/types/checklist";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { downloadCSV } from "@/lib/utils/file";
-import { AccessButton } from "@/components/shared/access-button";
-import { MenuItem } from "@/types";
-import { Download, SquarePlus } from "lucide-react";
+import { Download } from "lucide-react";
 
-const columns = (
-    onView: (row: ChecklistFormData) => void,
-    onEdit: (row: ChecklistFormData) => void,
-    onDelete: (row: ChecklistFormData) => void,
-): Column<ChecklistFormData>[] => [
+type ChecklistRow = ChecklistFormData & {
+    location?: string;
+    assignee?: string | null;
+    startDate?: string;
+    endDate?: string;
+};
+
+type ChecklistEvent = Omit<EventItem, "client"> & {
+    client?: string | { name?: string };
+    checklistAssignedTo?: string | null;
+    startDate?: string;
+    endDate?: string;
+    location?: string;
+    venue?: string;
+};
+
+const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return "-";
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return "-";
+        return date.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+        });
+    } catch {
+        return "-";
+    }
+};
+
+const columns = (onView: (row: ChecklistRow) => void): Column<ChecklistRow>[] => [
     {
         key: "eventName",
         header: "Event Name",
-        render: row => row.eventName,
-    },
-    {
-        key: "enquiryDate",
-        header: "Enquiry Date",
-        render: row => row.enquiryDate,
-        className: "text-muted-foreground",
+        render: row => (
+            <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary">
+                    <CheckSquareIcon size={18} />
+                </div>
+                <div className="min-w-0">
+                    <button
+                        type="button"
+                        onClick={() => onView(row)}
+                        className="text-left font-medium text-primary transition-colors hover:text-primary-hover hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                    >
+                        {row.eventName}
+                    </button>
+                    <p className="truncate text-xs text-muted-foreground">
+                        {row.location || "Location not specified"}
+                    </p>
+                </div>
+            </div>
+        ),
     },
     {
         key: "clientPoc",
-        header: "Client POC",
+        header: "Client",
         render: row => row.clientPoc,
         className: "text-muted-foreground",
     },
+    // {
+    //     key: "assignee",
+    //     header: "Assignee",
+    //     render: row => row.assignee || "-",
+    //     className: "text-muted-foreground",
+    // },
     {
-        key: "status",
-        header: "Status",
-        render: row => {
-            const s = String(row.status ?? "").toLowerCase();
-            if (s === "in progress" || s === "in_progress" || s === "ongoing") {
-                return (
-                    <span className="inline-block rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400">
-                        {row.status}
-                    </span>
-                );
-            }
-            if (s === "completed" || s === "done") {
-                return (
-                    <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800 dark:bg-green-900/40 dark:text-green-400">
-                        {row.status}
-                    </span>
-                );
-            }
-            return (
-                <span className="inline-block rounded-full bg-gray-200 px-3 py-1 text-sm font-medium text-gray-700 dark:bg-gray-700/50 dark:text-gray-300">
-                    {row.status ?? "Not Started"}
-                </span>
-            );
-        },
-    },
-    {
-        key: "gst",
-        header: "GST",
-        render: row => row.gst || "-",
+        key: "startDate",
+        header: "Start Date",
+        render: row => formatDateTime(row.startDate),
         className: "text-muted-foreground",
     },
     {
-        key: "actions",
-        header: "",
-        className: "text-right",
-        render: row => {
-            const items: MenuItem[] = [
-                {
-                    key: "view",
-                    label: "View",
-                    icon: <FileTextIcon size={16} />,
-                    onClick: () => onView(row),
-                },
-                // {
-                //     key: "edit",
-                //     label: "Edit",
-                //     icon: <PencilIcon size={16} />,
-                //     onClick: () => onEdit(row),
-                //     scopes: ["w:checklists"],
-                // },
-                // {
-                //     key: "delete",
-                //     label: "Delete",
-                //     icon: <TrashIcon size={16} />,
-                //     onClick: () => onDelete(row),
-                //     className: "text-destructive focus:text-destructive",
-                //     scopes: ["w:checklists"],
-                // },
-            ];
-
-            return (
-                <div className="flex justify-center">
-                    <MenuList
-                        align="end"
-                        items={items}
-                        trigger={
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <MoreVerticalIcon size={16} />
-                            </Button>
-                        }
-                    />
-                </div>
-            );
-        },
+        key: "endDate",
+        header: "End Date",
+        render: row => formatDateTime(row.endDate),
+        className: "text-muted-foreground",
     },
 ];
-
-
 
 export interface EventChecklistItem {
     item: string;
@@ -144,12 +123,10 @@ export interface EventChecklistItem {
     days?: number;
 }
 export default function ChecklistsPage() {
-    const { request, loading } = useRequestApi<EventItem[]>();
-    const {
-    request: requestEventDetails,
-    loading: loadingEventDetails,
-} = useRequestApi<EventDetails>();
-    const [checklists, setChecklists] = useState<ChecklistFormData[]>([]);
+    const { request, loading } = useRequestApi<ChecklistEvent[]>();
+    const { request: requestEventDetails, loading: loadingEventDetails } =
+        useRequestApi<EventDetails>();
+    const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [_selectedChecklist, set_selectedChecklist] = useState<ChecklistFormData | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -173,32 +150,36 @@ export default function ChecklistsPage() {
     //     }
     // }, [request]);
 
+    const fetchChecklists = useCallback(async () => {
+        try {
+            const res = await request(API_ENDPOINTS.events.list, {
+                method: "GET",
+            });
 
- const fetchChecklists = useCallback(async () => {
-    try {
-        const res = await request(API_ENDPOINTS.events.list, {
-            method: "GET",
-        });
+            if (res) {
+                const checklistData: ChecklistRow[] = res.map(event => ({
+                    id: event.eventID,
+                    eventName: event.title,
+                    enquiryDate: event.enquiryDate || "",
+                    clientPoc:
+                        typeof event.client === "string" ? event.client : event.client?.name || "-",
+                    status: event.status || "Not Started",
+                    gst: String(event.gst ?? ""),
+                    location: event.location || event.venue,
+                    assignee: event.checklistAssignedTo || "",
+                    startDate: event.startDate || event.eventStartDate || "",
+                    endDate: event.endDate || event.eventEndDate || "",
+                }));
 
-        if (res) {
-            const checklistData: ChecklistFormData[] = res.map((event) => ({
-                id: event.eventID,
-                eventName: event.title,
-                enquiryDate: event.enquiryDate || "",
-                clientPoc: event.client || "-",
-                status: event.status || "Not Started",
-                gst: String(event.gst ?? ""),
-            }));
-
-            setChecklists(checklistData);
-        } else {
-            setChecklists([]);
+                setChecklists(checklistData);
+            } else {
+                setChecklists([]);
+            }
+        } catch (error) {
+            console.error("Error fetching events:", error);
+            toast.error("Failed to load checklist data");
         }
-    } catch (error) {
-        console.error("Error fetching events:", error);
-        toast.error("Failed to load checklist data");
-    }
-}, [request]);
+    }, [request]);
     useEffect(() => {
         fetchChecklists();
     }, [fetchChecklists]);
@@ -207,79 +188,76 @@ export default function ChecklistsPage() {
         setModalOpen(true);
     };
 
-   const handleView = async (checklist: ChecklistFormData) => {
-    try {
-        if (!checklist.id) {
-            toast.error("Event ID not found");
-            return;
-        }
-
-        const eventDetails = await requestEventDetails(
-            API_ENDPOINTS.events.detail(String(checklist.id)),
-            {
-                method: "GET",
+    const handleView = async (checklist: ChecklistRow) => {
+        try {
+            if (!checklist.id) {
+                toast.error("Event ID not found");
+                return;
             }
-        );
 
-        if (eventDetails) {
-            setSelectedEvent(eventDetails);
-            setChecklistModalOpen(true);
-        } else {
+            const eventDetails = await requestEventDetails(
+                API_ENDPOINTS.events.detail(String(checklist.id)),
+                {
+                    method: "GET",
+                },
+            );
+
+            if (eventDetails) {
+                setSelectedEvent(eventDetails);
+                setChecklistModalOpen(true);
+            } else {
+                toast.error("Failed to load event details");
+            }
+        } catch (error) {
+            console.error("Error fetching event details:", error);
             toast.error("Failed to load event details");
         }
-    } catch (error) {
-        console.error("Error fetching event details:", error);
-        toast.error("Failed to load event details");
-    }
-};
+    };
 
+    const fetchInventory = useCallback(async () => {
+        setLoadingInventory(true);
 
-const fetchInventory = useCallback(async () => {
-    setLoadingInventory(true);
+        try {
+            const res = await apiRequest("/api/inventory");
 
-    try {
-        const res = await apiRequest("/api/inventory");
+            if (!res.ok) {
+                throw new Error("Failed to fetch inventory");
+            }
 
-        if (!res.ok) {
-            throw new Error("Failed to fetch inventory");
+            const data: Inventory[] = await res.json();
+            setInventoryList(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error("Error fetching inventory:", error);
+            setInventoryList([]);
+        } finally {
+            setLoadingInventory(false);
         }
+    }, []);
 
-        const data: Inventory[] = await res.json();
-        setInventoryList(Array.isArray(data) ? data : []);
-    } catch (error) {
-        console.error("Error fetching inventory:", error);
-        setInventoryList([]);
-    } finally {
-        setLoadingInventory(false);
-    }
-}, []);
-
-
-    const handleEdit = (checklist: ChecklistFormData) => {
+    const handleEdit = (checklist: ChecklistRow) => {
         set_selectedChecklist(checklist);
         setModalOpen(true);
     };
-const loadVendors = useCallback(async () => {
-    setLoadingVendors(true);
+    const loadVendors = useCallback(async () => {
+        setLoadingVendors(true);
 
-    try {
-        const vendors = await fetchVendors();
-        setVendorList(vendors);
-    } catch (error) {
-        console.error("Error fetching vendors:", error);
-        toast.error("Failed to load vendors");
-    } finally {
-        setLoadingVendors(false);
-    }
-   }, []);
+        try {
+            const vendors = await fetchVendors();
+            setVendorList(vendors);
+        } catch (error) {
+            console.error("Error fetching vendors:", error);
+            toast.error("Failed to load vendors");
+        } finally {
+            setLoadingVendors(false);
+        }
+    }, []);
 
+    useEffect(() => {
+        loadVendors();
+        fetchInventory();
+    }, [loadVendors, fetchInventory]);
 
-  useEffect(() => {
-    loadVendors();
-    fetchInventory();
-}, [loadVendors, fetchInventory]);
-
-    const handleDeleteClick = (checklist: ChecklistFormData) => {
+    const handleDeleteClick = (checklist: ChecklistRow) => {
         setChecklistToDelete(checklist);
         setDeleteModalOpen(true);
     };
@@ -309,10 +287,10 @@ const loadVendors = useCallback(async () => {
     const handleExport = () => {
         const exportData = checklists.map(checklist => ({
             "Event Name": checklist.eventName,
-            "Enquiry Date": checklist.enquiryDate,
             "Client POC": checklist.clientPoc,
-            Status: checklist.status,
-            GST: checklist.gst,
+            Assignee: checklist.assignee || "",
+            "Start Date": formatDateTime(checklist.startDate),
+            "End Date": formatDateTime(checklist.endDate),
         }));
         downloadCSV(exportData, "checklists-export.csv");
     };
@@ -321,7 +299,7 @@ const loadVendors = useCallback(async () => {
         <div className="flex flex-col gap-6 sm:gap-8">
             <PageHeader
                 title="Checklist Management"
-                description="Manage all event checklists and their status"
+                description="Manage event checklists, assignees, and schedules"
                 actions={
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
                         <Button
@@ -346,7 +324,7 @@ const loadVendors = useCallback(async () => {
             <div className="flex flex-col gap-4 sm:gap-1">
                 <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
                     <DataTable
-                        columns={columns(handleView, handleEdit, handleDeleteClick)}
+                        columns={columns(handleView)}
                         data={checklists}
                         rowKey={row => String(row.id)}
                         emptyMessage="No checklists found."
@@ -362,10 +340,13 @@ const loadVendors = useCallback(async () => {
                     }))}
                     renderHeader={checklist => (
                         <div className="flex items-center justify-between">
-                            <div className="font-bold text-lg">{checklist.eventName}</div>
-                            <div className="text-xs text-muted-foreground">
-                                {checklist.enquiryDate}
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleView(checklist)}
+                                className="text-left text-lg font-bold text-primary hover:underline"
+                            >
+                                {checklist.eventName}
+                            </button>
                         </div>
                     )}
                     renderContent={checklist => (
@@ -375,25 +356,25 @@ const loadVendors = useCallback(async () => {
                                 <span className="font-medium">{checklist.clientPoc}</span>
                             </div>
                             <div className="mb-1">
-                                Status:{" "}
+                                Assignee:{" "}
+                                <span className="font-medium">{checklist.assignee || "-"}</span>
+                            </div>
+                            <div className="mb-1">
+                                Start Date:{" "}
                                 <span className="font-medium">
-                                    {checklist.status ?? "Not Started"}
+                                    {formatDateTime(checklist.startDate)}
                                 </span>
                             </div>
                             <div className="mb-2">
-                                GST: <span className="font-medium">{checklist.gst || "-"}</span>
+                                End Date:{" "}
+                                <span className="font-medium">
+                                    {formatDateTime(checklist.endDate)}
+                                </span>
                             </div>
                         </>
                     )}
                     renderActions={checklist => (
                         <div className="flex gap-2 justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleView(checklist)}
-                            >
-                                View
-                            </Button>
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -417,22 +398,22 @@ const loadVendors = useCallback(async () => {
                     }}
                 />
                 {selectedEvent && (
-    <ExecutionChecklistModal
-        isOpen={checklistModalOpen}
-        onClose={() => {
-            setChecklistModalOpen(false);
-            setSelectedEvent(null);
-        }}
-        eventData={selectedEvent}
-        onSave={() => {
-            fetchChecklists();
-        }}
-       vendorList={vendorList}
-       loadingVendors={loadingVendors}
-       inventoryList={inventoryList}
-       loadingInventory={loadingInventory}
-    />
-)}
+                    <ExecutionChecklistModal
+                        isOpen={checklistModalOpen}
+                        onClose={() => {
+                            setChecklistModalOpen(false);
+                            setSelectedEvent(null);
+                        }}
+                        eventData={selectedEvent}
+                        onSave={() => {
+                            fetchChecklists();
+                        }}
+                        vendorList={vendorList}
+                        loadingVendors={loadingVendors}
+                        inventoryList={inventoryList}
+                        loadingInventory={loadingInventory}
+                    />
+                )}
                 <ConfirmationModal
                     open={deleteModalOpen}
                     onClose={handleDeleteCancel}
