@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CreatableSelectField } from "@/components/ui/creatable-select";
 import { useUsers } from "@/hooks/useUsers";
+import { useSearchUsers } from "@/hooks/useSearchUsers";
 
 /**
  * UserSelectDropdown - a reusable searchable + creatable user dropdown.
@@ -11,9 +12,14 @@ import { useUsers } from "@/hooks/useUsers";
  * Built on the shared `CreatableSelectField` so the chevron, dropdown menu,
  * focus ring and error styling always match the rest of the app.
  *
- * Lists user names from the users GET API while also allowing a custom
- * assignee name: typing filters the options, and the typed text is always
- * kept as the field value — no option selection required.
+ * By default (`enableApiSearch = false`) it lists users from the centralized
+ * cached `useUsers()` store and filters them client-side, preserving existing
+ * behaviour for all consumers.
+ *
+ * When `enableApiSearch` is true, typing triggers a backend search against
+ * `GET /api/users?page=&size=&search=` with debounced input, zero-based
+ * pagination and a "Load more" row for additional pages. The centralized
+ * user cache is no longer the source of the option list in this mode.
  */
 export function UserSelectDropdown({
     value = "",
@@ -28,6 +34,8 @@ export function UserSelectDropdown({
     inputClassName,
     id,
     error,
+    enableApiSearch = false,
+    pageSize = 10,
 }: {
     /** Current assignee name — an existing user name or custom typed text. */
     value?: string;
@@ -45,23 +53,42 @@ export function UserSelectDropdown({
     id?: string;
     /** Optional validation error shown under the field. */
     error?: string;
+    /** When true, search users via the backend API instead of the cached list. */
+    enableApiSearch?: boolean;
+    /** Page size for backend search. Defaults to 10. */
+    pageSize?: number;
 }) {
-    const { users, loading, error: usersError } = useUsers();
+    const { users, loading: usersLoading, error: usersError } = useUsers();
+    const {
+        users: searchedUsers,
+        loading: searchLoading,
+        error: searchError,
+        setSearch,
+        hasMore,
+        loadMore,
+        reset,
+    } = useSearchUsers(pageSize, enableApiSearch);
     const [inputValue, setInputValue] = useState(value ?? "");
     const [isFocused, setIsFocused] = useState(false);
 
+    const isLoading = usersLoading || searchLoading;
+    const dropdownError = searchError || usersError;
+
     const options = useMemo(() => {
-        if (usersError) return [{ value: "", label: "Failed to load users" }];
-        return users.map(user => ({ value: user.name, label: user.name })).filter(o => o.value);
-    }, [users, usersError]);
+        const list = enableApiSearch ? searchedUsers : users;
+        if (dropdownError) return [{ value: "", label: "Failed to load users" }];
+        return list.map(user => ({ value: user.name, label: user.name })).filter(o => o.value);
+    }, [enableApiSearch, searchedUsers, users, dropdownError]);
 
     // Sync external value changes (edit mode, reset, clear) while the user
-    // is not actively typing.
+    // is not actively typing. In API search mode this also clears the current
+    // search so the newly selected user's page loads fresh.
     useEffect(() => {
-        if (!isFocused) setInputValue(value ?? "");
-    }, [value, isFocused]);
-
-
+        if (!isFocused) {
+            setInputValue(value ?? "");
+            if (enableApiSearch) reset();
+        }
+    }, [value, isFocused, enableApiSearch, reset]);
 
     // While typing, show only the search text (no selected chip) so keystrokes
     // never get hidden behind a stale selection. When blurred, show the
@@ -82,6 +109,7 @@ export function UserSelectDropdown({
                 // Keep the field value synchronized with the search keyword so a
                 // manually typed assignee is retained without picking an option.
                 if (newValue !== value) onChange(newValue);
+                if (enableApiSearch) setSearch(newValue);
             }}
             onChange={selectedValue => {
                 setInputValue(selectedValue);
@@ -100,15 +128,19 @@ export function UserSelectDropdown({
                 const trimmed = inputValue.trim();
                 if (trimmed !== (value ?? "")) onChange(trimmed);
             }}
-            placeholder={loading ? "Loading users..." : (placeholder ?? "Search or enter assignee name")}
-            isLoading={loading}
+            placeholder={isLoading ? "Loading users..." : (placeholder ?? "Search or enter assignee name")}
+            isLoading={isLoading}
             isDisabled={isDisabled}
             isClearable={isClearable}
             wrapperClassName={wrapperClassName}
             selectClassName={inputClassName}
             errorMessage={error}
             showError={!!error}
+            loadMore={
+                enableApiSearch && hasMore
+                    ? { label: "Load more users", onLoad: loadMore }
+                    : undefined
+            }
         />
     );
 }
-

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils/cn";
 import { parseApiDate } from "@/lib/utils/date";
 import { EnquiryFormData, CreateEnquiryModalProps } from "@/types/enquiry";
 import { useClients } from "@/hooks/useClients";
+import { useSearchClients } from "@/hooks/useSearchClients";
 // import { useUsers } from "@/hooks/useUsers";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api/api-client";
@@ -172,6 +173,14 @@ export default function CreateEnquiryModal({
     onSaveSuccess,
 }: CreateEnquiryModalProps) {
     const { clients, loading: clientsLoading } = useClients();
+    const {
+        clients: searchedClients,
+        loading: clientsSearchLoading,
+        setSearch: setClientSearch,
+        hasMore: clientsHasMore,
+        loadMore: loadMoreClients,
+        reset: resetClientSearch,
+    } = useSearchClients();
     // const { refresh: refreshUsers } = useUsers();
 
     // Formik ref so we can set fields from outside when clients finish loading
@@ -415,6 +424,12 @@ export default function CreateEnquiryModal({
         }
     }, [isOpen, clientsLoading, editData?.client, editData?.clientName, clients]);
 
+    // Start each open with a fresh client search (page 1) so stale search
+    // results from a previous modal session never leak into the current one.
+    useEffect(() => {
+        if (isOpen) resetClientSearch();
+    }, [isOpen, resetClientSearch]);
+
     // Refresh the shared users cache whenever the modal opens so the assignee
     // dropdown always reflects newly added users without requiring a page reload.
     // `useUsers` keeps a module-level cache, so this invalidates it for every
@@ -486,6 +501,7 @@ export default function CreateEnquiryModal({
                                             onChange={assignedTo =>
                                                 setFieldValue("assignedTo", assignedTo)
                                             }
+                                            enableApiSearch
                                             label={
                                                 <span className="flex flex-wrap items-center gap-1.5">
                                                     <Briefcase
@@ -656,9 +672,21 @@ export default function CreateEnquiryModal({
                                                                 <RequiredMark />
                                                             </span>
                                                         }
-                                                        placeholder="Search or type a new client name..."
+                                                        placeholder={clientsSearchLoading
+                                                            ? "Searching clients..."
+                                                            : "Search or type a new client name..."}
                                                         isClearable
-                                                        options={clients.map(c => ({
+                                                        isLoading={clientsSearchLoading}
+                                                        onInputChange={setClientSearch}
+                                                        loadMore={
+                                                            clientsHasMore
+                                                                ? {
+                                                                      label: "Load more clients",
+                                                                      onLoad: loadMoreClients,
+                                                                  }
+                                                                : undefined
+                                                        }
+                                                        options={searchedClients.map(c => ({
                                                             value: c.id,
                                                             label: c.name,
                                                         }))}

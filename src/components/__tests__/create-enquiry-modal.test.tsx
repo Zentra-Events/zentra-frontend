@@ -13,6 +13,18 @@ vi.mock("@/hooks/useClients", () => ({
     })),
 }));
 
+vi.mock("@/hooks/useSearchClients", () => ({
+    useSearchClients: vi.fn(() => ({
+        clients: [{ id: "client-1", name: "Test Client", email: "a@b.com", phone: null }],
+        loading: false,
+        error: null,
+        setSearch: vi.fn(),
+        hasMore: false,
+        loadMore: vi.fn(),
+        reset: vi.fn(),
+    })),
+}));
+
 vi.mock("@/hooks/useUsers", () => ({
     useUsers: vi.fn(() => ({
         users: [],
@@ -23,6 +35,19 @@ vi.mock("@/hooks/useUsers", () => ({
         updateUser: vi.fn(),
         deleteUser: vi.fn(),
         setUsers: vi.fn(),
+    })),
+}));
+
+vi.mock("@/hooks/useSearchUsers", () => ({
+    useSearchUsers: vi.fn(() => ({
+        users: [],
+        loading: false,
+        error: null,
+        search: "",
+        setSearch: vi.fn(),
+        hasMore: false,
+        loadMore: vi.fn(),
+        reset: vi.fn(),
     })),
 }));
 

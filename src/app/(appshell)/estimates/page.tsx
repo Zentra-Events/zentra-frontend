@@ -311,7 +311,11 @@ export default function EstimatesPage() {
             });
             if (!response.ok) throw new Error(`Failed to load estimate (${response.status})`);
             detail = (await response.json()) as Partial<EstimateDto> & { enquiryId?: string };
-            setPrefill({ ...detail, enquiryId: detail.enquiryId ?? row.enquiryId });
+            setPrefill({
+                ...detail,
+                enquiryId: detail.enquiryId ?? row.enquiryId,
+                versionTitle: detail.versionTitle ?? row.versionTitle,
+            });
         } catch (error) {
             console.error("Failed to load estimate for editing", error);
             toast.error("Failed to load estimate details");

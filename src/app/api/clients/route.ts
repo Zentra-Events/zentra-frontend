@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBackendHeaders, getBackendUrl } from "@/lib/api/api-server";
+import { buildQueryUrl } from "@/lib/api/query-params";
 
 const DEFAULT_TIMEOUT = 5000; // ms
 
@@ -30,8 +31,14 @@ function isConnectionRefusedError(err: unknown) {
 export async function GET(request: NextRequest) {
     const BACKEND_URL = getBackendUrl();
     try {
-        const url = `${BACKEND_URL}/clients`;
-        const headers = { ...getBackendHeaders(request), "Content-Type": "application/json" };
+        const headers = getBackendHeaders(request);
+        const searchParams = request.nextUrl.searchParams;
+
+        const url = buildQueryUrl(`${BACKEND_URL}/clients`, {
+            page: searchParams.get("page"),
+            size: searchParams.get("size"),
+            search: searchParams.get("search"),
+        });
 
         const response = await fetchWithTimeout(url, {
             method: "GET",

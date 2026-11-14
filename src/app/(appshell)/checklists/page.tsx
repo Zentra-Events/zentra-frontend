@@ -1,60 +1,71 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { Inventory } from "@/types/inventory";
-import { apiRequest } from "@/lib/api/api-client";
-import { ExecutionChecklistModal } from "@/components/checklist-modal";
-import { fetchVendors } from "@/lib/api/vendor";
-import type { Vendor } from "@/types/vendor";
-import { useRequestApi } from "@/hooks/useRequestApi";
-import { Button } from "@/components/ui/button";
-import { CheckSquareIcon } from "@/components/ui/icons";
-import { PageHeader } from "@/components/ui";
-import { DataTable, type Column } from "@/components/ui/data-table";
+import { Download, SquarePlus } from "lucide-react";
+
+import { AccessButton } from "@/components/shared/access-button";
 import { MobileCardList } from "@/components/shared/mobile-card-list";
-import { ConfirmationModal } from "@/components/shared/confirmation-modal";
+import { ExecutionChecklistModal } from "@/components/checklist-modal";
+import type { ChecklistModalProps } from "@/components/checklist-modal/types";
 import CreateChecklistModal from "@/components/create-checklist-modal";
-import type { ChecklistFormData, EventItem, EventDetails } from "@/types/checklist";
+import { PageHeader } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { CheckSquareIcon } from "@/components/ui/icons";
+import { fetchVendors } from "@/lib/api/vendor";
+import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { downloadCSV } from "@/lib/utils/file";
-import { Download } from "lucide-react";
+import { useRequestApi } from "@/hooks/useRequestApi";
+import type { ChecklistFormData } from "@/types/checklist";
+import type { Inventory } from "@/types/inventory";
+import type { Vendor } from "@/types/vendor";
 
-type ChecklistRow = ChecklistFormData & {
+type EventRow = ChecklistFormData & {
     location?: string;
     assignee?: string | null;
     startDate?: string;
     endDate?: string;
 };
 
-type ChecklistEvent = Omit<EventItem, "client"> & {
+type ChecklistEvent = {
+    id?: string | number;
+    eventID?: string;
+    title: string;
+    enquiryDate?: string;
+    gst?: string | number;
+    status?: string;
     client?: string | { name?: string };
     checklistAssignedTo?: string | null;
     startDate?: string;
     endDate?: string;
+    eventStartDate?: string;
+    eventEndDate?: string;
     location?: string;
     venue?: string;
 };
 
-const formatDateTime = (dateStr?: string) => {
-    if (!dateStr) return "-";
-    try {
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return "-";
-        return date.toLocaleString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-        });
-    } catch {
-        return "-";
-    }
+type EventDetails = ChecklistModalProps["eventData"] & {
+    eventID?: string;
+    checklistAssignedTo?: string;
 };
 
-const columns = (onView: (row: ChecklistRow) => void): Column<ChecklistRow>[] => [
+const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+    });
+};
+
+const eventColumns = (onView: (row: EventRow) => void): Column<EventRow>[] => [
     {
         key: "eventName",
         header: "Event Name",
@@ -67,7 +78,7 @@ const columns = (onView: (row: ChecklistRow) => void): Column<ChecklistRow>[] =>
                     <button
                         type="button"
                         onClick={() => onView(row)}
-                        className="text-left font-medium text-primary transition-colors hover:text-primary-hover hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                        className="cursor-pointer text-left font-medium text-primary transition-colors hover:text-primary-hover hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         {row.eventName}
                     </button>
@@ -84,12 +95,6 @@ const columns = (onView: (row: ChecklistRow) => void): Column<ChecklistRow>[] =>
         render: row => row.clientPoc,
         className: "text-muted-foreground",
     },
-    // {
-    //     key: "assignee",
-    //     header: "Assignee",
-    //     render: row => row.assignee || "-",
-    //     className: "text-muted-foreground",
-    // },
     {
         key: "startDate",
         header: "Start Date",
@@ -104,117 +109,57 @@ const columns = (onView: (row: ChecklistRow) => void): Column<ChecklistRow>[] =>
     },
 ];
 
-export interface EventChecklistItem {
-    item: string;
-    inventoryID?: string;
-    startDate?: string | null;
-    endDate?: string | null;
-    quantity?: number;
-    pricePerItem?: number;
-    deadlineDate?: string | null;
-    itemStatus?: boolean;
-    finalAmt?: number;
-    category?: string;
-    status?: string;
-    unit?: string;
-    subCategory?: string;
-    description?: string;
-    vendor?: string;
-    days?: number;
-}
 export default function ChecklistsPage() {
-    const { request, loading } = useRequestApi<ChecklistEvent[]>();
+    const { request: requestEvents, loading: loadingEvents } = useRequestApi<ChecklistEvent[]>();
+    const { request: requestRecords } = useRequestApi<ChecklistFormData[]>();
     const { request: requestEventDetails, loading: loadingEventDetails } =
         useRequestApi<EventDetails>();
-    const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
+    const [events, setEvents] = useState<EventRow[]>([]);
+    const [checklistRecords, setChecklistRecords] = useState<ChecklistFormData[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
-    const [_selectedChecklist, set_selectedChecklist] = useState<ChecklistFormData | null>(null);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [checklistToDelete, setChecklistToDelete] = useState<ChecklistFormData | null>(null);
     const [checklistModalOpen, setChecklistModalOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<EventDetails | null>(null);
     const [vendorList, setVendorList] = useState<Vendor[]>([]);
     const [loadingVendors, setLoadingVendors] = useState(false);
     const [inventoryList, setInventoryList] = useState<Inventory[]>([]);
     const [loadingInventory, setLoadingInventory] = useState(false);
-    const [deleting, setDeleting] = useState(false);
 
-    const fetchChecklists = useCallback(async () => {
-        try {
-            const res = await request(API_ENDPOINTS.events.list, {
-                method: "GET",
-            });
+    const fetchEvents = useCallback(async () => {
+        const result = await requestEvents(API_ENDPOINTS.events.list, { method: "GET" });
+        setEvents(
+            (result ?? []).map(event => ({
+                id: event.eventID ?? event.id,
+                eventName: event.title,
+                enquiryDate: event.enquiryDate || "",
+                clientPoc:
+                    typeof event.client === "string" ? event.client : event.client?.name || "-",
+                status: event.status || "Not Started",
+                gst: String(event.gst ?? ""),
+                location: event.location || event.venue,
+                assignee: event.checklistAssignedTo || "",
+                startDate: event.startDate || event.eventStartDate || "",
+                endDate: event.endDate || event.eventEndDate || "",
+            })),
+        );
+    }, [requestEvents]);
 
-            if (res) {
-                const checklistData: ChecklistRow[] = res.map(event => ({
-                    id: event.eventID,
-                    eventName: event.title,
-                    enquiryDate: event.enquiryDate || "",
-                    clientPoc:
-                        typeof event.client === "string" ? event.client : event.client?.name || "-",
-                    status: event.status || "Not Started",
-                    gst: String(event.gst ?? ""),
-                    location: event.location || event.venue,
-                    assignee: event.checklistAssignedTo || "",
-                    startDate: event.startDate || event.eventStartDate || "",
-                    endDate: event.endDate || event.eventEndDate || "",
-                }));
+    const fetchChecklistRecords = useCallback(async () => {
+        const result = await requestRecords(API_ENDPOINTS.checklists.list, { method: "GET" });
+        setChecklistRecords(result ?? []);
+    }, [requestRecords]);
 
-                setChecklists(checklistData);
-            } else {
-                setChecklists([]);
-            }
-        } catch (error) {
-            console.error("Error fetching events:", error);
-            toast.error("Failed to load checklist data");
-        }
-    }, [request]);
     useEffect(() => {
-        fetchChecklists();
-    }, [fetchChecklists]);
-
-    const handleCreate = () => {
-        setModalOpen(true);
-    };
-
-    const handleView = async (checklist: ChecklistRow) => {
-        try {
-            if (!checklist.id) {
-                toast.error("Event ID not found");
-                return;
-            }
-
-            const eventDetails = await requestEventDetails(
-                API_ENDPOINTS.events.detail(String(checklist.id)),
-                {
-                    method: "GET",
-                },
-            );
-
-            if (eventDetails) {
-                setSelectedEvent(eventDetails);
-                setChecklistModalOpen(true);
-            } else {
-                toast.error("Failed to load event details");
-            }
-        } catch (error) {
-            console.error("Error fetching event details:", error);
-            toast.error("Failed to load event details");
-        }
-    };
+        fetchEvents();
+        fetchChecklistRecords();
+    }, [fetchEvents, fetchChecklistRecords]);
 
     const fetchInventory = useCallback(async () => {
         setLoadingInventory(true);
-
         try {
-            const res = await apiRequest("/api/inventory");
-
-            if (!res.ok) {
-                throw new Error("Failed to fetch inventory");
-            }
-
-            const data: Inventory[] = await res.json();
-            setInventoryList(Array.isArray(data) ? data : []);
+            const response = await apiRequest(API_ENDPOINTS.inventory.list);
+            if (!response.ok) throw new Error("Failed to fetch inventory");
+            const result: Inventory[] = await response.json();
+            setInventoryList(Array.isArray(result) ? result : []);
         } catch (error) {
             console.error("Error fetching inventory:", error);
             setInventoryList([]);
@@ -223,16 +168,10 @@ export default function ChecklistsPage() {
         }
     }, []);
 
-    const handleEdit = (checklist: ChecklistRow) => {
-        set_selectedChecklist(checklist);
-        setModalOpen(true);
-    };
     const loadVendors = useCallback(async () => {
         setLoadingVendors(true);
-
         try {
-            const vendors = await fetchVendors();
-            setVendorList(vendors);
+            setVendorList(await fetchVendors());
         } catch (error) {
             console.error("Error fetching vendors:", error);
             toast.error("Failed to load vendors");
@@ -246,44 +185,33 @@ export default function ChecklistsPage() {
         fetchInventory();
     }, [loadVendors, fetchInventory]);
 
-    const handleDeleteClick = (checklist: ChecklistRow) => {
-        setChecklistToDelete(checklist);
-        setDeleteModalOpen(true);
-    };
-
-    const handleDeleteConfirm = async () => {
-        if (!checklistToDelete || !checklistToDelete.id) return;
-        setDeleting(true);
-        try {
-            await request(`${API_ENDPOINTS.checklists.detail(checklistToDelete.id)}`, {
-                method: "DELETE",
-            });
-
-            toast.success("Checklist deleted successfully!");
-            fetchChecklists();
-        } catch {
-            toast.error("Failed to delete checklist. Please try again.");
-        } finally {
-            setDeleting(false);
-            setDeleteModalOpen(false);
-            setChecklistToDelete(null);
+    const handleViewEvent = async (event: EventRow) => {
+        if (!event.id) {
+            toast.error("Event ID not found");
+            return;
         }
-    };
-
-    const handleDeleteCancel = () => {
-        setDeleteModalOpen(false);
-        setChecklistToDelete(null);
+        const details = await requestEventDetails(API_ENDPOINTS.events.detail(event.id), {
+            method: "GET",
+        });
+        if (!details) {
+            toast.error("Failed to load event details");
+            return;
+        }
+        setSelectedEvent({ ...details, id: String(details.id || details.eventID || event.id) });
+        setChecklistModalOpen(true);
     };
 
     const handleExport = () => {
-        const exportData = checklists.map(checklist => ({
-            "Event Name": checklist.eventName,
-            "Client POC": checklist.clientPoc,
-            Assignee: checklist.assignee || "",
-            "Start Date": formatDateTime(checklist.startDate),
-            "End Date": formatDateTime(checklist.endDate),
-        }));
-        downloadCSV(exportData, "checklists-export.csv");
+        downloadCSV(
+            checklistRecords.map(checklist => ({
+                "Event Name": checklist.eventName,
+                "Enquiry Date": checklist.enquiryDate,
+                "Client POC": checklist.clientPoc,
+                Status: checklist.status,
+                GST: checklist.gst,
+            })),
+            "checklists-export.csv",
+        );
     };
 
     return (
@@ -301,125 +229,83 @@ export default function ChecklistsPage() {
                         >
                             Export
                         </Button>
-                        {/* <AccessButton
+                        <AccessButton
                             scope={["w:checklists"]}
                             className="w-full sm:w-auto"
-                            onClick={handleCreate}
+                            onClick={() => setModalOpen(true)}
                             icon={<SquarePlus size={16} />}
                         >
                             Create Checklist
-                        </AccessButton> */}
+                        </AccessButton>
                     </div>
                 }
             />
-            <div className="flex flex-col gap-4 sm:gap-1">
-                <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
+
+            <section className="rounded-lg bg-surface p-4 shadow-sm sm:p-6">
+                <h2 className="mb-4 text-lg font-semibold">Event Execution Checklists</h2>
+                <div className="hidden md:block">
                     <DataTable
-                        columns={columns(handleView)}
-                        data={checklists}
+                        columns={eventColumns(handleViewEvent)}
+                        data={events}
                         rowKey={row => String(row.id)}
-                        emptyMessage="No checklists found."
+                        emptyMessage="No event checklists found."
                         hoverable
-                        isLoading={loading}
+                        isLoading={loadingEvents || loadingEventDetails}
                     />
                 </div>
                 <MobileCardList
                     className="flex flex-col gap-4 md:hidden"
-                    items={checklists.map(checklist => ({
-                        id: String(checklist.id),
-                        data: checklist,
-                    }))}
-                    renderHeader={checklist => (
-                        <div className="flex items-center justify-between">
-                            <button
-                                type="button"
-                                onClick={() => handleView(checklist)}
-                                className="text-left text-lg font-bold text-primary hover:underline"
-                            >
-                                {checklist.eventName}
-                            </button>
+                    items={events.map(event => ({ id: String(event.id), data: event }))}
+                    renderHeader={event => <div className="font-semibold">{event.eventName}</div>}
+                    renderContent={event => (
+                        <div className="space-y-1 text-sm text-muted-foreground">
+                            <div>Client: {event.clientPoc}</div>
+                            <div>Assignee: {event.assignee || "-"}</div>
+                            <div>Start: {formatDateTime(event.startDate)}</div>
+                            <div>End: {formatDateTime(event.endDate)}</div>
                         </div>
                     )}
-                    renderContent={checklist => (
-                        <>
-                            <div className="mb-1">
-                                Client POC:{" "}
-                                <span className="font-medium">{checklist.clientPoc}</span>
-                            </div>
-                            <div className="mb-1">
-                                Assignee:{" "}
-                                <span className="font-medium">{checklist.assignee || "-"}</span>
-                            </div>
-                            <div className="mb-1">
-                                Start Date:{" "}
-                                <span className="font-medium">
-                                    {formatDateTime(checklist.startDate)}
-                                </span>
-                            </div>
-                            <div className="mb-2">
-                                End Date:{" "}
-                                <span className="font-medium">
-                                    {formatDateTime(checklist.endDate)}
-                                </span>
-                            </div>
-                        </>
-                    )}
-                    renderActions={checklist => (
-                        <div className="flex gap-2 justify-end">
+                    renderActions={event => (
+                        <div className="flex justify-end">
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDeleteClick(checklist)}
+                                onClick={() => handleViewEvent(event)}
                             >
-                                Delete
+                                View Checklist
                             </Button>
                         </div>
                     )}
-                    emptyMessage="No checklists found."
-                    isLoading={loading}
+                    emptyMessage="No event checklists found."
+                    isLoading={loadingEvents}
                 />
-                <CreateChecklistModal
-                    open={modalOpen}
+            </section>
+
+            <CreateChecklistModal
+                open={modalOpen}
+                onClose={() => {
+                    setModalOpen(false);
+                }}
+                onSave={fetchChecklistRecords}
+            />
+            {selectedEvent && (
+                <ExecutionChecklistModal
+                    isOpen={checklistModalOpen}
                     onClose={() => {
-                        setModalOpen(false);
-                        set_selectedChecklist(null);
+                        setChecklistModalOpen(false);
+                        setSelectedEvent(null);
                     }}
+                    eventData={selectedEvent}
+                    checklistAssignedTo={selectedEvent.checklistAssignedTo || ""}
                     onSave={() => {
-                        fetchChecklists();
+                        fetchEvents();
                     }}
+                    vendorList={vendorList}
+                    loadingVendors={loadingVendors}
+                    inventoryList={inventoryList}
+                    loadingInventory={loadingInventory}
                 />
-                {selectedEvent && (
-                    <ExecutionChecklistModal
-                        isOpen={checklistModalOpen}
-                        onClose={() => {
-                            setChecklistModalOpen(false);
-                            setSelectedEvent(null);
-                        }}
-                        eventData={selectedEvent}
-                        onSave={() => {
-                            fetchChecklists();
-                        }}
-                        vendorList={vendorList}
-                        loadingVendors={loadingVendors}
-                        inventoryList={inventoryList}
-                        loadingInventory={loadingInventory}
-                    />
-                )}
-                <ConfirmationModal
-                    open={deleteModalOpen}
-                    onClose={handleDeleteCancel}
-                    onConfirm={handleDeleteConfirm}
-                    title="Delete Checklist"
-                    description={
-                        checklistToDelete
-                            ? `Are you sure you want to delete this checklist for "${checklistToDelete.eventName}"? This action cannot be undone.`
-                            : undefined
-                    }
-                    confirmText={deleting ? "Deleting..." : "Delete"}
-                    cancelText="Cancel"
-                    isLoading={deleting}
-                />
-            </div>
+            )}
         </div>
     );
 }

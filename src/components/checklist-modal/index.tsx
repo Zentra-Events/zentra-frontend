@@ -525,7 +525,7 @@ export function ExecutionChecklistModal({
     const modalContent = (
         <ModalBody className={cn("flex flex-col max-h-[calc(100vh-230px)] overflow-hidden")}>
             {/* Left panel: hierarchical tree */}
-            <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 flex overflow-hidden">
                 <div className="w-80 shrink-0 overflow-hidden border-r border-border">
                     <ChecklistHierarchy
                         groups={groups}
@@ -543,7 +543,7 @@ export function ExecutionChecklistModal({
                 </div>
 
                 {/* Right panel: item editor */}
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 overflow-hidden min-h-[calc(100vh-230px)]">
                     {selectedItem ? (
                         <ChecklistItemEditor
                             ref={editorRef}

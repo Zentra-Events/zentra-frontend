@@ -20,6 +20,12 @@ export interface FormikFieldCreatableSelectProps {
     isDisabled?: boolean;
     isClearable?: boolean;
     value?: SelectOption | null;
+    /** Fires on every keystroke in the search input. */
+    onInputChange?: (newValue: string) => void;
+    /** Shows a loading spinner inside the select. */
+    isLoading?: boolean;
+    /** Optional "load more" row appended to the bottom of the option list. */
+    loadMore?: { label?: string; onLoad: () => void };
 }
 
 /**
@@ -39,6 +45,9 @@ export function FormikFieldCreatableSelect({
     isDisabled,
     isClearable,
     value,
+    onInputChange,
+    isLoading,
+    loadMore,
 }: FormikFieldCreatableSelectProps) {
     const selectId = id ?? name;
 
@@ -72,6 +81,9 @@ export function FormikFieldCreatableSelect({
                         placeholder={placeholder}
                         isDisabled={isDisabled}
                         isClearable={isClearable}
+                        isLoading={isLoading}
+                        onInputChange={newValue => onInputChange?.(newValue)}
+                        loadMore={loadMore}
                         showError={showError}
                         errorMessage={errorMessage}
                     />

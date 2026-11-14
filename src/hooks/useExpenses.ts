@@ -97,6 +97,11 @@ export function useExpenses({
     /* ── Data fetching ───────────────────────────────────────────── */
 
     const refetch = useCallback(async () => {
+        // This hook is used by client components that Next.js can also
+        // pre-render. Avoid starting client-side state updates in a
+        // server-side render environment.
+        if (typeof window === "undefined") return;
+
         setLoading(true);
         setError(null);
         try {

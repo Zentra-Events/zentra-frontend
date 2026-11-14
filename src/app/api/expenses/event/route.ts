@@ -7,9 +7,6 @@ export async function GET(request: NextRequest) {
         const url = new URL(request.url);
         const headers = getBackendHeaders(request);
         const backendUrl = `${BACKEND_URL}/api/expenses/event${url.search}`;
-
-        console.log(backendUrl, headers);
-
         const res = await fetch(backendUrl, { headers });
 
         const text = await res.text();

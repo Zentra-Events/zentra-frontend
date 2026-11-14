@@ -1,5 +1,5 @@
 # Single-stage build for Render deployment
-FROM node:20-alpine
+FROM node:26.13.0-alpine
 
 # Install dependencies
 RUN apk add --no-cache libc6-compat

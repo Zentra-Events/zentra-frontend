@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import { useRequestApi } from "@/hooks/useRequestApi";
+import { useServerPagination } from "@/hooks/useServerPagination";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
@@ -29,10 +30,11 @@ import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { downloadCSV } from "@/lib/utils/file";
 import { MenuItem } from "@/types";
 import { AccessButton } from "@/components/shared/access-button";
-import { usePagination } from "@/hooks/usePagination";
 import { DEFAULT_PAGE_SIZE } from "@/constants";
 import { clientTypeOptions } from "@/constants/client";
+import { apiRequest } from "@/lib/api/api-client";
 import { Download, Search, RefreshCw } from "lucide-react";
+import { buildQueryUrl } from "@/lib/api/query-params";
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
@@ -145,8 +147,7 @@ const columns = (
 ];
 
 export default function ClientsPage() {
-    const { request, loading } = useRequestApi<Client[]>();
-    const [clients, setClients] = useState<Client[]>([]);
+    const { request, loading: requestLoading } = useRequestApi();
     const [modalOpen, setModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -154,62 +155,82 @@ export default function ClientsPage() {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const [search, setSearch] = useState("");
     const [typeFilter, setTypeFilter] = useState("");
 
-    const fetchClients = useCallback(async () => {
-        try {
-            const res = await request(API_ENDPOINTS.clients.list, {
-                method: "GET",
-            });
-            if (res !== null) {
-                setClients(Array.isArray(res) ? res : []);
-            }
-        } catch (_err) {
-            toast.error("Failed to fetch clients. Please try again.");
-        }
-    }, [request]);
-
-    useEffect(() => {
-        fetchClients();
-    }, [fetchClients]);
-
-    const filteredClients = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        return clients.filter(client => {
-            const matchesType = !typeFilter || client.clientType === typeFilter;
-            if (!matchesType) return false;
-            if (!q) return true;
-            return [client.name, client.email, client.phone, client.poc, client.address]
-                .filter(Boolean)
-                .some(v => String(v).toLowerCase().includes(q));
-        });
-    }, [clients, search, typeFilter]);
-
-    const totalElements = filteredClients.length;
-    const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
-    const { currentPage, handlePageChange, pagination, setCurrentPage } = usePagination({
+    const {
+        items: clients,
+        total,
         totalPages,
+        currentPage,
+        pageSize,
+        search,
+        setSearch,
+        loading,
+        error,
+        setPage,
+        refetch,
+        reset,
+    } = useServerPagination<Client>({
+        fetchPage: async ({ search: q, page, pageSize: size }) => {
+            const url = buildQueryUrl(API_ENDPOINTS.clients.list, {
+                page: page - 1,
+                size,
+                search: q,
+            });
+            const res = await apiRequest(url);
+            if (!res.ok) {
+                throw new Error(`Failed to fetch clients: ${res.statusText}`);
+            }
+            const data = await res.json();
+            const items = Array.isArray(data) ? (data as Client[]) : [];
+            return { items };
+        },
         pageSize: PAGE_SIZE,
-        totalElements,
-        itemName: "client",
+        filterSignature: JSON.stringify({ typeFilter }),
     });
 
-    // Keep current page valid when filtering shrinks the list.
+    const errorShownRef = useRef(false);
     useEffect(() => {
-        if (currentPage > totalPages) setCurrentPage(totalPages);
-    }, [currentPage, totalPages, setCurrentPage]);
+        if (error && !errorShownRef.current) {
+            errorShownRef.current = true;
+            toast.error(error);
+        }
+        if (!error) {
+            errorShownRef.current = false;
+        }
+    }, [error]);
 
-    const pagedClients = useMemo(() => {
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return filteredClients.slice(start, start + PAGE_SIZE);
-    }, [filteredClients, currentPage]);
+    // The clients API returns a bare array (no total count), so `total` is 0.
+    // Derive a best-effort item count for the pagination "Showing X-Y of Z" text:
+    // the cumulative count of items seen up to and including the current page.
+    const totalItems =
+        total > 0
+            ? total
+            : clients.length > 0
+                ? (currentPage - 1) * pageSize + clients.length
+                : 0;
+
+    const hasMore = currentPage < totalPages;
+
+    const pagination = {
+        currentPage,
+        totalPages,
+        pageSize,
+        totalItems,
+        itemName: "client",
+        hasNextPage: hasMore,
+        hasPreviousPage: currentPage > 1,
+    };
+
+    const emptyMessage =
+        search && total === 0 ? "No clients match your search." : "No clients found.";
 
     const handleResetFilters = useCallback(() => {
         setSearch("");
         setTypeFilter("");
-        setCurrentPage(1);
-    }, [setCurrentPage]);
+        setPage(1);
+        reset();
+    }, [setPage, reset]);
 
     const handleCreate = () => {
         setEditingClient(null);
@@ -245,7 +266,9 @@ export default function ClientsPage() {
             });
 
             toast.success("Client deleted successfully!");
-            fetchClients();
+            // Refresh the current page so the paginated backend list reflects
+            // the deletion, even when the page number has not changed.
+            await refetch();
         } catch {
             toast.error("Failed to delete client. Please try again.");
         } finally {
@@ -261,7 +284,7 @@ export default function ClientsPage() {
     };
 
     const handleExport = () => {
-        const exportData = filteredClients.map(client => ({
+        const exportData = clients.map(client => ({
             Name: client.name,
             Type: client.clientType || "",
             Email: client.email,
@@ -310,21 +333,17 @@ export default function ClientsPage() {
                                 type="text"
                                 placeholder="Search by name, email, phone or POC..."
                                 value={search}
-                                onChange={e => {
-                                    setSearch(e.target.value);
-                                    setCurrentPage(1);
-                                }}
+                                onChange={e => setSearch(e.target.value)}
                                 className="h-10 pl-9"
                             />
                         </div>
                         <div className="sm:w-[180px]">
                             <Select
                                 options={typeFilterOptions}
-                                value={typeFilterOptions.find(o => o.value === typeFilter) || null}
-                                onChange={option => {
-                                    setTypeFilter(option?.value || "");
-                                    setCurrentPage(1);
-                                }}
+                                value={
+                                    typeFilterOptions.find(o => o.value === typeFilter) || null
+                                }
+                                onChange={option => setTypeFilter(option?.value || "")}
                                 placeholder="All Types"
                                 isClearable={false}
                             />
@@ -342,22 +361,18 @@ export default function ClientsPage() {
                 <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
                     <DataTable
                         columns={columns(handleView, handleEdit, handleDeleteClick)}
-                        data={pagedClients}
+                        data={clients}
                         rowKey={row => row.id}
-                        emptyMessage={
-                            clients.length === 0
-                                ? "No clients found."
-                                : "No clients match your search."
-                        }
+                        emptyMessage={emptyMessage}
                         hoverable
                         pagination={pagination}
-                        onPageChange={handlePageChange}
-                        isLoading={loading}
+                        onPageChange={setPage}
+                        isLoading={loading || requestLoading || deleting}
                     />
                 </div>
                 <MobileCardList
                     className="flex flex-col gap-4 md:hidden"
-                    items={pagedClients.map(client => ({ id: client.id, data: client }))}
+                    items={clients.map(client => ({ id: client.id, data: client }))}
                     renderHeader={client => (
                         <div className="flex items-center gap-3">
                             <Avatar name={client.name || "-"} />
@@ -402,20 +417,21 @@ export default function ClientsPage() {
                             </Button>
                         </div>
                     )}
-                    emptyMessage={
-                        clients.length === 0
-                            ? "No clients found."
-                            : "No clients match your search."
-                    }
+                    emptyMessage={emptyMessage}
                     pagination={pagination}
-                    onPageChange={handlePageChange}
-                    isLoading={loading}
+                    onPageChange={setPage}
+                    isLoading={loading || requestLoading || deleting}
                 />
                 <CreateClientModal
                     key={editingClient?.id ?? "create"}
                     open={modalOpen}
                     onClose={handleCloseModal}
-                    onSuccess={fetchClients}
+                    onSuccess={name => {
+                        const searchUnchanged = search === name;
+                        setSearch(name);
+                        setTypeFilter("");
+                        if (searchUnchanged) refetch();
+                    }}
                     editData={editingClient}
                     mode={editingClient ? "edit" : "create"}
                 />

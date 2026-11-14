@@ -16,7 +16,7 @@ interface CreateUserModalProps {
     open: boolean;
     onClose: () => void;
     user?: User | null;
-    onSuccess?: () => void;
+    onSuccess?: (name: string) => void;
 }
 
 export default function CreateUserModal({ open, onClose, user, onSuccess }: CreateUserModalProps) {
@@ -62,7 +62,7 @@ export default function CreateUserModal({ open, onClose, user, onSuccess }: Crea
                 addUser(savedUser);
             }
 
-            if (onSuccess) onSuccess();
+            if (onSuccess) onSuccess(savedUser.name || name);
             toast.success(`User ${isEditMode ? "updated" : "created"} successfully!`);
             onClose();
         } catch {

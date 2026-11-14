@@ -16,7 +16,7 @@ import { Building2, MapPin, UserRound } from "lucide-react";
 interface CreateClientModalProps {
     open: boolean;
     onClose: () => void;
-    onSuccess?: () => void;
+    onSuccess?: (name: string) => void;
     editData?: Client | null;
     mode?: "create" | "edit";
 }
@@ -127,7 +127,7 @@ export default function CreateClientModal({
                 return;
             }
 
-            if (onSuccess) onSuccess();
+            if (onSuccess) onSuccess(values.name);
             toast.success(`Client ${isEdit ? "updated" : "created"} successfully!`);
             onClose();
         } catch {

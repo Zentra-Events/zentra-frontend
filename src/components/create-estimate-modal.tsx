@@ -1420,11 +1420,18 @@ export default function CreateEstimateModal({
             // Additional estimates are always created as new records using the
             // source estimate only as prefill (lastEstimateID). The source estimate's
             // `id`/`version` must NOT be sent as the new record's id.
-            const body = isAdditionalEstimate || createNewVersionOnSave
+            const body = isAdditionalEstimate
                 ? payload
-                : prefillData.id
-                  ? { ...payload, id: prefillData.id, version: prefillData.version }
-                  : payload;
+                : createNewVersionOnSave
+                  ? { ...payload, versionTitle: prefillData.versionTitle }
+                  : prefillData.id
+                    ? {
+                          ...payload,
+                          id: prefillData.id,
+                          version: prefillData.version,
+                          versionTitle: prefillData.versionTitle,
+                      }
+                    : payload;
 
             if (isAdditionalEstimate) {
                 setPendingAdditionalEstimate({

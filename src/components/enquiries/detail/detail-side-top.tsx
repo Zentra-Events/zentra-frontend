@@ -6,7 +6,13 @@ import { Enquiry } from "@/types/enquiry";
 import { ENQUIRY_PRIORITY_OPTIONS, type EnquiryPriorityValue } from "@/constants/enquiry";
 import { Select } from "@/components/ui/select";
 import { useUsers } from "@/hooks/useUsers";
-import { getAssigneeName, normalizeStatus, PRIMARY_STATUSES, statusLabel } from "./detail-design";
+import {
+    getAssigneeName,
+    isExceptionalStatus,
+    normalizeStatus,
+    PRIMARY_STATUSES,
+    statusLabel,
+} from "./detail-design";
 
 interface P {
     e: Enquiry;
@@ -49,6 +55,7 @@ export function DetailSideTop(p: P) {
     }, [users, assignee]);
 
     const currentStatus = normalizeStatus(p.status);
+    const statusDisabled = disabled || statusSaving || isExceptionalStatus(currentStatus);
     const selectedStatus =
         statusOptions.find(o => o.value === currentStatus) ??
         (currentStatus ? { value: currentStatus, label: statusLabel(currentStatus) } : null);
@@ -67,7 +74,7 @@ export function DetailSideTop(p: P) {
                         aria-label="Enquiry status"
                         options={statusOptions}
                         value={selectedStatus}
-                        isDisabled={disabled || statusSaving}
+                        isDisabled={statusDisabled}
                         isLoading={statusSaving}
                         isSearchable={false}
                         placeholder="Select status"

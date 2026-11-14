@@ -1,10 +1,11 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useFormik } from "formik";
 import { toast } from "sonner";
 
 import { useRequestApi } from "@/hooks/useRequestApi";
 import { useUsers } from "@/hooks/useUsers";
+import { useServerPagination } from "@/hooks/useServerPagination";
 import { Button } from "@/components/ui/button";
 import { Badge, PageHeader } from "@/components/ui";
 import { MenuList } from "@/components/ui";
@@ -17,8 +18,7 @@ import { UsersTableFilters } from "@/components/users-table-filters";
 import { ConfirmationModal } from "@/components/shared/confirmation-modal";
 import { User, UsersTableFiltersFormValues } from "@/types/user";
 import { DEFAULT_PAGE_SIZE } from "@/constants";
-import { APIResponse, MenuItem } from "@/types";
-import { usePagination } from "@/hooks/usePagination";
+import { MenuItem } from "@/types";
 import { downloadCSV } from "@/lib/utils/file";
 import { buildQueryUrl } from "@/lib/api/query-params";
 import { userFiltersInitialValues, rolesLabelMap, statusLabelMap } from "@/constants/user";
@@ -26,6 +26,7 @@ import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { useAuth } from "@/context/auth";
 import { AccessButton } from "@/components/shared/access-button";
 import { Download } from "lucide-react";
+import { apiRequest } from "@/lib/api/api-client";
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
@@ -129,71 +130,97 @@ const columns = (
 export default function UsersPage() {
     const { user: currentUser } = useAuth();
     const canEditUsers = currentUser?.role === "admin" || currentUser?.role === "super_admin";
-    const { request, loading } = useRequestApi<APIResponse<User[]>>();
+    const { request, loading: requestLoading } = useRequestApi();
     const { users: allUsers, deleteUser } = useUsers();
-    const [result, setResult] = useState<APIResponse<User[]>>();
     const [modalOpen, setModalOpen] = useState(false);
     const [editUser, setEditUser] = useState<User | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
     const [deleting, setDeleting] = useState(false);
 
-    const users = result?.content || [];
-    const totalElements = result?.totalElements || 0;
-    const totalPages = result?.totalPages || 1;
-
-    const { currentPage, handlePageChange, pagination, setCurrentPage } = usePagination({
-        totalPages,
-        pageSize: PAGE_SIZE,
-        totalElements,
-        itemName: "user",
-    });
-
     const formik = useFormik<UsersTableFiltersFormValues>({
         initialValues: userFiltersInitialValues,
         onSubmit: () => {
-            setCurrentPage(1);
+            // Pagination/search is driven by `useServerPagination`; the form is
+            // only a state container for the filter controls.
         },
     });
     const { values } = formik;
 
-    const handleResetFilters = useCallback(() => {
-        formik.resetForm();
-        setCurrentPage(1);
-    }, [formik, setCurrentPage]);
-
-    // Search, role filter and sort are applied by the backend via query params,
-    // and pagination is handled by the backend too. The centralized store is only
-    // used here to sync deletes (drop the user from `UserSelectDropdown` etc.) and
-    // to export the master user list.
-    const fetchUsers = useCallback(async () => {
-        try {
+    const {
+        items: users,
+        total,
+        totalPages,
+        currentPage,
+        pageSize,
+        search,
+        setSearch,
+        loading,
+        error,
+        setPage,
+        refetch,
+        reset,
+    } = useServerPagination<User>({
+        fetchPage: async ({ search: q, page, pageSize: size }) => {
             const url = buildQueryUrl(API_ENDPOINTS.users, {
-                page: currentPage - 1,
-                size: PAGE_SIZE,
-                search: values.search,
+                page: page - 1,
+                size,
+                search: q,
                 role: values.role,
                 sortBy: values.sortBy,
                 direction: values.sortOrder,
             });
-            const res = await request(url, {
-                method: "GET",
-            });
-            if (res !== null) {
-                setResult(res);
+            const res = await apiRequest(url);
+            if (!res.ok) {
+                throw new Error(`Failed to fetch users: ${res.statusText}`);
             }
-        } catch (_err) {
-            toast.error("Failed to fetch users. Please try again.");
+            const data = (await res.json()) as {
+                content: User[];
+                totalElements: number;
+            };
+            return { items: data.content ?? [], total: data.totalElements ?? 0 };
+        },
+        pageSize: PAGE_SIZE,
+        filterSignature: JSON.stringify({
+            role: values.role,
+            sortBy: values.sortBy,
+            sortOrder: values.sortOrder,
+        }),
+    });
+
+    // Keep the hook's search in sync with the formik search field. The hook
+    // debounces it so searches are not issued on every keystroke.
+    useEffect(() => {
+        setSearch(values.search);
+    }, [values.search, setSearch]);
+
+    const errorShownRef = useRef(false);
+    useEffect(() => {
+        if (error && !errorShownRef.current) {
+            errorShownRef.current = true;
+            toast.error(error);
         }
-    }, [request, currentPage, values.search, values.role, values.sortBy, values.sortOrder]);
+        if (!error) {
+            errorShownRef.current = false;
+        }
+    }, [error]);
 
-    useEffect(() => {
-        fetchUsers();
-    }, [fetchUsers]);
+    const hasMore = currentPage < totalPages;
 
-    useEffect(() => {
-        formik.submitForm();
-    }, [values.search, values.role, values.sortBy, values.sortOrder]);
+    const pagination = {
+        currentPage,
+        totalPages,
+        pageSize,
+        totalItems: total,
+        itemName: "user",
+        hasNextPage: hasMore,
+        hasPreviousPage: currentPage > 1,
+    };
+
+    const handleResetFilters = useCallback(() => {
+        formik.resetForm();
+        reset();
+    }, [formik, reset]);
 
     const handleCreate = () => {
         setEditUser(null);
@@ -218,17 +245,16 @@ export default function UsersPage() {
                 method: "DELETE",
             });
 
-            // Check if request failed (returns null on error)
             if (result === null) {
                 toast.error("Failed to delete user. Please try again.");
                 return;
             }
 
             toast.success("User deleted successfully!");
-            // Synchronize the centralized store so the dropdown drops the deleted user.
             deleteUser(userToDelete.id);
-            // Refresh the table so the paginated backend list reflects the deletion.
-            await fetchUsers();
+            // Refresh the current page so the paginated backend list reflects
+            // the deletion.
+            void refetch();
         } catch {
             toast.error("Failed to delete user. Please try again.");
         } finally {
@@ -253,6 +279,9 @@ export default function UsersPage() {
         }));
         downloadCSV(exportData, "users-export.csv");
     };
+
+    const emptyMessage =
+        search && total === 0 ? "No users match your search." : "No users found.";
 
     return (
         <div className="flex flex-col gap-6 sm:gap-8">
@@ -287,13 +316,12 @@ export default function UsersPage() {
                         columns={columns(handleEdit, handleDeleteClick, canEditUsers)}
                         data={users}
                         rowKey={row => row.id}
-                        emptyMessage="No users found."
+                        emptyMessage={emptyMessage}
                         hoverable
                         pagination={pagination}
-                        onPageChange={handlePageChange}
-                        isLoading={loading}
+                        onPageChange={setPage}
+                        isLoading={loading || requestLoading || deleting}
                     />
-                    {/* Mobile cards */}
                 </div>
                 <MobileCardList
                     className="flex flex-col gap-4 md:hidden"
@@ -337,18 +365,21 @@ export default function UsersPage() {
                             </Button>
                         </div>
                     )}
-                    emptyMessage="No users found."
+                    emptyMessage={emptyMessage}
                     pagination={pagination}
-                    onPageChange={handlePageChange}
-                    isLoading={loading}
+                    onPageChange={setPage}
+                    isLoading={loading || requestLoading || deleting}
                 />
                 <CreateUserModal
                     open={modalOpen}
                     onClose={() => setModalOpen(false)}
                     user={editUser}
-                    // The modal synchronizes the centralized store directly from
-                    // the API response on create/update via `addUser`/`updateUser`,
-                    // so the assignee dropdown stays in sync without a full refetch.
+                    onSuccess={name => {
+                        const searchUnchanged = search === name;
+                        void formik.setFieldValue("search", name);
+                        void formik.setFieldValue("role", "");
+                        if (searchUnchanged) refetch();
+                    }}
                 />
                 <ConfirmationModal
                     open={deleteModalOpen}

@@ -251,7 +251,11 @@ export function buildEstimateDocumentModel(estimate: EstimateDto, eventName?: st
                   ? moment(estimate.enquiryDate).format("DD/MM/YYYY")
                   : moment().format("DD/MM/YYYY"),
         },
-        { type: "meta", label: "Estimate no", value: buildEstimateNumber(estimate) },
+        {
+            type: "meta",
+            label: "Estimate no",
+            value: estimate.versionTitle || buildEstimateNumber(estimate),
+        },
         { type: "table-header" },
     ];
 

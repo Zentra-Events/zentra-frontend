@@ -120,6 +120,7 @@ export interface EstimateLineItemPayload {
 
 export interface CreateEstimatePayload {
     highlvelRequirement: string;
+    versionTitle?: string;
     enquiryDate?: string | null;
     fromDate?: string | null;
     toDate?: string | null;

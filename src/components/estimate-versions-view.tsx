@@ -455,8 +455,6 @@ export function EstimateVersionsView({
                                         normalizedEstimateStatus.includes("UNDER_REVIEW") ||
                                         normalizedEstimateStatus.includes("SENT_TO_CLIENT");
 
-                                    console.log({ isReview });
-
                                     const isFinal = estimateStatus === "FINAL";
                                     const hasStatus = Boolean(estimateStatus);
 

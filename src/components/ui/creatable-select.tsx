@@ -27,6 +27,8 @@ export interface CreatableSelectProps {
     onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
     onFocus?: (event: React.FocusEvent<HTMLElement>) => void;
     isLoading?: boolean;
+    /** Optional "load more" row appended to the bottom of the option list. */
+    loadMore?: { label?: string; onLoad: () => void };
 }
 
 /**
@@ -54,6 +56,7 @@ export function CreatableSelectField({
     onBlur,
     onFocus,
     isLoading,
+    loadMore,
 }: CreatableSelectProps) {
     const selectId = id ?? "creatable-select";
     const listId = `${selectId}-listbox`;
@@ -123,7 +126,7 @@ export function CreatableSelectField({
         setOpen(false);
     };
 
-    const totalRows = filtered.length + (showCreateRow ? 1 : 0);
+    const totalRows = filtered.length + (showCreateRow ? 1 : 0) + (loadMore ? 1 : 0);
 
     return (
         <div className={cn("flex flex-col gap-1.5", wrapperClassName)}>
@@ -264,6 +267,19 @@ export function CreatableSelectField({
                                     )}
                                 >
                                     Create &quot;{inputText.trim()}&quot;
+                                </button>
+                            </li>
+                        )}
+                        {loadMore && !isLoading && (filtered.length > 0 || showCreateRow) && (
+                            <li role="option" aria-selected={false}>
+                                <button
+                                    type="button"
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={loadMore.onLoad}
+                                    onMouseEnter={() => setHighlight(totalRows - 1)}
+                                    className="flex w-full items-center rounded px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+                                >
+                                    {loadMore.label ?? "Load more…"}
                                 </button>
                             </li>
                         )}
