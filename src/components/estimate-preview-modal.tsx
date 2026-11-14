@@ -343,7 +343,6 @@ export function EstimatePreviewModal({ estimate, eventName, onClose }: EstimateP
                     Close
                 </Button>
                 <Button
-                    variant="outline"
                     onClick={handleDownloadPdf}
                     disabled={downloading !== null}
                     className="flex items-center gap-2"
@@ -352,7 +351,6 @@ export function EstimatePreviewModal({ estimate, eventName, onClose }: EstimateP
                     {downloading === "pdf" ? "Downloading…" : "Download PDF"}
                 </Button>
                 <Button
-                    variant="primary"
                     onClick={handleDownloadExcel}
                     disabled={downloading !== null}
                     className="flex items-center gap-2"

@@ -82,6 +82,10 @@ interface CategorySection {
     subCategories: SubCategoryGroup[];
 }
 
+function calculateLineItemAmount(item: Pick<LineItem, "qty" | "rate" | "days">): number {
+    return item.qty * item.rate * item.days;
+}
+
 interface Financials {
     subtotal: number;
     gstType: string;
@@ -444,7 +448,8 @@ export function CreatePurchaseOrderModal({
     /* ---------- Computed subtotal from items ---------- */
     const computedSubtotal = useMemo(() => {
         return categories.reduce(
-            (sum, section) => sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
+            (sum, section) =>
+                sum + section.items.reduce((s, item) => s + calculateLineItemAmount(item), 0),
             0,
         );
     }, [categories]);
@@ -509,7 +514,7 @@ export function CreatePurchaseOrderModal({
                     const itemsForVendor = groupItemsByCategory(itemList, v.id);
                     const sub = itemsForVendor.reduce(
                         (sum, section) =>
-                            sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
+                            sum + section.items.reduce((s, item) => s + calculateLineItemAmount(item), 0),
                         0,
                     );
                     next[v.id] = buildFinancialsFromSummary(vs, sub, v.id);
@@ -528,7 +533,7 @@ export function CreatePurchaseOrderModal({
                 const cats = groupItemsByCategory(editableItems, v.id);
                 const computed = cats.reduce(
                     (sum, section) =>
-                        sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
+                        sum + section.items.reduce((s, item) => s + calculateLineItemAmount(item), 0),
                     0,
                 );
                 const current = next[v.id];
@@ -600,7 +605,7 @@ export function CreatePurchaseOrderModal({
             const cats = groupItemsByCategory(editableItems, v.id);
             const computed = cats.reduce(
                 (sum, section) =>
-                    sum + section.items.reduce((s, item) => s + item.qty * item.rate, 0),
+                    sum + section.items.reduce((s, item) => s + calculateLineItemAmount(item), 0),
                 0,
             );
             return Math.abs(f.subtotal - computed) > 0.01;
@@ -834,7 +839,7 @@ export function CreatePurchaseOrderModal({
             cellClassName: "w-28",
             render: (item: LineItem) => (
                 <span className="text-sm font-bold text-foreground">
-                    {formatCurrency(item.qty * item.rate)}
+                    {formatCurrency(calculateLineItemAmount(item))}
                 </span>
             ),
         },

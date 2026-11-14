@@ -614,8 +614,15 @@ export default function EventsPage() {
                             ? `Are you sure you want to delete "${eventToDelete.title}"? This action cannot be undone.`
                             : undefined
                     }
-                    confirmText="Delete"
+                    confirmText={
+                        eventToDelete && deletingIds.has(String(eventToDelete.id))
+                            ? "Deleting..."
+                            : "Delete"
+                    }
                     cancelText="Cancel"
+                    isLoading={
+                        eventToDelete !== null && deletingIds.has(String(eventToDelete.id))
+                    }
                 />
             </div>
         </div>

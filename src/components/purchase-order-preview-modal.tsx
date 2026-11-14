@@ -170,7 +170,7 @@ export function groupItemsByCategory(
         // Only explicitly-marked inventory items use the "SELF" vendor financials.
         // Plain vendorless items have no vendor financials, so GST/TDS = 0.
         const isInventoryItem = Boolean(item.inventoryID);
-        const lookupKey = isInventoryItem ? "SELF" : item.vendor ?? "";
+        const lookupKey = isInventoryItem ? "SELF" : (item.vendor ?? "");
         const fin = vendorFinancials.get(lookupKey);
         const gstPct = fin?.gst ?? 0;
         const tdsPct = fin?.tds ?? 0;
@@ -462,9 +462,7 @@ function CategoryItemsTable({ categories }: { categories: CategoryPurchaseRow[] 
                     <th className="border border-black px-2 py-2 text-center font-bold w-10">
                         Sl. No
                     </th>
-                    <th className="border border-black px-2 py-2 text-center font-bold">
-                        Item
-                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold">Item</th>
                     <th className="border border-black px-2 py-2 text-center font-bold">
                         Description
                     </th>
@@ -492,9 +490,7 @@ function CategoryItemsTable({ categories }: { categories: CategoryPurchaseRow[] 
                     <th className="border border-black px-2 py-2 text-center font-bold w-20">
                         Net Total
                     </th>
-                    <th className="border border-black px-2 py-2 text-center font-bold">
-                        Vendor
-                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold">Vendor</th>
                 </tr>
             </thead>
             <tbody>
@@ -744,9 +740,7 @@ export function VendorFinancialSummary({ vendorRows }: { vendorRows: VendorFinan
     );
 }
 
-export function buildUnassignedVendorRow(
-    items: EventResponse["items"],
-): VendorFinancialRow | null {
+export function buildUnassignedVendorRow(items: EventResponse["items"]): VendorFinancialRow | null {
     const rawItems = (items ?? []) as RawItemWithCategory[];
     // Unassigned = no vendor and not explicitly sourced from inventory.
     const unassigned = rawItems.filter(item => !item.vendor && !item.inventoryID);
@@ -1057,7 +1051,10 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Service Charge ({eventData.serviceCharge ?? 0}%)
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right text-green-700"
+                            colSpan={4}
+                        >
                             {formatExportCurrency(summary.serviceChargeAmount)}
                         </td>
                     </tr>
@@ -1065,7 +1062,10 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Discount
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right text-destructive"
+                            colSpan={4}
+                        >
                             −{formatExportCurrency(summary.discountAmount)}
                         </td>
                     </tr>
@@ -1081,7 +1081,10 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             GST Amount
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right text-green-700"
+                            colSpan={4}
+                        >
                             {formatExportCurrency(summary.gstAmount)}
                         </td>
                     </tr>
@@ -1103,7 +1106,10 @@ function ClientBillSummary({
                                 ? ` (${formatShortDate(amountRecievedFromClientDate)})`
                                 : null}
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right text-green-700"
+                            colSpan={4}
+                        >
                             {formatExportCurrency(summary.amountReceivedFromClient)}
                         </td>
                     </tr>
@@ -1111,7 +1117,10 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             TDS Deducted by Client
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right text-destructive" colSpan={4}>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right text-destructive"
+                            colSpan={4}
+                        >
                             −{formatExportCurrency(summary.tdsDeducted)}
                         </td>
                     </tr>
@@ -1132,7 +1141,10 @@ function ClientBillSummary({
                         <td className="border border-black px-3 py-1.5" colSpan={4}>
                             Advance
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right text-green-700" colSpan={4}>
+                        <td
+                            className="border border-black px-3 py-1.5 text-right text-green-700"
+                            colSpan={4}
+                        >
                             {formatExportCurrency(summary.advance)}
                         </td>
                     </tr>
@@ -1416,7 +1428,6 @@ export function PurchaseOrderPreviewModal({
                     Close
                 </Button>
                 <Button
-                    variant="outline"
                     onClick={() => handleDownload("pdf")}
                     disabled={downloading !== null}
                     className="flex items-center gap-2"
@@ -1425,7 +1436,6 @@ export function PurchaseOrderPreviewModal({
                     {downloading === "pdf" ? "Downloading…" : "Download PDF"}
                 </Button>
                 <Button
-                    variant="primary"
                     onClick={() => handleDownload("excel")}
                     disabled={downloading !== null}
                     className="flex items-center gap-2"

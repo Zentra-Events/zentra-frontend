@@ -136,6 +136,7 @@ export default function UsersPage() {
     const [editUser, setEditUser] = useState<User | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const users = result?.content || [];
     const totalElements = result?.totalElements || 0;
@@ -211,6 +212,7 @@ export default function UsersPage() {
 
     const handleDeleteConfirm = async () => {
         if (!userToDelete) return;
+        setDeleting(true);
         try {
             const result = await request(`${API_ENDPOINTS.users}/${userToDelete.id}`, {
                 method: "DELETE",
@@ -230,6 +232,7 @@ export default function UsersPage() {
         } catch {
             toast.error("Failed to delete user. Please try again.");
         } finally {
+            setDeleting(false);
             setDeleteModalOpen(false);
             setUserToDelete(null);
         }
@@ -357,8 +360,9 @@ export default function UsersPage() {
                             ? `Are you sure you want to delete "${userToDelete.name}"? This action cannot be undone.`
                             : undefined
                     }
-                    confirmText="Delete"
+                    confirmText={deleting ? "Deleting..." : "Delete"}
                     cancelText="Cancel"
+                    isLoading={deleting}
                 />
             </div>
         </div>

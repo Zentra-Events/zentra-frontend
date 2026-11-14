@@ -126,6 +126,7 @@ export default function ChecklistsPage() {
     const [_selectedChecklist, set_selectedChecklist] = useState<ChecklistFormData | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [checklistToDelete, setChecklistToDelete] = useState<ChecklistFormData | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const fetchChecklists = useCallback(async () => {
         try {
@@ -164,6 +165,7 @@ export default function ChecklistsPage() {
 
     const handleDeleteConfirm = async () => {
         if (!checklistToDelete || !checklistToDelete.id) return;
+        setDeleting(true);
         try {
             await request(`${API_ENDPOINTS.checklists.detail(checklistToDelete.id)}`, {
                 method: "DELETE",
@@ -174,6 +176,7 @@ export default function ChecklistsPage() {
         } catch {
             toast.error("Failed to delete checklist. Please try again.");
         } finally {
+            setDeleting(false);
             setDeleteModalOpen(false);
             setChecklistToDelete(null);
         }
@@ -304,8 +307,9 @@ export default function ChecklistsPage() {
                             ? `Are you sure you want to delete this checklist for "${checklistToDelete.eventName}"? This action cannot be undone.`
                             : undefined
                     }
-                    confirmText="Delete"
+                    confirmText={deleting ? "Deleting..." : "Delete"}
                     cancelText="Cancel"
+                    isLoading={deleting}
                 />
             </div>
         </div>

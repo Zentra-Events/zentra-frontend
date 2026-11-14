@@ -40,15 +40,22 @@ const validationSchema = Yup.object({
     ),
 });
 
-export default function CreateVendorModal({ isOpen, onClose, onSubmit }: CreateVendorModalProps) {
+export default function CreateVendorModal({
+    isOpen,
+    onClose,
+    onSubmit,
+    mode = "create",
+    vendor,
+}: CreateVendorModalProps) {
+    const isEdit = mode === "edit";
     const initialValues: VendorFormData = {
-        name: "",
-        billingAddress: "",
-        gst: 0,
-        tds: 0,
-        gstCertificate: "",
-        phone: "",
-        items: [],
+        name: vendor?.name ?? "",
+        billingAddress: vendor?.billingAddress ?? "",
+        gst: vendor?.gst ?? 0,
+        tds: vendor?.tds ?? 0,
+        gstCertificate: vendor?.gstCertificate ?? "",
+        phone: vendor?.phone ?? "",
+        items: vendor?.items ?? [],
     };
 
     const handleSubmit = async (
@@ -59,6 +66,7 @@ export default function CreateVendorModal({ isOpen, onClose, onSubmit }: CreateV
             setStatus(null);
 
             const payload = {
+                ...(isEdit && vendor?.id ? { id: vendor.id } : {}),
                 name: values.name,
                 billingAddress: values.billingAddress,
                 gst: Number(values.gst),
@@ -81,10 +89,10 @@ export default function CreateVendorModal({ isOpen, onClose, onSubmit }: CreateV
 
             if (!res.ok) {
                 await res.text().catch(() => "");
-                throw new Error(`Failed to create vendor: ${res.status}`);
+                throw new Error(`Failed to ${isEdit ? "update" : "create"} vendor: ${res.status}`);
             }
 
-            toast.success("Vendor created successfully");
+            toast.success(isEdit ? "Vendor updated successfully" : "Vendor created successfully");
             onSubmit();
             onClose();
         } catch (err) {
@@ -100,8 +108,8 @@ export default function CreateVendorModal({ isOpen, onClose, onSubmit }: CreateV
         <Modal
             open={isOpen}
             onClose={onClose}
-            title="Add New Vendor"
-            description="Fill in the vendor details below"
+            title={isEdit ? "Edit Vendor" : "Add New Vendor"}
+            description={isEdit ? "Update the vendor details below" : "Fill in the vendor details below"}
             size="xxl"
         >
             <Formik
@@ -290,7 +298,7 @@ export default function CreateVendorModal({ isOpen, onClose, onSubmit }: CreateV
                                 Cancel
                             </Button>
                             <Button isLoading={isSubmitting} type="submit">
-                                Add Vendor
+                                {isEdit ? "Save Changes" : "Add Vendor"}
                             </Button>
                         </ModalFooter>
                     </Form>

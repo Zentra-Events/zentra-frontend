@@ -252,6 +252,35 @@ describe("EstimateVersionsView", () => {
             expect(screen.queryByRole("button", { name: /clone/i })).not.toBeInTheDocument();
             expect(screen.queryByTestId("menu-item-clone")).not.toBeInTheDocument();
         });
+
+        it.each(["UNDER_CLIENT_REVIEW", "Under Review", "Sent to Client"])(
+            "shows Edit for estimate status %s",
+            async status => {
+                const estimate = baseEstimate({
+                    id: "est-review",
+                    estimateStatus: status as EstimateVersionStatus,
+                    versionTitle: "Version under review",
+                });
+                const onVersionSelect = vi.fn();
+                mockApiRequest.mockResolvedValue(mockVersionsResponse([estimate]));
+
+                renderView({ onVersionSelect });
+                await waitFor(() => {
+                    expect(screen.getByText("Version under review")).toBeInTheDocument();
+                });
+
+                const editButton = screen.getByRole("button", { name: /^edit$/i });
+                expect(editButton).toBeEnabled();
+                fireEvent.click(editButton);
+
+                expect(onVersionSelect).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        id: "est-review",
+                        estimateStatus: status,
+                    }),
+                );
+            },
+        );
     });
 
     describe("status change / approval flow", () => {
@@ -331,6 +360,7 @@ describe("EstimateVersionsView", () => {
             });
 
             expect(screen.getByRole("button", { name: /revert to draft/i })).toBeInTheDocument();
+            expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
         });
 
         it("shows Send to Client button for DRAFT estimates", async () => {

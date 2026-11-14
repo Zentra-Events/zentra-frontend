@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MenuList } from "@/components/ui";
-import { MoreVerticalIcon, TrashIcon, FileTextIcon, StorePlusIcon } from "@/components/ui/icons";
+import { MoreVerticalIcon, TrashIcon, FileTextIcon, StorePlusIcon, PencilIcon } from "@/components/ui/icons";
 import CreateVendorModal from "@/components/create-vendor-modal";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api/api-client";
@@ -60,6 +60,7 @@ const vendorItemColumns: TableColumn<VendorItem>[] = [
 
 const columns = (
     onView: (row: Vendor) => void,
+    onEdit: (row: Vendor) => void,
     onDelete: (row: Vendor) => void,
 ): Column<Vendor>[] => [
     {
@@ -104,6 +105,13 @@ const columns = (
                     onClick: () => onView(row),
                 },
                 {
+                    key: "edit",
+                    label: "Edit",
+                    icon: <PencilIcon size={16} />,
+                    onClick: () => onEdit(row),
+                    scopes: ["w:vendors"],
+                },
+                {
                     key: "delete",
                     label: "Delete",
                     icon: <TrashIcon size={16} />,
@@ -137,7 +145,9 @@ export default function VendorsPage() {
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+    const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
     const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const fetchVendors = useCallback(async () => {
         setLoading(true);
@@ -162,6 +172,12 @@ export default function VendorsPage() {
 
     const openCreateModal = () => {
         setIsModalOpen(true);
+        setEditingVendor(null);
+    };
+
+    const openEditModal = (vendor: Vendor) => {
+        setEditingVendor(vendor);
+        setIsModalOpen(true);
     };
 
     const handleView = (vendor: Vendor) => {
@@ -176,6 +192,7 @@ export default function VendorsPage() {
 
     const handleDeleteConfirm = async () => {
         if (!vendorToDelete) return;
+        setDeleting(true);
         try {
             const res = await apiRequest(`/api/vendors/${vendorToDelete.id}`, {
                 method: "DELETE",
@@ -191,6 +208,7 @@ export default function VendorsPage() {
         } catch (_error) {
             toast.error("Failed to delete vendor. Please try again.");
         } finally {
+            setDeleting(false);
             setDeleteModalOpen(false);
             setVendorToDelete(null);
         }
@@ -246,7 +264,7 @@ export default function VendorsPage() {
             <div className="flex flex-col gap-4 sm:gap-1">
                 <div className="rounded-lg bg-surface p-4 sm:p-6 shadow-sm hidden md:block">
                     <DataTable
-                        columns={columns(handleView, handleDeleteClick)}
+                        columns={columns(handleView, openEditModal, handleDeleteClick)}
                         data={vendors}
                         rowKey={row => row.id}
                         emptyMessage="No vendors found."
@@ -289,6 +307,13 @@ export default function VendorsPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => openEditModal(vendor)}
+                            >
+                                Edit
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={() => handleDeleteClick(vendor)}
                             >
                                 Delete
@@ -308,8 +333,9 @@ export default function VendorsPage() {
                             ? `Are you sure you want to delete "${vendorToDelete.name}"? This action cannot be undone.`
                             : undefined
                     }
-                    confirmText="Delete"
+                    confirmText={deleting ? "Deleting..." : "Delete"}
                     cancelText="Cancel"
+                    isLoading={deleting}
                 />
                 {/* View Vendor Modal */}
                 <Modal
@@ -367,13 +393,16 @@ export default function VendorsPage() {
                         </Button>
                     </ModalFooter>
                 </Modal>
-                {/* Create Vendor Modal */}
+                {/* Create / Edit Vendor Modal */}
                 <CreateVendorModal
                     isOpen={isModalOpen}
                     onClose={() => {
                         setIsModalOpen(false);
+                        setEditingVendor(null);
                     }}
                     onSubmit={handleVendorSaved}
+                    mode={editingVendor ? "edit" : "create"}
+                    vendor={editingVendor}
                 />
             </div>
         </div>

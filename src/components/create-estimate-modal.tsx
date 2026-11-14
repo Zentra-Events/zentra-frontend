@@ -166,6 +166,7 @@ interface CreateEstimateModalProps {
     onClose: () => void;
     initialData?: Partial<EstimateDto> & { enquiryId?: string };
     isAdditionalEstimate?: boolean;
+    createNewVersionOnSave?: boolean;
     onSaved: (estimate: EstimateDto) => void;
 }
 
@@ -199,6 +200,7 @@ export default function CreateEstimateModal({
     initialData,
     onSaved,
     isAdditionalEstimate = false,
+    createNewVersionOnSave = false,
 }: CreateEstimateModalProps) {
     const [prefillData, setPrefillData] = useState<
         (Partial<EstimateDto> & { enquiryId?: string }) | undefined
@@ -252,13 +254,16 @@ export default function CreateEstimateModal({
     } | null>(null);
     const initialFormDataRef = useRef<EstimateDraftFormData | null>(null);
     const closeEditorRef = useRef<(() => void) | null>(null);
-    const recoveryInProgressRef = useRef(false);
     const handledRecoveryDraftIdsRef = useRef(new Set<string>());
+    const recoveryChecksRef = useRef(
+        new Map<string, Promise<DraftRecord<EstimateDraftFormData> | null>>(),
+    );
+    const recoveryActionDraftIdsRef = useRef(new Set<string>());
 
     useEffect(() => {
         if (!isOpen) {
             handledRecoveryDraftIdsRef.current.clear();
-            recoveryInProgressRef.current = false;
+            recoveryActionDraftIdsRef.current.clear();
         }
     }, [isOpen]);
 
@@ -522,24 +527,28 @@ export default function CreateEstimateModal({
     useEffect(() => {
         // Avoid reopening a draft the user already recovered or dismissed.
         if (!isOpen || (!draftIdentity.enquiryId && !draftIdentity.entityId)) return;
-        if (
-            handledRecoveryDraftIdsRef.current.has(draftIdentity.draftId) ||
-            recoveryInProgressRef.current
-        )
-            return;
+        const draftId = draftIdentity.draftId;
+        if (handledRecoveryDraftIdsRef.current.has(draftId)) return;
 
         let cancelled = false;
         const checkRecovery = async () => {
-            recoveryInProgressRef.current = true;
             try {
-                const existing = await draftStorage.get<EstimateDraftFormData>(
-                    draftIdentity.draftId,
-                );
-                if (
-                    cancelled ||
-                    handledRecoveryDraftIdsRef.current.has(draftIdentity.draftId)
-                )
-                    return;
+                // Strict Mode can mount, clean up, and rerun this effect before the
+                // first IndexedDB read settles. Share that read so the active effect
+                // still receives its result without allowing stale effects to update UI.
+                let check = recoveryChecksRef.current.get(draftId);
+                if (!check) {
+                    check = draftStorage.get<EstimateDraftFormData>(draftId);
+                    recoveryChecksRef.current.set(draftId, check);
+                    const clearCheck = () => {
+                        if (recoveryChecksRef.current.get(draftId) === check) {
+                            recoveryChecksRef.current.delete(draftId);
+                        }
+                    };
+                    void check.then(clearCheck, clearCheck);
+                }
+                const existing = await check;
+                if (cancelled || handledRecoveryDraftIdsRef.current.has(draftId)) return;
                 if (!existing) return;
 
                 const restored = estimateDraftAdapter.restore(existing.formData);
@@ -552,21 +561,25 @@ export default function CreateEstimateModal({
                 setShowRecoveryModal(true);
             } catch (error) {
                 console.error("Draft recovery check failed", error);
-            } finally {
-                if (!cancelled) recoveryInProgressRef.current = false;
             }
         };
 
         void checkRecovery();
         return () => {
             cancelled = true;
-            recoveryInProgressRef.current = false;
         };
-    }, [isOpen, draftIdentity, recovery]);
+    }, [isOpen, draftIdentity.draftId, draftIdentity.enquiryId, draftIdentity.entityId, recovery]);
 
     const handleRecoverDraft = useCallback(() => {
         if (!recoveryDraft) return;
-        handledRecoveryDraftIdsRef.current.add(recoveryDraft.draftId);
+        const draftId = recoveryDraft.draftId;
+        if (recoveryActionDraftIdsRef.current.has(draftId)) return;
+        recoveryActionDraftIdsRef.current.add(draftId);
+        handledRecoveryDraftIdsRef.current.add(draftId);
+        // Hide the prompt immediately. The editor remains mounted underneath it,
+        // so restoring the form does not remount the main modal.
+        showRecoveryModalRef.current = false;
+        setShowRecoveryModal(false);
         const restored = estimateDraftAdapter.restore(recoveryDraft.formData);
         const recoveredIdentity = estimateDraftAdapter.getIdentity({
             entityId: isEditingEstimate ? initialData?.id : undefined,
@@ -610,11 +623,8 @@ export default function CreateEstimateModal({
         });
         setSelectedEnquiryId(restored.enquiryId || undefined);
         setSelectedClientId(restored.client || "");
-        showRecoveryModalRef.current = false;
-        setShowRecoveryModal(false);
         setRecoveryDraft(null);
         setRecoveryInfoData(null);
-        recoveryInProgressRef.current = false;
     }, [recoveryDraft, isEditingEstimate, initialData?.id]);
 
     const handleDiscardDraft = useCallback(async () => {
@@ -634,11 +644,9 @@ export default function CreateEstimateModal({
         draftFormDataRef.current = null;
         initialFormDataRef.current = null;
         showRecoveryModalRef.current = false;
-        recoveryInProgressRef.current = false;
         setShowRecoveryModal(false);
         setRecoveryDraft(null);
         setRecoveryInfoData(null);
-        recoveryInProgressRef.current = false;
     }, [draftIdentity.draftId]);
 
     const mapEnquiryToPrefill = useCallback(
@@ -945,7 +953,29 @@ export default function CreateEstimateModal({
         const fromItems: EstimateLine[] = [];
         if (!isAdditionalEstimate && prefillData?.items) {
             Object.entries(prefillData.items).forEach(([category, items]) => {
-                items.forEach((item, index) => {
+                // The API groups items by category. Within a category, serialNumber
+                // is the saved creation order; retain the array order for older
+                // estimates that do not include it.
+                const hasCompleteSerialOrder = items.every(candidate => {
+                    const serialNumber = (candidate as EstimateItem & {
+                        serialNumber?: number;
+                    }).serialNumber;
+                    return typeof serialNumber === "number" && Number.isFinite(serialNumber);
+                });
+                const orderedItems = items
+                    .map((item, index) => ({ item, index }))
+                    .sort((a, b) => {
+                        const aSerial = (a.item as EstimateItem & { serialNumber?: number })
+                            .serialNumber;
+                        const bSerial = (b.item as EstimateItem & { serialNumber?: number })
+                            .serialNumber;
+
+                        return hasCompleteSerialOrder
+                            ? (aSerial ?? a.index) - (bSerial ?? b.index) || a.index - b.index
+                            : a.index - b.index;
+                    });
+
+                orderedItems.forEach(({ item, index }) => {
                     const derivedId =
                         typeof item.id === "string" || typeof item.id === "number"
                             ? String(item.id)
@@ -1223,7 +1253,8 @@ export default function CreateEstimateModal({
         // Additional estimates are always new records — the source estimate's
         // `id` is only used as `lastEstimateID`, so it must not be treated as
         // editing that estimate.
-        const isEditing = !isAdditionalEstimate && prefillData?.id ? true : false;
+        const isEditing =
+            !isAdditionalEstimate && !createNewVersionOnSave && prefillData?.id ? true : false;
 
         try {
             const activeEnquiryId = selectedEnquiryId ?? prefillData?.enquiryId;
@@ -1389,7 +1420,7 @@ export default function CreateEstimateModal({
             // Additional estimates are always created as new records using the
             // source estimate only as prefill (lastEstimateID). The source estimate's
             // `id`/`version` must NOT be sent as the new record's id.
-            const body = isAdditionalEstimate
+            const body = isAdditionalEstimate || createNewVersionOnSave
                 ? payload
                 : prefillData.id
                   ? { ...payload, id: prefillData.id, version: prefillData.version }
@@ -2066,6 +2097,7 @@ export default function CreateEstimateModal({
                                                   ]
                                                 : []),
                                         ]}
+
                                         totalItem={{
                                             label: "Final Total",
                                             amount: summary.totalWithGST,
@@ -2085,14 +2117,20 @@ export default function CreateEstimateModal({
                                             disabled={isSaving || isFetchingEnquiry}
                                         >
                                             {isSaving
-                                                ? initialData?.id && !isAdditionalEstimate
+                                                ? initialData?.id &&
+                                                  !isAdditionalEstimate &&
+                                                  !createNewVersionOnSave
                                                     ? "Updating..."
                                                     : "Saving..."
                                                 : isFetchingEnquiry
                                                   ? "Loading enquiry..."
-                                                  : initialData?.id && !isAdditionalEstimate
+                                                  : initialData?.id &&
+                                                    !isAdditionalEstimate &&
+                                                    !createNewVersionOnSave
                                                     ? "Update Estimate"
-                                                    : "Save Estimate"}
+                                                    : createNewVersionOnSave
+                                                      ? "Save as New Estimate"
+                                                      : "Save Estimate"}
                                         </Button>
                                     </div>
                                 </ModalFooter>
@@ -2112,7 +2150,6 @@ export default function CreateEstimateModal({
                     setShowRecoveryModal(false);
                     setRecoveryDraft(null);
                     setRecoveryInfoData(null);
-                    recoveryInProgressRef.current = false;
                 }}
                 onRecover={handleRecoverDraft}
                 onDiscard={handleDiscardDraft}
@@ -2127,6 +2164,7 @@ export default function CreateEstimateModal({
                 onAction={handleUnsavedAction}
                 entityLabel={draftFormDataRef.current?.title || "this estimate"}
                 loading={draftStatus === "saving"}
+                canSaveDraft={Boolean(draftIdentity.enquiryId || draftIdentity.entityId)}
             />
         </>
     );

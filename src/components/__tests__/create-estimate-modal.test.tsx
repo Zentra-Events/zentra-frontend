@@ -208,12 +208,123 @@ describe("CreateEstimateModal", () => {
                 expect(mockApiRequest).toHaveBeenCalledWith("/api/estimates", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: expect.stringContaining('"id":"est-1"'),
+                    body: expect.stringContaining(
+                        '"id":"est-1","version":"v1"',
+                    ),
                 });
             });
 
             expect(baseProps.onSaved).toHaveBeenCalled();
             expect(baseProps.onClose).toHaveBeenCalled();
+        });
+
+        it("creates a DRAFT estimate without the source identifiers from an under-review edit", async () => {
+            mockApiRequest.mockResolvedValue(mockEstimateSaveResponse({ id: "new-estimate" }));
+
+            const sourceEstimate = {
+                id: "est-review",
+                version: "v3",
+                estimateStatus: "UNDER_CLIENT_REVIEW",
+                client: "Test Client",
+                clientID: "client-1",
+                title: "Review Event",
+                enquiryId: "enq-1",
+                eventID: "event-1",
+                highlvelRequirement: "Requirements",
+                venue: "Venue",
+                location: "Location",
+                status: "ENQUIRY_CREATED",
+                fromDate: "2025-07-01T00:00:00.000Z",
+                toDate: "2025-07-02T00:00:00.000Z",
+                enquiryDate: "2025-06-25T00:00:00.000Z",
+                clientPoC: "Client Contact",
+                pocContactNumber: "1234567890",
+                enquiryPoC: "Internal Contact",
+                gst: 18,
+                gstType: "CGST_SGST",
+                serviceCharge: 10,
+                discounts: 25,
+                billingAddress: "123 Example Street",
+                items: {
+                    Audio: [
+                        {
+                            id: "original-line-id",
+                            item: "Speakers",
+                            description: "Two way speakers",
+                            category: "Audio",
+                            subCategory: "Rental",
+                            days: 2,
+                            quantity: 3,
+                            sqft: 3,
+                            rate: 50,
+                            unitCost: 50,
+                            total: 300,
+                            vendor: "Sound Vendor",
+                            unit: "sets",
+                        },
+                    ],
+                },
+            };
+            const sourceEstimateBeforeSave = JSON.stringify(sourceEstimate);
+
+            renderModal({
+                createNewVersionOnSave: true,
+                initialData: sourceEstimate,
+            });
+
+            await waitFor(() => {
+                expect(screen.getByLabelText(/event title/i)).toHaveValue("Review Event");
+                expect(screen.getByTestId("artifacts-section")).toHaveTextContent(
+                    "Speakers - 50",
+                );
+            });
+
+            fireEvent.click(screen.getByRole("button", { name: /save as new estimate/i }));
+
+            await waitFor(() => {
+                const [, request] = mockApiRequest.mock.calls.find(
+                    ([url]) => url === "/api/estimates",
+                ) ?? [];
+                expect(request).toBeDefined();
+                const payload = JSON.parse(String(request?.body));
+                expect(payload).toMatchObject({
+                    estimateStatus: "DRAFT",
+                    title: "Review Event",
+                    highlvelRequirement: "Requirements",
+                    enquiryId: "enq-1",
+                    client: "Test Client",
+                    clientID: "client-1",
+                    eventID: "event-1",
+                    venue: "Venue",
+                    location: "Location",
+                    clientPoC: "Client Contact",
+                    pocContactNumber: "1234567890",
+                    enquiryPoC: "Internal Contact",
+                    gst: 18,
+                    gstType: "CGST_SGST",
+                    serviceCharge: 10,
+                    discounts: 25,
+                    billingAddress: "123 Example Street",
+                });
+                expect(payload).not.toHaveProperty("id");
+                expect(payload).not.toHaveProperty("version");
+                expect(payload.items.Audio).toEqual([
+                    expect.objectContaining({
+                        item: "Speakers",
+                        description: "Two way speakers",
+                        category: "Audio",
+                        subCategory: "Rental",
+                        days: 2,
+                        quantity: 3,
+                        pricePerItem: 50,
+                        finalAmt: 300,
+                        vendor: "Sound Vendor",
+                        unit: "sets",
+                    }),
+                ]);
+                expect(payload.items.Audio[0]).not.toHaveProperty("id");
+                expect(JSON.stringify(sourceEstimate)).toBe(sourceEstimateBeforeSave);
+            });
         });
     });
 

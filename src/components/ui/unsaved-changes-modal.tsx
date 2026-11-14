@@ -12,6 +12,7 @@ interface UnsavedChangesModalProps {
     onAction: (action: UnsavedChangesAction) => void;
     entityLabel?: string;
     loading?: boolean;
+    canSaveDraft?: boolean;
 }
 
 export function UnsavedChangesModal({
@@ -20,6 +21,7 @@ export function UnsavedChangesModal({
     onAction,
     entityLabel = "this estimate",
     loading = false,
+    canSaveDraft = true,
 }: UnsavedChangesModalProps) {
     const handleContinue = useCallback(() => {
         onAction("continue");
@@ -38,7 +40,16 @@ export function UnsavedChangesModal({
         >
             <ModalBody>
                 <span className="text-sm ">
-                    Discarding changes will lose your unsaved changes in <b>{entityLabel}</b>, including any local draft saved. 
+                    {canSaveDraft ? (
+                        <>
+                            Changes to <b>{entityLabel}</b> are saved automatically as a local
+                            draft while you edit. You can continue editing or discard your changes.
+                        </>
+                    ) : (
+                        <span className="mt-2 block">
+                            Select a client and enquiry first to enable draft recovery.
+                        </span>
+                    )}
                     <br />
                     Changes will only be visible to other users after they are saved.
                 </span>

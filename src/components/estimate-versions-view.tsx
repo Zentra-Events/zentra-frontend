@@ -447,7 +447,16 @@ export function EstimateVersionsView({
                                     const estimateStatus = version.estimateStatus;
                                     const isEventCreated = estimateStatus === "EVENT_CREATED";
                                     const isDraft = estimateStatus === "DRAFT";
-                                    const isReview = estimateStatus === "UNDER_CLIENT_REVIEW";
+                                    const normalizedEstimateStatus = String(estimateStatus ?? "")
+                                        .toUpperCase()
+                                        .replace(/[\s-]+/g, "_");
+                                    const isReview =
+                                        normalizedEstimateStatus === "UNDER_CLIENT_REVIEW" ||
+                                        normalizedEstimateStatus.includes("UNDER_REVIEW") ||
+                                        normalizedEstimateStatus.includes("SENT_TO_CLIENT");
+
+                                    console.log({ isReview });
+
                                     const isFinal = estimateStatus === "FINAL";
                                     const hasStatus = Boolean(estimateStatus);
 
@@ -515,20 +524,22 @@ export function EstimateVersionsView({
                                                         <Eye size={14} />
                                                         Preview
                                                     </AccessButton>
-                                                    {!isViewOnlyMode && (isDraft || !hasStatus ? (
-                                                        <AccessButton
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() =>
-                                                                onVersionSelect?.(version)
-                                                            }
-                                                            className="flex items-center gap-1"
-                                                            scope={["w:estimates"]}
-                                                        >
-                                                            <Edit size={14} />
-                                                            Edit
-                                                        </AccessButton>
-                                                    ) : isReview || isFinal ? (
+                                                    {!isViewOnlyMode &&
+                                                        (isDraft || !hasStatus || isReview) && (
+                                                            <AccessButton
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() =>
+                                                                    onVersionSelect?.(version)
+                                                                }
+                                                                className="flex items-center gap-1"
+                                                                scope={["w:estimates"]}
+                                                            >
+                                                                <Edit size={14} />
+                                                                Edit
+                                                            </AccessButton>
+                                                        )}
+                                                    {!isViewOnlyMode && (isReview || isFinal) && (
                                                         <AccessButton
                                                             size="sm"
                                                             variant="outline"
@@ -543,13 +554,14 @@ export function EstimateVersionsView({
                                                         >
                                                             Revert to Draft
                                                         </AccessButton>
-                                                    ) : null)}
+                                                    )}
                                                     {!isViewOnlyMode && (
                                                         <>
                                                             {isDraft ? (
                                                                 <AccessButton
                                                                     scope={["w:estimates"]}
-                                                                    size="sm"                                                                    onClick={() =>
+                                                                    size="sm"
+                                                                    onClick={() =>
                                                                         setEmailVersion(version)
                                                                     }
                                                                     className="flex items-center gap-1"
@@ -692,7 +704,9 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.fromDate
-                                                                    ? formatShortDate(version.fromDate)
+                                                                    ? formatShortDate(
+                                                                          version.fromDate,
+                                                                      )
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -702,7 +716,9 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.toDate
-                                                                    ? formatShortDate(version.toDate)
+                                                                    ? formatShortDate(
+                                                                          version.toDate,
+                                                                      )
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
@@ -726,7 +742,9 @@ export function EstimateVersionsView({
                                                             </span>
                                                             <p className="text-gray-600">
                                                                 {version.createdAt
-                                                                    ? formatShortDateTime(version.createdAt)
+                                                                    ? formatShortDateTime(
+                                                                          version.createdAt,
+                                                                      )
                                                                     : "N/A"}
                                                             </p>
                                                         </div>
