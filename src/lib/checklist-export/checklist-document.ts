@@ -14,6 +14,9 @@ export const CHECKLIST_EXPORT_COLUMNS = [
     "Qty",
     "Days",
     "Vendor / Inventory",
+    "Pickup/Start",
+    "Return/End",
+    "Assigned To",
     "Status",
     "Deadline",
 ] as const;
@@ -82,6 +85,18 @@ export function getChecklistItemUnit(item: ChecklistItem): string {
 
 export function getChecklistDeadlineDisplay(item: ChecklistItem): string {
     return item.deadlineDate ? formatLocalDateTime(item.deadlineDate) : "-";
+}
+
+export function getChecklistPickupDisplay(item: ChecklistItem): string {
+    return item.pickupDate ? formatLocalDateTime(item.pickupDate) : "-";
+}
+
+export function getChecklistReturnDisplay(item: ChecklistItem): string {
+    return item.returnDate ? formatLocalDateTime(item.returnDate) : "-";
+}
+
+export function getChecklistAssigneeDisplay(item: ChecklistItem): string {
+    return item.poc?.trim() || "-";
 }
 
 function appendCategoryRows(

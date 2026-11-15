@@ -10,6 +10,9 @@ import {
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
     getChecklistDeadlineDisplay,
+    getChecklistPickupDisplay,
+    getChecklistReturnDisplay,
+    getChecklistAssigneeDisplay,
     getChecklistItemName,
     type ChecklistExportContext,
     type ChecklistExportRow,
@@ -48,7 +51,8 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
     if (!tableRows.some(r => r.type === "table-header")) return null;
 
     return (
-        <table className="w-full border-collapse text-xs border border-black">
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[1200px] border-collapse text-xs border border-black">
             <thead>
                 <tr className={previewStyles.headerBg}>
                     {CHECKLIST_EXPORT_COLUMNS.map(header => (
@@ -112,6 +116,15 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                         {row.vendorDisplay}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-center align-top">
+                                        {getChecklistPickupDisplay(item)}
+                                    </td>
+                                    <td className="border border-black px-2 py-2 text-center align-top">
+                                        {getChecklistReturnDisplay(item)}
+                                    </td>
+                                    <td className="border border-black px-2 py-2 align-top">
+                                        {getChecklistAssigneeDisplay(item)}
+                                    </td>
+                                    <td className="border border-black px-2 py-2 text-center align-top">
                                         {getChecklistStatusLabel(item.status)}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-center align-top">
@@ -123,7 +136,8 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                         return null;
                     })}
             </tbody>
-        </table>
+            </table>
+        </div>
     );
 }
 

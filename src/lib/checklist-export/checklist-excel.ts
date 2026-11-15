@@ -7,6 +7,9 @@ import {
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
     getChecklistDeadlineDisplay,
+    getChecklistPickupDisplay,
+    getChecklistReturnDisplay,
+    getChecklistAssigneeDisplay,
     getChecklistItemName,
     type ChecklistDocumentModel,
     type ChecklistExportContext,
@@ -25,7 +28,7 @@ const META_LABEL_END_COL = 2;
 const META_VALUE_START_COL = 3;
 const META_VALUE_END_COL = 5;
 const META_LOGO_START_COL = 7;
-const CHECKLIST_COLUMN_WIDTHS = [7, 24, 30, 8, 8, 22, 15, 22];
+const CHECKLIST_COLUMN_WIDTHS = [7, 24, 30, 8, 8, 22, 21, 21, 20, 15, 22];
 
 function estimateWrappedLines(value: string, width: number): number {
     return value.split("\n").reduce(
@@ -237,16 +240,25 @@ async function populateWorksheet(
                 row.getCell(5).alignment = { horizontal: "center", vertical: "top" };
                 row.getCell(6).value = exportRow.vendorDisplay;
                 row.getCell(6).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(7).value = getChecklistStatusLabel(item.status);
-                row.getCell(7).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(8).value = getChecklistDeadlineDisplay(item);
+                row.getCell(7).value = getChecklistPickupDisplay(item);
+                row.getCell(7).alignment = { horizontal: "center", vertical: "top", wrapText: true };
+                row.getCell(8).value = getChecklistReturnDisplay(item);
                 row.getCell(8).alignment = { horizontal: "center", vertical: "top", wrapText: true };
+                row.getCell(9).value = getChecklistAssigneeDisplay(item);
+                row.getCell(9).alignment = { horizontal: "left", vertical: "top", wrapText: true };
+                row.getCell(10).value = getChecklistStatusLabel(item.status);
+                row.getCell(10).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(11).value = getChecklistDeadlineDisplay(item);
+                row.getCell(11).alignment = { horizontal: "center", vertical: "top", wrapText: true };
                 applyBorderRange(row, 1, CHECKLIST_COLUMN_COUNT);
                 const wrappedLines = Math.max(
                     estimateWrappedLines(String(row.getCell(2).value ?? ""), CHECKLIST_COLUMN_WIDTHS[1]),
                     estimateWrappedLines(String(row.getCell(3).value ?? ""), CHECKLIST_COLUMN_WIDTHS[2]),
                     estimateWrappedLines(String(row.getCell(6).value ?? ""), CHECKLIST_COLUMN_WIDTHS[5]),
+                    estimateWrappedLines(String(row.getCell(7).value ?? ""), CHECKLIST_COLUMN_WIDTHS[6]),
                     estimateWrappedLines(String(row.getCell(8).value ?? ""), CHECKLIST_COLUMN_WIDTHS[7]),
+                    estimateWrappedLines(String(row.getCell(9).value ?? ""), CHECKLIST_COLUMN_WIDTHS[8]),
+                    estimateWrappedLines(String(row.getCell(11).value ?? ""), CHECKLIST_COLUMN_WIDTHS[10]),
                 );
                 row.height = Math.max(28, wrappedLines * 14 + 8);
                 rowIndex += 1;

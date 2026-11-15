@@ -6,6 +6,9 @@ import {
     CHECKLIST_EXPORT_COLUMNS,
     getChecklistItemDetails,
     getChecklistDeadlineDisplay,
+    getChecklistPickupDisplay,
+    getChecklistReturnDisplay,
+    getChecklistAssigneeDisplay,
     getChecklistItemName,
     type ChecklistExportContext,
     type ChecklistExportRow,
@@ -53,6 +56,9 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 String(item.quantity ?? 0),
                 item.days != null ? String(item.days) : "-",
                 exportRow.vendorDisplay,
+                getChecklistPickupDisplay(item),
+                getChecklistReturnDisplay(item),
+                getChecklistAssigneeDisplay(item),
                 getChecklistStatusLabel(item.status),
                 getChecklistDeadlineDisplay(item),
             ]);
@@ -92,9 +98,9 @@ function splitRowsIntoSegments(rows: ChecklistExportRow[]): TableSegment[] {
 function buildTableColumnStyles(contentWidth: number) {
     // Keep the compact columns fixed and share the remaining printable width
     // among the longer text fields, matching the preview table proportions.
-    const widths = [10, 38, 44, 14, 13, 36, 24, 34];
-    const flexibleColumns = [1, 2, 5, 7];
-    const flexWeights = [0.85, 1.2, 0.85, 0.8];
+    const widths = [9, 32, 34, 12, 11, 29, 26, 26, 22, 20, 28];
+    const flexibleColumns = [1, 2, 5, 8, 10];
+    const flexWeights = [0.9, 1.2, 0.9, 0.7, 0.8];
     const minTotal = widths.reduce((sum, width) => sum + width, 0);
     const extra = Math.max(contentWidth - minTotal, 0);
     const weightTotal = flexWeights.reduce((sum, weight) => sum + weight, 0);
@@ -111,6 +117,9 @@ function buildTableColumnStyles(contentWidth: number) {
         5: { halign: "left" as const, cellWidth: widths[5] },
         6: { halign: "center" as const, cellWidth: widths[6] },
         7: { halign: "center" as const, cellWidth: widths[7] },
+        8: { halign: "left" as const, cellWidth: widths[8] },
+        9: { halign: "center" as const, cellWidth: widths[9] },
+        10: { halign: "center" as const, cellWidth: widths[10] },
     };
 }
 

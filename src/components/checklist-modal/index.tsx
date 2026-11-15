@@ -9,7 +9,6 @@ import { generateId } from "@/lib/utils/id";
 import { groupByCategory } from "@/lib/utils";
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
-import { UserSelectDropdown } from "@/components/user-select-dropdown";
 import { ChecklistHierarchy, type ChecklistHierarchyActions } from "./checklist-hierarchy";
 import { ChecklistItemEditor, type ChecklistItemEditorHandle } from "./checklist-item-editor";
 import { ChecklistFooter } from "./checklist-footer";
@@ -39,7 +38,6 @@ export function ExecutionChecklistModal({
     inventoryList,
     loadingVendors = false,
     loadingInventory = false,
-    checklistAssignedTo: initialchecklistAssignedTo = "",
 }: ChecklistModalProps) {
     const [checklistData, setChecklistData] = useState<ChecklistItem[]>([]);
     const [saving, setSaving] = useState(false);
@@ -58,11 +56,6 @@ export function ExecutionChecklistModal({
     // and hierarchy highlights become visible and update live as values change.
     // Until then nothing is validated (friendly initial-load experience).
     const [validationTriggered, setValidationTriggered] = useState(false);
-    // Global checklist assignee (one per checklist). Initialized from the API
-    // response and persisted back to the backend on save.
-  const [checklistAssignedTo, setchecklistAssignedTo] = useState<string>(
-    initialchecklistAssignedTo || eventData.checklistAssignedTo || ""
-);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -94,7 +87,6 @@ export function ExecutionChecklistModal({
         });
         setExpandedCategories(cats);
         setExpandedSubCategories(subs);
-        setchecklistAssignedTo(initialchecklistAssignedTo || eventData.checklistAssignedTo || "");
     }, [isOpen, eventData]);
 
     const filteredItems = useMemo(() => {
@@ -236,9 +228,10 @@ export function ExecutionChecklistModal({
         vendor: "",
         inventoryID: "",
         status: "PENDING",
-        startDate: "",
-        endDate: "",
+        pickupDate: "",
+        returnDate: "",
         deadlineDate: "",
+        poc: "",
         isInventoryItem: false,
         _uid: generateId(),
     });
@@ -452,47 +445,46 @@ export function ExecutionChecklistModal({
         onCollapseAll: handleCollapseAll,
     };
 
-   const performSave = async () => {
-    if (!eventData.id || !eventData.eventID) {
-        toast.error("Event details are incomplete. Cannot save checklist.");
-        return;
-    }
-
-    setSaving(true);
-
-    try {
-        const payload = persistableItems.map(({ _uid, ...rest }) => rest);
-
-        const updatedEvent = {
-            ...eventData,
-            checkListCompleted: true,
-            checklistAssignedTo,
-            items: payload,
-        };
-
-        const res = await apiRequest(API_ENDPOINTS.events.list, {
-            method: "POST",
-            body: JSON.stringify(updatedEvent),
-        });
-
-        if (res.ok) {
-            toast.success("Checklist saved successfully");
-            const itemNames = persistableItems
-                .map(it => it.item?.trim())
-                .filter((name): name is string => name.length > 0);
-            editorRef.current?.commitItemNames(itemNames);
-            onSave();
-            onClose();
-        } else {
-            toast.error("Failed to save checklist");
+    const performSave = async () => {
+        if (!eventData.id || !eventData.eventID) {
+            toast.error("Event details are incomplete. Cannot save checklist.");
+            return;
         }
-    } catch (err) {
-        console.error("Error saving checklist:", err);
-        toast.error("Error saving checklist");
-    } finally {
-        setSaving(false);
-    }
-};
+
+        setSaving(true);
+
+        try {
+            const payload = persistableItems.map(({ _uid, ...rest }) => rest);
+
+            const updatedEvent = {
+                ...eventData,
+                checkListCompleted: true,
+                items: payload,
+            };
+
+            const res = await apiRequest(API_ENDPOINTS.events.list, {
+                method: "POST",
+                body: JSON.stringify(updatedEvent),
+            });
+
+            if (res.ok) {
+                toast.success("Checklist saved successfully");
+                const itemNames = persistableItems
+                    .map(it => it.item?.trim())
+                    .filter((name): name is string => name.length > 0);
+                editorRef.current?.commitItemNames(itemNames);
+                onSave();
+                onClose();
+            } else {
+                toast.error("Failed to save checklist");
+            }
+        } catch (err) {
+            console.error("Error saving checklist:", err);
+            toast.error("Error saving checklist");
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const handleMissingVendorConfirm = async () => {
         setMissingVendorModalOpen(false);
@@ -525,7 +517,7 @@ export function ExecutionChecklistModal({
     const modalContent = (
         <ModalBody className={cn("flex flex-col max-h-[calc(100vh-230px)] overflow-hidden")}>
             {/* Left panel: hierarchical tree */}
-                <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden">
                 <div className="w-80 shrink-0 overflow-hidden border-r border-border">
                     <ChecklistHierarchy
                         groups={groups}
@@ -581,14 +573,6 @@ export function ExecutionChecklistModal({
                 title="Execution Checklist"
                 description={`Manage execution tasks for ${eventData.title || "this event"}`}
                 autoFocus={false}
-                headerActions={
-                    <UserSelectDropdown
-                        isCreatable={false}
-                        value={checklistAssignedTo}
-                        onChange={setchecklistAssignedTo}
-                        placeholder="Assigned To"
-                    />
-                }
             >
                 {modalContent}
                 <ChecklistFooter
@@ -677,11 +661,12 @@ function mapEventItemToChecklistItem(item: EventItem): ChecklistItem {
         vendor: item.vendor || "",
         inventoryID: item.inventoryID != null ? String(item.inventoryID) : "",
         status: item.status ?? "PENDING",
-        startDate: item.startDate ?? "",
-        endDate: item.endDate || "",
+        pickupDate: item.pickupDate ?? "",
+        returnDate: item.returnDate || "",
         days: Number(item.days) || 1,
         pricePerItem: Number(item.pricePerItem) || 0,
         deadlineDate: String(item.deadlineDate || ""),
+        poc: item.poc || "",
         isInventoryItem: Boolean(item.inventoryID) || false,
     };
 }

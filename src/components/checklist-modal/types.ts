@@ -37,13 +37,15 @@ export interface ChecklistItem {
     unit?: string;
     /** Legacy financial field retained for data compatibility; NOT shown in the editor. */
     pricePerItem?: number;
-    startDate?: string;
-    endDate?: string;
+    pickupDate?: string;
+    returnDate?: string;
     deadlineDate?: string;
     vendor?: string;
     inventoryID?: string | number;
     status?: string;
     isInventoryItem?: boolean;
+    /** Assigned user name, persisted to the backend `poc` field. */
+    poc?: string;
     /** Client-only stable identity (stripped before persisting). */
     _uid?: string;
 }
@@ -58,8 +60,6 @@ export interface EventItem {
     count?: number;
     unit?: string;
     vendor?: string;
-   startDate?: string | null;
-    endDate?: string | null;
     deadlineDate?: string | null;
     status?: string;
    
@@ -67,8 +67,11 @@ export interface EventItem {
     
     pricePerItem?: number;
     days?: number;
+    /** Assigned user name, persisted to the backend `poc` field. */
+    pickupDate?: string | null;
+    returnDate?: string | null;
+    poc?: string | null;
 }
-
 export interface ChecklistModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -76,13 +79,11 @@ export interface ChecklistModalProps {
     id?: string;
     title?: string;
     eventID?: string;
-    checklistAssignedTo?: string | null;
     items?: EventChecklistItem[];
     checklist?: EventChecklistItem[] | ChecklistItem[];
 };
-    /** Global checklist assignee (one per checklist), mapped from the API response. */
-    checklistAssignedTo?: string;
-    onSave: () => void;
+
+onSave: () => void;
     onCancel?: () => void;
     vendorList: Vendor[];
     inventoryList: Inventory[];

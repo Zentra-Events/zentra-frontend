@@ -296,7 +296,6 @@ export default function ChecklistsPage() {
                         setSelectedEvent(null);
                     }}
                     eventData={selectedEvent}
-                    checklistAssignedTo={selectedEvent.checklistAssignedTo || ""}
                     onSave={() => {
                         fetchEvents();
                     }}

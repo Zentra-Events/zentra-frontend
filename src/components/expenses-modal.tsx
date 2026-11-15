@@ -516,7 +516,7 @@ export function ExpensesModal({
                                         </div>
 
                                         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                                            <UserSelectDropdown
+                                            <                                                UserSelectDropdown
                                                 isCreatable={false}
                                                 value={values.expenses[index].poc || ""}
                                                 onChange={name =>
@@ -527,8 +527,9 @@ export function ExpensesModal({
                                                         Spent By
                                                     </span>
                                                 }
-                                                placeholder="Select user"
+                                                placeholder="Search or select user"
                                                 isDisabled={!isSuperAdmin}
+                                                enableApiSearch
                                             />
                                             <FormikFieldSelect
                                                 name={`expenses[${index}].expenseStatus`}

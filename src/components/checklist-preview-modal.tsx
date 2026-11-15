@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Eye, User } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -20,8 +20,6 @@ interface ChecklistPreviewModalProps {
     inventoryList: { id?: string | number; itemName?: string }[];
     exportContext?: ChecklistExportContext;
     onUpdate?: () => void;
-    /** Global checklist assignee (one per checklist), mapped from the API response. */
-    checklistAssignedTo?: string;
 }
 
 const checkPastDate = (dateStr?: string) => {
@@ -39,7 +37,6 @@ export function ChecklistPreviewModal({
     inventoryList,
     exportContext,
     onUpdate,
-    checklistAssignedTo,
 }: ChecklistPreviewModalProps) {
     const [isExportPreviewOpen, setIsExportPreviewOpen] = useState(false);
 
@@ -50,9 +47,8 @@ export function ChecklistPreviewModal({
         completed: checklistData.filter(i => i.status === "COMPLETED").length,
         pending: checklistData.filter(i => i.status === "PENDING").length,
         inProgress: checklistData.filter(i => i.status === "IN_PROGRESS").length,
-        pastDeadline: checklistData.filter(
-            i => i.deadlineDate && checkPastDate(i.deadlineDate),
-        ).length,
+        pastDeadline: checklistData.filter(i => i.deadlineDate && checkPastDate(i.deadlineDate))
+            .length,
     };
 
     // Hierarchical grouping: Category → Sub Category → Items (shared utility).
@@ -108,6 +104,13 @@ export function ChecklistPreviewModal({
                         return <span>{vendor?.name || item.vendor || "-"}</span>;
                     })()}
                 </td>
+                <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
+                    {item.pickupDate ? formatLocalDateTime(item.pickupDate) : "-"}
+                </td>
+                <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
+                    {item.returnDate ? formatLocalDateTime(item.returnDate) : "-"}
+                </td>
+                <td className="py-3 px-3 align-middle">{item.poc?.trim() || "-"}</td>
                 <td className="py-3 px-3 align-middle text-center">
                     {(() => {
                         const statusStyles: Record<string, string> = {
@@ -119,8 +122,7 @@ export function ChecklistPreviewModal({
                                 "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
                         };
                         const normalizedStatus = (item.status || "PENDING").trim().toUpperCase();
-                        const statusClass =
-                            statusStyles[normalizedStatus] || statusStyles.PENDING;
+                        const statusClass = statusStyles[normalizedStatus] || statusStyles.PENDING;
                         return (
                             <span
                                 className={`px-2 py-1 rounded text-xs font-medium ${statusClass}`}
@@ -200,7 +202,7 @@ export function ChecklistPreviewModal({
 
                 {/* Single table with grouped categories and one column header */}
                 <div className="overflow-x-auto border border-border rounded-md">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[1200px] text-sm">
                         <thead>
                             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                                 <th className="py-3 px-3 font-medium text-xs text-muted-foreground w-10">
@@ -211,6 +213,9 @@ export function ChecklistPreviewModal({
                                 <th className="py-3 px-3 font-medium text-center w-16">Qty</th>
                                 <th className="py-3 px-3 font-medium text-center w-16">Days</th>
                                 <th className="py-3 px-3 font-medium">Vendor / Inventory</th>
+                                <th className="py-3 px-3 font-medium text-center">Pickup/Start</th>
+                                <th className="py-3 px-3 font-medium text-center">Return/End</th>
+                                <th className="py-3 px-3 font-medium">Assigned To</th>
                                 <th className="py-3 px-3 font-medium text-center w-24">Status</th>
                                 <th className="py-3 px-3 font-medium text-center">Deadline</th>
                             </tr>
@@ -228,7 +233,7 @@ export function ChecklistPreviewModal({
                                             className="bg-muted/50 border-b border-border"
                                         >
                                             <td
-                                                colSpan={8}
+                                                colSpan={11}
                                                 className="px-4 py-2 text-sm font-semibold text-foreground uppercase tracking-wide"
                                             >
                                                 {group.name}
@@ -259,7 +264,7 @@ export function ChecklistPreviewModal({
                                                 className="bg-muted/30 border-b border-border"
                                             >
                                                 <td
-                                                    colSpan={8}
+                                                    colSpan={11}
                                                     className="px-6 py-1.5 text-xs font-medium text-muted-foreground"
                                                 >
                                                     {sub.name}
@@ -289,18 +294,7 @@ export function ChecklistPreviewModal({
                 </div>
             </ModalBody>
 
-            <ModalFooter className="flex items-center justify-between gap-4 px-6 py-3">
-                <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-                    <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-xs font-semibold text-muted-foreground tracking-wider">
-                            Assigned To :
-                        </span>
-                    </div>
-                    <span className="text-sm font-medium text-foreground">
-                        {checklistAssignedTo || "—"}
-                    </span>
-                </div>
+            <ModalFooter className="flex items-center justify-end gap-4 px-6 py-3">
                 <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={onClose}>
                         Close
