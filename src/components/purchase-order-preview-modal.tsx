@@ -260,22 +260,33 @@ export function groupItemsByCategory(
 export function buildVendorFinancials(
     vendorSummary: EventResponse["vendorSummary"],
     vendorList: Array<{ id?: string; name: string }> | undefined,
+    items?: EventResponse["items"],
 ): VendorFinancialRow[] {
     if (!vendorSummary || vendorSummary.length === 0) return [];
 
-    return vendorSummary.map(vs => {
-        const vendorName = vendorList?.find(v => v.id === vs.vendor)?.name || vs.vendor || "SELF";
-        return {
-            vendorName,
-            totalAmount: vs.totalAmount ?? 0,
-            gstPercent: vs.gst ?? 0,
-            gstType: vs.gstType ?? "NONE",
-            tdsPercent: vs.tds ?? 0,
-            adjustedAmt: vs.adjustedAmt ?? 0,
-            advanceAmount: vs.advanceAmount ?? 0,
-            balance: vs.balance ?? 0,
-        };
-    });
+    // The API uses an empty vendor ID for inventory summary records. When an
+    // event has no explicitly marked inventory items, that same empty ID can
+    // instead be a stale/unassigned summary record. Do not surface it as a
+    // SELF vendor row; unassigned amounts are built from the event items below.
+    const hasInventoryItems = ((items ?? []) as RawItemWithCategory[]).some(item =>
+        Boolean(item.inventoryID),
+    );
+
+    return vendorSummary
+        .filter(vs => Boolean(vs.vendor) || vs.vendor === "SELF" || hasInventoryItems)
+        .map(vs => {
+            const vendorName = vendorList?.find(v => v.id === vs.vendor)?.name || vs.vendor || "SELF";
+            return {
+                vendorName,
+                totalAmount: vs.totalAmount ?? 0,
+                gstPercent: vs.gst ?? 0,
+                gstType: vs.gstType ?? "NONE",
+                tdsPercent: vs.tds ?? 0,
+                adjustedAmt: vs.adjustedAmt ?? 0,
+                advanceAmount: vs.advanceAmount ?? 0,
+                balance: vs.balance ?? 0,
+            };
+        });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1297,7 +1308,7 @@ export function PurchaseOrderPreviewModal({
         [eventData.items, eventData.vendorSummary, vendorList, inventoryList],
     );
     const vendorFinancialRows = useMemo(() => {
-        const rows = buildVendorFinancials(eventData.vendorSummary, vendorList);
+        const rows = buildVendorFinancials(eventData.vendorSummary, vendorList, eventData.items);
         const unassigned = buildUnassignedVendorRow(eventData.items);
         return unassigned ? [...rows, unassigned] : rows;
     }, [eventData.vendorSummary, vendorList, eventData.items]);
