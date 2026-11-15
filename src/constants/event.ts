@@ -37,6 +37,9 @@ export const eventStatus: { value: EstimateStatus; label: string }[] = [
 ];
 
 export const purchaseOrderPreviewStyles = {
+    summaryTable: "w-full table-fixed border-collapse text-xs border border-black break-words",
+    summaryLabelColumn: "w-[72%]",
+    summaryValueColumn: "w-[28%]",
     titleBg: "bg-[#e6e0f8]",
     headerBg: "bg-[#e6e0f8]",
     categoryBg: "bg-[#d9ead3]",

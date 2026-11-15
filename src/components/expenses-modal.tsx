@@ -165,14 +165,12 @@ export function ExpensesModal({
     const canEdit = hasPermission(user, undefined, ["w:expenses", "a:expenses"]);
     // Only super_admin or admin can choose who spent the money; everyone else
     // defaults the "Spent By" field to the logged in user.
-    const isAdminOrSuperAdmin = hasPermission(user, ["super_admin", "admin"]);
-    const defaultPoc = isAdminOrSuperAdmin ? "" : user?.name || "";
+    const isSuperAdmin = hasPermission(user, ["super_admin"]);
+    const defaultPoc = isSuperAdmin ? "" : user?.name || "";
     const [initialExpenses, setInitialExpenses] = useState<ExpenseItem[]>([]);
 
     // Receipt file state: maps expense index -> selected file info
-    const [receiptFiles, setReceiptFiles] = useState<Map<number, ReceiptFileInfo>>(
-        new Map(),
-    );
+    const [receiptFiles, setReceiptFiles] = useState<Map<number, ReceiptFileInfo>>(new Map());
     // Tracks whether to remove an existing receipt on edit (index -> true)
     const [removeReceipt, setRemoveReceipt] = useState<Map<number, boolean>>(new Map());
     // Keep only receipt metadata; the saved binary is never needed for updates.
@@ -204,7 +202,7 @@ export function ExpensesModal({
                             ? String(editingExpense.amount)
                             : String(editingExpense.amount || ""),
                     comments: editingExpense.comments || "",
-                    poc: isAdminOrSuperAdmin ? editingExpense.poc || "" : defaultPoc,
+                    poc: isSuperAdmin ? editingExpense.poc || "" : defaultPoc,
                     expenseStatus:
                         (editingExpense.expenseStatus as ExpenseItem["expenseStatus"]) ||
                         "ESTIMATE_SUBMITTED",
@@ -221,7 +219,8 @@ export function ExpensesModal({
                             0,
                             {
                                 fileName: editingExpense.receiptFileName || "receipt",
-                                contentType: editingExpense.receiptContentType || "application/octet-stream",
+                                contentType:
+                                    editingExpense.receiptContentType || "application/octet-stream",
                             },
                         ],
                     ]),
@@ -241,10 +240,9 @@ export function ExpensesModal({
                             ? String(exp.amount)
                             : String(exp.amount || ""),
                     comments: exp.comments || "",
-                    poc: isAdminOrSuperAdmin ? exp.poc : defaultPoc,
+                    poc: isSuperAdmin ? exp.poc : defaultPoc,
                     expenseStatus:
-                        (exp.expenseStatus as ExpenseItem["expenseStatus"]) ||
-                        "ESTIMATE_SUBMITTED",
+                        (exp.expenseStatus as ExpenseItem["expenseStatus"]) || "ESTIMATE_SUBMITTED",
                     createdDate: exp.createdDate,
                     lastUpdateddDate: exp.lastUpdateddDate,
                 })),
@@ -338,7 +336,9 @@ export function ExpensesModal({
             };
             const res = await updateExpense(expenseId, payload);
             if (!res.ok) {
-                throw new Error(`Failed to update expense "${exp.itemName}" (status ${res.status})`);
+                throw new Error(
+                    `Failed to update expense "${exp.itemName}" (status ${res.status})`,
+                );
             }
 
             const receiptInfo = receiptFiles.get(0);
@@ -528,7 +528,7 @@ export function ExpensesModal({
                                                     </span>
                                                 }
                                                 placeholder="Select user"
-                                                isDisabled={!isAdminOrSuperAdmin}
+                                                isDisabled={!isSuperAdmin}
                                             />
                                             <FormikFieldSelect
                                                 name={`expenses[${index}].expenseStatus`}
@@ -552,9 +552,7 @@ export function ExpensesModal({
                                         />
 
                                         {/* Receipt / Bill Attachment Section */}
-                                        <section
-                                            className="mt-4 rounded-xl border border-border bg-surface p-4"
-                                        >
+                                        <section className="mt-4 rounded-xl border border-border bg-surface p-4">
                                             <SectionHeader
                                                 id={`expense-${index}-receipt-heading`}
                                                 icon={<Receipt size={18} aria-hidden="true" />}
@@ -562,22 +560,31 @@ export function ExpensesModal({
                                                 description="Optional. Upload a receipt or bill (JPG, JPEG, PNG, PDF). Max 10 MB."
                                                 badge={
                                                     editingExpense &&
-                                                    existingReceipts.has(index)
-                                                        ? <StepBadge>Existing</StepBadge>
-                                                        : null
+                                                    existingReceipts.has(index) ? (
+                                                        <StepBadge>Existing</StepBadge>
+                                                    ) : null
                                                 }
                                             />
                                             <div className="mt-3 space-y-2">
                                                 {/* Existing receipt display (edit mode) */}
                                                 {editingExpense && existingReceipts.has(index) && (
                                                     <div className="flex items-center gap-2 rounded-md border border-border-hover bg-muted/50 p-3">
-                                                        <FileText size={16} className="text-primary shrink-0" />
+                                                        <FileText
+                                                            size={16}
+                                                            className="text-primary shrink-0"
+                                                        />
                                                         <div className="flex-1 min-w-0">
                                                             <p className="text-sm text-foreground truncate">
-                                                                {existingReceipts.get(index)?.fileName}
+                                                                {
+                                                                    existingReceipts.get(index)
+                                                                        ?.fileName
+                                                                }
                                                             </p>
                                                             <p className="text-xs text-muted-foreground truncate">
-                                                                {existingReceipts.get(index)?.contentType}
+                                                                {
+                                                                    existingReceipts.get(index)
+                                                                        ?.contentType
+                                                                }
                                                             </p>
                                                         </div>
                                                         <Button
@@ -635,25 +642,31 @@ export function ExpensesModal({
                                                 {/* Selected file preview */}
                                                 {receiptFiles.has(index) && (
                                                     <div className="flex items-center gap-2 rounded-md border border-border-hover bg-muted/50 p-3">
-                                                        <FileText size={16} className="text-primary shrink-0" />
+                                                        <FileText
+                                                            size={16}
+                                                            className="text-primary shrink-0"
+                                                        />
                                                         <div className="flex-1 min-w-0">
                                                             <p className="text-sm text-foreground truncate">
                                                                 {receiptFiles.get(index)?.file.name}
                                                             </p>
                                                             <p className="text-xs text-muted-foreground">
                                                                 {fileSizeLabel(
-                                                                    receiptFiles.get(index)?.file.size || 0,
+                                                                    receiptFiles.get(index)?.file
+                                                                        .size || 0,
                                                                 )}
                                                             </p>
                                                         </div>
                                                     </div>
                                                 )}
 
-                                                {!editingExpense && !existingReceipts.has(index) && !receiptFiles.has(index) && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        No receipt attached.
-                                                    </p>
-                                                )}
+                                                {!editingExpense &&
+                                                    !existingReceipts.has(index) &&
+                                                    !receiptFiles.has(index) && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                            No receipt attached.
+                                                        </p>
+                                                    )}
                                             </div>
                                         </section>
                                     </div>

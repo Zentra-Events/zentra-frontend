@@ -9,6 +9,7 @@ import {
     purchaseArgbToRgb,
     PURCHASE_EXPORT_COLORS,
     PURCHASE_PAYMENT_TERMS,
+    PURCHASE_SUMMARY_LABEL_RATIO,
     type PurchaseOrderDocumentModel,
 } from "./purchase-document";
 import type { CategoryPurchaseRow, EventResponse, VendorFinancialRow } from "@/types/event";
@@ -355,10 +356,16 @@ export async function generatePurchaseOrderPdfBlob(
         body: summary,
         tableWidth: doc.internal.pageSize.getWidth() - 20,
         theme: "grid",
-        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+        styles: {
+            fontSize: 8,
+            cellPadding: 2,
+            lineColor: [0, 0, 0],
+            lineWidth: 0.1,
+            overflow: "linebreak",
+        },
         columnStyles: {
-            0: { cellWidth: contentWidth * 0.625, fontStyle: "bold" },
-            1: { cellWidth: contentWidth * 0.375, halign: "right" },
+            0: { cellWidth: contentWidth * PURCHASE_SUMMARY_LABEL_RATIO, fontStyle: "bold" },
+            1: { cellWidth: contentWidth * (1 - PURCHASE_SUMMARY_LABEL_RATIO), halign: "right" },
         },
         didParseCell: data => {
             if (data.section !== "body") return;
@@ -413,10 +420,22 @@ export async function generatePurchaseOrderPdfBlob(
             ],
             tableWidth: doc.internal.pageSize.getWidth() - 20,
             theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+            styles: {
+                fontSize: 8,
+                cellPadding: 2,
+                lineColor: [0, 0, 0],
+                lineWidth: 0.1,
+                overflow: "linebreak",
+            },
             columnStyles: {
-                0: { cellWidth: contentWidth / 2, halign: "center" },
-                1: { cellWidth: contentWidth / 2, halign: "right" },
+                0: {
+                    cellWidth: contentWidth * PURCHASE_SUMMARY_LABEL_RATIO,
+                    halign: "center",
+                },
+                1: {
+                    cellWidth: contentWidth * (1 - PURCHASE_SUMMARY_LABEL_RATIO),
+                    halign: "right",
+                },
             },
             headStyles: {
                 fillColor: purchaseArgbToRgb(PURCHASE_EXPORT_COLORS.headerBg),
@@ -461,10 +480,19 @@ export async function generatePurchaseOrderPdfBlob(
             body: rows,
             tableWidth: doc.internal.pageSize.getWidth() - 20,
             theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+            styles: {
+                fontSize: 8,
+                cellPadding: 2,
+                lineColor: [0, 0, 0],
+                lineWidth: 0.1,
+                overflow: "linebreak",
+            },
             columnStyles: {
-                0: { cellWidth: contentWidth / 2 },
-                1: { cellWidth: contentWidth / 2, halign: "right" },
+                0: { cellWidth: contentWidth * PURCHASE_SUMMARY_LABEL_RATIO },
+                1: {
+                    cellWidth: contentWidth * (1 - PURCHASE_SUMMARY_LABEL_RATIO),
+                    halign: "right",
+                },
             },
             didParseCell: data => {
                 if (data.section !== "body") return;
@@ -537,15 +565,24 @@ export async function generatePurchaseOrderPdfBlob(
             body: rows,
             tableWidth: doc.internal.pageSize.getWidth() - 20,
             theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+            styles: {
+                fontSize: 8,
+                cellPadding: 2,
+                lineColor: [0, 0, 0],
+                lineWidth: 0.1,
+                overflow: "linebreak",
+            },
             headStyles: {
                 fillColor: purchaseArgbToRgb(PURCHASE_EXPORT_COLORS.headerBg),
                 textColor: [0, 0, 0],
                 fontStyle: "bold",
             },
             columnStyles: {
-                0: { cellWidth: contentWidth / 2 },
-                1: { cellWidth: contentWidth / 2, halign: "right" },
+                0: { cellWidth: contentWidth * PURCHASE_SUMMARY_LABEL_RATIO },
+                1: {
+                    cellWidth: contentWidth * (1 - PURCHASE_SUMMARY_LABEL_RATIO),
+                    halign: "right",
+                },
             },
             didParseCell: data => {
                 if (data.section !== "body") return;

@@ -822,30 +822,29 @@ function GrandSummary({
     return (
         <div>
             {/* Consolidated Summary Table */}
-            <table className="w-full border-collapse text-xs border border-black">
+            <table className={purchaseOrderPreviewStyles.summaryTable}>
+                <colgroup>
+                    <col className={purchaseOrderPreviewStyles.summaryLabelColumn} />
+                    <col className={purchaseOrderPreviewStyles.summaryValueColumn} />
+                </colgroup>
                 <tbody>
                     <tr className={purchaseOrderPreviewStyles.subTotalBg}>
-                        <td className="border border-black px-3 py-2 font-bold text-sm" colSpan={5}>
+                        <td className="border border-black px-3 py-2 font-bold text-sm break-words">
                             GRAND TOTAL (Subtotal)
                         </td>
-                        <td
-                            className="border border-black px-3 py-2 text-right font-bold text-sm"
-                            colSpan={3}
-                        >
+                        <td className="border border-black px-3 py-2 text-right font-bold text-sm break-words">
                             {formatExportCurrency(grandSubtotal)}
                         </td>
                     </tr>
                     {grandGstAmount > 0 && (
                         <tr className="text-green-700">
                             <td
-                                className="border border-black px-3 py-1.5 text-muted-foreground"
-                                colSpan={5}
+                                className="border border-black px-3 py-1.5 text-muted-foreground break-words"
                             >
                                 Total GST
                             </td>
                             <td
-                                className="border border-black px-3 py-1.5 text-right text-success font-medium"
-                                colSpan={3}
+                                className="border border-black px-3 py-1.5 text-right text-success font-medium break-words"
                             >
                                 +{formatExportCurrency(grandGstAmount)}
                             </td>
@@ -854,26 +853,23 @@ function GrandSummary({
                     {grandTds > 0 && (
                         <tr>
                             <td
-                                className="border border-black px-3 py-1.5 text-muted-foreground"
-                                colSpan={5}
+                                className="border border-black px-3 py-1.5 text-muted-foreground break-words"
                             >
                                 Total TDS
                             </td>
                             <td
-                                className="border border-black px-3 py-1.5 text-right text-destructive font-medium"
-                                colSpan={3}
+                                className="border border-black px-3 py-1.5 text-right text-destructive font-medium break-words"
                             >
                                 -{formatExportCurrency(grandTds)}
                             </td>
                         </tr>
                     )}
                     <tr className={purchaseOrderPreviewStyles.totalBg}>
-                        <td className="border border-black px-3 py-2 font-bold" colSpan={5}>
+                        <td className="border border-black px-3 py-2 font-bold break-words">
                             GRAND TOTAL (After Tax)
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold"
-                            colSpan={3}
+                            className="border border-black px-3 py-2 text-right font-bold break-words"
                         >
                             {formatExportCurrency(grandTotal)}
                         </td>
@@ -881,14 +877,12 @@ function GrandSummary({
                     {grandAdvance > 0 && (
                         <tr className={purchaseOrderPreviewStyles.advanceBg}>
                             <td
-                                className="border border-black px-3 py-1.5 font-semibold text-destructive"
-                                colSpan={5}
+                                className="border border-black px-3 py-1.5 font-semibold text-destructive break-words"
                             >
                                 Total Advance Paid
                             </td>
                             <td
-                                className="border border-black px-3 py-1.5 text-right font-semibold text-destructive"
-                                colSpan={3}
+                                className="border border-black px-3 py-1.5 text-right font-semibold text-destructive break-words"
                             >
                                 -{formatExportCurrency(grandAdvance)}
                             </td>
@@ -896,14 +890,12 @@ function GrandSummary({
                     )}
                     <tr className={purchaseOrderPreviewStyles.balanceBg}>
                         <td
-                            className="border border-black px-3 py-2 font-bold text-sm text-green-800"
-                            colSpan={5}
+                            className="border border-black px-3 py-2 font-bold text-sm text-green-800 break-words"
                         >
                             GRAND OUTSTANDING BALANCE
                         </td>
                         <td
-                            className="border border-black px-3 py-2 text-right font-bold text-sm text-green-800"
-                            colSpan={3}
+                            className="border border-black px-3 py-2 text-right font-bold text-sm text-green-800 break-words"
                         >
                             {formatExportCurrency(grandOutstanding)}
                         </td>
@@ -958,7 +950,11 @@ function ExpenseSummaryTable({
             <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
                 Expenses Summary
             </div>
-            <table className="w-full border-collapse text-xs border border-black">
+            <table className={purchaseOrderPreviewStyles.summaryTable}>
+                <colgroup>
+                    <col className={purchaseOrderPreviewStyles.summaryLabelColumn} />
+                    <col className={purchaseOrderPreviewStyles.summaryValueColumn} />
+                </colgroup>
                 <thead>
                     <tr className={purchaseOrderPreviewStyles.headerBg}>
                         <th className="border border-black px-2 py-2 text-center font-bold">
@@ -1048,70 +1044,70 @@ function ClientBillSummary({
             <div className="font-bold text-sm mb-2 uppercase text-muted-foreground tracking-wider">
                 Client Bill Summary
             </div>
-            <table className="w-full border-collapse text-xs border border-black">
+            <table className={purchaseOrderPreviewStyles.summaryTable}>
+                <colgroup>
+                    <col className={purchaseOrderPreviewStyles.summaryLabelColumn} />
+                    <col className={purchaseOrderPreviewStyles.summaryValueColumn} />
+                </colgroup>
                 <tbody>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             Estimated Amount
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right">
                             {formatExportCurrency(summary.estimatedAmount)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             Service Charge ({eventData.serviceCharge ?? 0}%)
                         </td>
                         <td
                             className="border border-black px-3 py-1.5 text-right text-green-700"
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.serviceChargeAmount)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             Discount
                         </td>
                         <td
                             className="border border-black px-3 py-1.5 text-right text-destructive"
-                            colSpan={4}
                         >
                             −{formatExportCurrency(summary.discountAmount)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             Original Amount
                         </td>
-                        <td className="border border-black px-3 py-1.5 text-right" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 text-right">
                             {formatExportCurrency(summary.originalAmount)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             GST Amount
                         </td>
                         <td
                             className="border border-black px-3 py-1.5 text-right text-green-700"
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.gstAmount)}
                         </td>
                     </tr>
                     <tr className={purchaseOrderPreviewStyles.totalBg}>
-                        <td className="border border-black px-3 py-2 font-bold" colSpan={4}>
+                        <td className="border border-black px-3 py-2 font-bold">
                             Total (Original + GST)
                         </td>
                         <td
                             className="border border-black px-3 py-2 text-right font-bold"
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.total)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             Amount Received from Client
                             {amountRecievedFromClientDate
                                 ? ` (${formatShortDate(amountRecievedFromClientDate)})`
@@ -1119,42 +1115,38 @@ function ClientBillSummary({
                         </td>
                         <td
                             className="border border-black px-3 py-1.5 text-right text-green-700"
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.amountReceivedFromClient)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             TDS Deducted by Client
                         </td>
                         <td
                             className="border border-black px-3 py-1.5 text-right text-destructive"
-                            colSpan={4}
                         >
                             −{formatExportCurrency(summary.tdsDeducted)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5 font-bold" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5 font-bold">
                             Final Amount
                         </td>
                         <td
                             className={`border border-black px-3 py-1.5 text-right font-bold ${
                                 summary.finalAmount < 0 ? "text-destructive" : "text-green-700"
                             }`}
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.finalAmount)}
                         </td>
                     </tr>
                     <tr>
-                        <td className="border border-black px-3 py-1.5" colSpan={4}>
+                        <td className="border border-black px-3 py-1.5">
                             Advance
                         </td>
                         <td
                             className="border border-black px-3 py-1.5 text-right text-green-700"
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.advance)}
                         </td>
@@ -1162,7 +1154,6 @@ function ClientBillSummary({
                     <tr className={purchaseOrderPreviewStyles.balanceBg}>
                         <td
                             className="border border-black px-3 py-2 font-bold text-sm text-green-800"
-                            colSpan={4}
                         >
                             Balance
                         </td>
@@ -1170,7 +1161,6 @@ function ClientBillSummary({
                             className={`border border-black px-3 py-2 text-right font-bold text-sm ${
                                 summary.balance < 0 ? "text-destructive" : "text-green-800"
                             }`}
-                            colSpan={4}
                         >
                             {formatExportCurrency(summary.balance)}
                         </td>

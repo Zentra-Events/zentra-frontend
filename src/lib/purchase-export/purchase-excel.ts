@@ -8,6 +8,9 @@ import {
     buildPurchaseOrderDocumentModel,
     PURCHASE_EXPORT_COLORS,
     PURCHASE_PAYMENT_TERMS,
+    PURCHASE_SUMMARY_LABEL_END_COLUMN,
+    PURCHASE_SUMMARY_TOTAL_COLUMNS,
+    PURCHASE_SUMMARY_VALUE_START_COLUMN,
 } from "./purchase-document";
 
 const BORDER: Partial<ExcelJS.Borders> = {
@@ -378,20 +381,36 @@ async function populatePurchaseOrderSheet(
     ];
     summaryRows.forEach(([label, value, color]) => {
         const row = sheet.getRow(rowIndex++);
-        sheet.mergeCells(row.number, 1, row.number, 7);
-        sheet.mergeCells(row.number, 8, row.number, 12);
+        sheet.mergeCells(row.number, 1, row.number, PURCHASE_SUMMARY_LABEL_END_COLUMN);
+        sheet.mergeCells(
+            row.number,
+            PURCHASE_SUMMARY_VALUE_START_COLUMN,
+            row.number,
+            PURCHASE_SUMMARY_TOTAL_COLUMNS,
+        );
         row.getCell(1).value = label;
-        row.getCell(8).value = value;
-        row.getCell(8).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
-        row.getCell(8).alignment = { horizontal: "right" };
+        row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).value = value;
+        row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
+        row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).alignment = {
+            horizontal: "right",
+            wrapText: true,
+        };
+        row.getCell(1).alignment = { vertical: "top", wrapText: true };
         const rowColor = label === "Total Advance Paid" ? PURCHASE_EXPORT_COLORS.advanceBg : color;
         fillRow(row, 12, rowColor, label.startsWith("GRAND"));
-        if (label === "Total GST") row.getCell(8).font = { ...row.getCell(8).font, color: { argb: AMOUNT_GREEN } };
+        if (label === "Total GST")
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).font = {
+                ...row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).font,
+                color: { argb: AMOUNT_GREEN },
+            };
         if (label === "Total TDS" || label === "Total Advance Paid")
-            row.getCell(8).font = { ...row.getCell(8).font, color: { argb: AMOUNT_RED } };
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).font = {
+                ...row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).font,
+                color: { argb: AMOUNT_RED },
+            };
         if (label === "GRAND OUTSTANDING BALANCE")
-            row.getCell(8).font = {
-                ...row.getCell(8).font,
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).font = {
+                ...row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).font,
                 color: { argb: value < 0 ? AMOUNT_RED : AMOUNT_DARK_GREEN },
             };
     });
@@ -412,10 +431,15 @@ async function populatePurchaseOrderSheet(
         rowIndex += 1;
         addSectionTitle(sheet, rowIndex++, "Expenses Summary", 12);
         const header = sheet.getRow(rowIndex++);
-        sheet.mergeCells(header.number, 1, header.number, 6);
-        sheet.mergeCells(header.number, 7, header.number, 12);
+        sheet.mergeCells(header.number, 1, header.number, PURCHASE_SUMMARY_LABEL_END_COLUMN);
+        sheet.mergeCells(
+            header.number,
+            PURCHASE_SUMMARY_VALUE_START_COLUMN,
+            header.number,
+            PURCHASE_SUMMARY_TOTAL_COLUMNS,
+        );
         ["Event Date", "Total Amount"].forEach((label, index) => {
-            const cell = header.getCell(index === 0 ? 1 : 7);
+            const cell = header.getCell(index === 0 ? 1 : PURCHASE_SUMMARY_VALUE_START_COLUMN);
             cell.value = label;
             cell.font = { bold: true };
             cell.alignment = {
@@ -429,18 +453,34 @@ async function populatePurchaseOrderSheet(
                 fgColor: { argb: PURCHASE_EXPORT_COLORS.headerBg },
             };
             cell.border = BORDER;
-            for (let column = index === 0 ? 1 : 7; column <= (index === 0 ? 6 : 12); column++)
+            for (
+                let column = index === 0 ? 1 : PURCHASE_SUMMARY_VALUE_START_COLUMN;
+                column <= (index === 0 ? PURCHASE_SUMMARY_LABEL_END_COLUMN : PURCHASE_SUMMARY_TOTAL_COLUMNS);
+                column++
+            )
                 header.getCell(column).border = BORDER;
         });
         header.height = 30;
         const row = sheet.getRow(rowIndex++);
-        sheet.mergeCells(row.number, 1, row.number, 6);
-        sheet.mergeCells(row.number, 7, row.number, 12);
+        sheet.mergeCells(row.number, 1, row.number, PURCHASE_SUMMARY_LABEL_END_COLUMN);
+        sheet.mergeCells(
+            row.number,
+            PURCHASE_SUMMARY_VALUE_START_COLUMN,
+            row.number,
+            PURCHASE_SUMMARY_TOTAL_COLUMNS,
+        );
         row.getCell(1).value = dateRange;
         row.getCell(1).alignment = { horizontal: "center", vertical: "top", wrapText: true };
-        row.getCell(7).value = es.hasExpenses ? es.totalAmount : "No expenses";
-        row.getCell(7).numFmt = "#,##0.00";
-        row.getCell(7).alignment = { horizontal: "right", vertical: "top" };
+        row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).value = es.hasExpenses
+            ? es.totalAmount
+            : "No expenses";
+        row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).numFmt = "#,##0.00";
+        row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).alignment = {
+            horizontal: "right",
+            vertical: "top",
+            wrapText: true,
+        };
+        row.getCell(1).alignment = { horizontal: "center", vertical: "top", wrapText: true };
         fillRow(row, 12, PURCHASE_EXPORT_COLORS.summaryBg, false);
         rowIndex += 1;
     }
@@ -473,12 +513,22 @@ async function populatePurchaseOrderSheet(
         ];
         clientBillRows.forEach(([label, value, color]) => {
             const row = sheet.getRow(rowIndex++);
-            sheet.mergeCells(row.number, 1, row.number, 6);
-            sheet.mergeCells(row.number, 7, row.number, 12);
+            sheet.mergeCells(row.number, 1, row.number, PURCHASE_SUMMARY_LABEL_END_COLUMN);
+            sheet.mergeCells(
+                row.number,
+                PURCHASE_SUMMARY_VALUE_START_COLUMN,
+                row.number,
+                PURCHASE_SUMMARY_TOTAL_COLUMNS,
+            );
             row.getCell(1).value = label;
-            row.getCell(7).value = value;
-            row.getCell(7).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
-            row.getCell(7).alignment = { horizontal: "right" };
+            row.getCell(1).alignment = { vertical: "top", wrapText: true };
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).value = value;
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).alignment = {
+                horizontal: "right",
+                vertical: "top",
+                wrapText: true,
+            };
             fillRow(
                 row,
                 12,
@@ -487,7 +537,7 @@ async function populatePurchaseOrderSheet(
                     label === "Final Amount" ||
                     label === "Balance",
             );
-            const amountCell = row.getCell(7);
+            const amountCell = row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN);
             const amountColor =
                 label.startsWith("Service Charge (") ||
                 label === "GST Amount" ||
@@ -541,12 +591,22 @@ async function populatePurchaseOrderSheet(
         ];
         profitRows.forEach(([label, value, color]) => {
             const row = sheet.getRow(rowIndex++);
-            sheet.mergeCells(row.number, 1, row.number, 6);
-            sheet.mergeCells(row.number, 7, row.number, 12);
+            sheet.mergeCells(row.number, 1, row.number, PURCHASE_SUMMARY_LABEL_END_COLUMN);
+            sheet.mergeCells(
+                row.number,
+                PURCHASE_SUMMARY_VALUE_START_COLUMN,
+                row.number,
+                PURCHASE_SUMMARY_TOTAL_COLUMNS,
+            );
             row.getCell(1).value = label;
-            row.getCell(7).value = value;
-            row.getCell(7).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
-            row.getCell(7).alignment = { horizontal: "right" };
+            row.getCell(1).alignment = { vertical: "top", wrapText: true };
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).value = value;
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).numFmt = "#,##0.00;[Red]-#,##0.00;0.00";
+            row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN).alignment = {
+                horizontal: "right",
+                vertical: "top",
+                wrapText: true,
+            };
             fillRow(
                 row,
                 12,
@@ -557,7 +617,7 @@ async function populatePurchaseOrderSheet(
                     label === "Net Hand" ||
                     label === "Balance",
             );
-            const amountCell = row.getCell(7);
+            const amountCell = row.getCell(PURCHASE_SUMMARY_VALUE_START_COLUMN);
             const amountColor =
                 label === "Total Vendor GST"
                     ? AMOUNT_GREEN

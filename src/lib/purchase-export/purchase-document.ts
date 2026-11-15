@@ -25,6 +25,11 @@ export const PURCHASE_EXPORT_COLORS = {
     border: "FF000000",
 } as const;
 
+export const PURCHASE_SUMMARY_LABEL_RATIO = 0.72;
+export const PURCHASE_SUMMARY_LABEL_END_COLUMN = 9;
+export const PURCHASE_SUMMARY_VALUE_START_COLUMN = 10;
+export const PURCHASE_SUMMARY_TOTAL_COLUMNS = 12;
+
 export const PURCHASE_PAYMENT_TERMS = [
     ["Payment Terms", "As per contract / 30 days from invoice"],
     ["Delivery", "As per event schedule"],

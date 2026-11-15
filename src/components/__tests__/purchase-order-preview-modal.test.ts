@@ -111,7 +111,21 @@ describe("buildVendorFinancials", () => {
     });
 
     it("maps each vendor summary row with vendor name lookup", () => {
-        const rows = buildVendorFinancials(vendorSummary, vendorList);
+        // Empty-vendor summary rows surface as SELF only when inventory items exist
+        const itemsWithInventory = [
+            ...(baseItems ?? []),
+            {
+                item: "Inventory Table",
+                vendor: "",
+                inventoryID: "inv-1",
+                category: "Furniture",
+                unit: "nos",
+                quantity: 1,
+                pricePerItem: 100,
+                days: 1,
+            },
+        ] as unknown as EventResponse["items"];
+        const rows = buildVendorFinancials(vendorSummary, vendorList, itemsWithInventory);
 
         expect(rows).toHaveLength(3);
 
