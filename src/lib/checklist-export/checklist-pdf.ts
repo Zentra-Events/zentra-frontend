@@ -27,10 +27,21 @@ const PDF_COLORS = {
 };
 
 const TABLE_HEAD = [CHECKLIST_EXPORT_COLUMNS as unknown as string[]];
+const CHECKLIST_COLUMN_WIDTH_RATIOS = [
+    0.04, 0.12, 0.16, 0.05, 0.05, 0.11, 0.09, 0.09, 0.12, 0.08, 0.09,
+];
+
+function formatDateTimeLines(value: string): string {
+    return value.replace(", ", "\n");
+}
 
 type TableSegment = {
     body: RowInput[];
-    rowMeta: { fillColor?: [number, number, number]; fontStyle?: "bold" }[];
+    rowMeta: {
+        fillColor?: [number, number, number];
+        fontStyle?: "bold";
+        halign?: "left" | "center" | "right";
+    }[];
 };
 
 function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
@@ -41,12 +52,23 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
             segment.body.push([
                 { content: exportRow.name.toUpperCase(), colSpan: CHECKLIST_EXPORT_COLUMNS.length },
             ]);
-            segment.rowMeta.push({ fillColor: PDF_COLORS.categoryBg, fontStyle: "bold" });
+            segment.rowMeta.push({
+                fillColor: PDF_COLORS.categoryBg,
+                fontStyle: "bold",
+                halign: "left",
+            });
         } else if (exportRow.type === "subCategory") {
             segment.body.push([
-                { content: exportRow.name, colSpan: CHECKLIST_EXPORT_COLUMNS.length },
+                {
+                    content: `Sub Category: ${exportRow.name}`,
+                    colSpan: CHECKLIST_EXPORT_COLUMNS.length,
+                },
             ]);
-            segment.rowMeta.push({ fillColor: PDF_COLORS.subCategoryBg, fontStyle: "bold" });
+            segment.rowMeta.push({
+                fillColor: PDF_COLORS.subCategoryBg,
+                fontStyle: "bold",
+                halign: "left",
+            });
         } else if (exportRow.type === "item") {
             const item = exportRow.item;
             segment.body.push([
@@ -56,11 +78,11 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 String(item.quantity ?? 0),
                 item.days != null ? String(item.days) : "-",
                 exportRow.vendorDisplay,
-                getChecklistPickupDisplay(item),
-                getChecklistReturnDisplay(item),
+                formatDateTimeLines(getChecklistPickupDisplay(item)),
+                formatDateTimeLines(getChecklistReturnDisplay(item)),
                 getChecklistAssigneeDisplay(item),
                 getChecklistStatusLabel(item.status),
-                getChecklistDeadlineDisplay(item),
+                formatDateTimeLines(getChecklistDeadlineDisplay(item)),
             ]);
             segment.rowMeta.push({});
         }
@@ -96,17 +118,8 @@ function splitRowsIntoSegments(rows: ChecklistExportRow[]): TableSegment[] {
 }
 
 function buildTableColumnStyles(contentWidth: number) {
-    // Keep the compact columns fixed and share the remaining printable width
-    // among the longer text fields, matching the preview table proportions.
-    const widths = [9, 32, 34, 12, 11, 29, 26, 26, 22, 20, 28];
-    const flexibleColumns = [1, 2, 5, 8, 10];
-    const flexWeights = [0.9, 1.2, 0.9, 0.7, 0.8];
-    const minTotal = widths.reduce((sum, width) => sum + width, 0);
-    const extra = Math.max(contentWidth - minTotal, 0);
-    const weightTotal = flexWeights.reduce((sum, weight) => sum + weight, 0);
-    flexibleColumns.forEach((column, index) => {
-        widths[column] += (extra * flexWeights[index]) / weightTotal;
-    });
+    // Match the export preview's column proportions across the printable page width.
+    const widths = CHECKLIST_COLUMN_WIDTH_RATIOS.map(ratio => contentWidth * ratio);
 
     return {
         0: { halign: "center" as const, cellWidth: widths[0] },
@@ -137,15 +150,16 @@ function renderTableSegment(
         tableWidth: contentWidth,
         theme: "grid",
         styles: {
-            fontSize: 8,
-            cellPadding: 2,
+            fontSize: 7.5,
+            cellPadding: 1.6,
             lineColor: [0, 0, 0],
             lineWidth: 0.1,
             overflow: "linebreak",
+            textColor: [31, 41, 55],
         },
         headStyles: {
             fillColor: PDF_COLORS.headerBg,
-            textColor: [0, 0, 0],
+            textColor: [17, 24, 39],
             fontStyle: "bold",
             halign: "center",
         },
@@ -156,6 +170,7 @@ function renderTableSegment(
             if (!meta) return;
             if (meta.fillColor) data.cell.styles.fillColor = meta.fillColor;
             if (meta.fontStyle) data.cell.styles.fontStyle = meta.fontStyle;
+            if (meta.halign) data.cell.styles.halign = meta.halign;
         },
         margin: { left: margin, right: margin },
     });

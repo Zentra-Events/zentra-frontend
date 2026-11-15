@@ -28,7 +28,12 @@ const META_LABEL_END_COL = 2;
 const META_VALUE_START_COL = 3;
 const META_VALUE_END_COL = 5;
 const META_LOGO_START_COL = 7;
-const CHECKLIST_COLUMN_WIDTHS = [7, 24, 30, 8, 8, 22, 21, 21, 20, 15, 22];
+// Proportions mirror the export preview table (scaled to Excel column units).
+const CHECKLIST_COLUMN_WIDTHS = [8, 24, 32, 10, 10, 22, 18, 18, 24, 16, 18];
+
+function formatDateTimeLines(value: string): string {
+    return value.replace(", ", "\n");
+}
 
 function estimateWrappedLines(value: string, width: number): number {
     return value.split("\n").reduce(
@@ -51,6 +56,20 @@ function clearBorderRange(row: ExcelJS.Row, fromCol: number, toCol: number) {
     for (let c = fromCol; c <= toCol; c++) {
         clearCellBorders(row.getCell(c));
     }
+}
+
+function offsetToCellCoordinate(offsetPx: number, cellSizesPx: number[], startIndex: number) {
+    let remainingOffset = offsetPx;
+
+    for (let index = 0; index < cellSizesPx.length; index++) {
+        const size = cellSizesPx[index];
+        if (remainingOffset <= size || index === cellSizesPx.length - 1) {
+            return startIndex + index + Math.min(remainingOffset / size, 1);
+        }
+        remainingOffset -= size;
+    }
+
+    return startIndex + cellSizesPx.length;
 }
 
 function fillRow(row: ExcelJS.Row, fromCol: number, toCol: number, argb: string) {
@@ -104,10 +123,10 @@ async function embedLogoInWorksheet(
     // The merged area stays within the table width, so it cannot add a blank
     // worksheet column or push the logo past the checklist header.
     sheet.mergeCells(startRow, META_LOGO_START_COL, endRow, CHECKLIST_COLUMN_COUNT);
-    const logoRegionWidthPx = CHECKLIST_COLUMN_WIDTHS.slice(META_LOGO_START_COL - 1).reduce(
-        (sum, width) => sum + width * 7,
-        0,
+    const logoColumnWidthsPx = CHECKLIST_COLUMN_WIDTHS.slice(META_LOGO_START_COL - 1).map(
+        width => width * 7,
     );
+    const logoRegionWidthPx = logoColumnWidthsPx.reduce((sum, width) => sum + width, 0);
     const rowHeights = Array.from(
         { length: endRow - startRow + 1 },
         (_, index) => sheet.getRow(startRow + index).height ?? 20,
@@ -116,13 +135,16 @@ async function embedLogoInWorksheet(
     const imageSize = Math.min(100, logoRegionWidthPx - 12, logoRegionHeightPx - 12);
     const horizontalOffset = Math.max((logoRegionWidthPx - imageSize) / 2, 0);
     const verticalOffset = Math.max((logoRegionHeightPx - imageSize) / 2, 0);
-    const firstColumnWidthPx = CHECKLIST_COLUMN_WIDTHS[META_LOGO_START_COL - 1] * 7;
-    const firstRowHeightPx = rowHeights[0] * (96 / 72);
+    const logoRowHeightsPx = rowHeights.map(height => height * (96 / 72));
 
     sheet.addImage(imageId, {
         tl: {
-            col: META_LOGO_START_COL - 1 + horizontalOffset / firstColumnWidthPx,
-            row: startRow - 1 + verticalOffset / firstRowHeightPx,
+            col: offsetToCellCoordinate(
+                horizontalOffset,
+                logoColumnWidthsPx,
+                META_LOGO_START_COL - 1,
+            ),
+            row: offsetToCellCoordinate(verticalOffset, logoRowHeightsPx, startRow - 1),
         },
         ext: { width: imageSize, height: imageSize },
     });
@@ -133,7 +155,7 @@ function writeTableHeader(sheet: ExcelJS.Worksheet, rowIndex: number) {
     CHECKLIST_EXPORT_COLUMNS.forEach((header, index) => {
         const cell = row.getCell(index + 1);
         cell.value = header;
-        cell.font = { bold: true };
+        cell.font = { bold: true, size: 11 };
         cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
         cell.fill = {
             type: "pattern",
@@ -210,7 +232,7 @@ async function populateWorksheet(
                 sheet.mergeCells(rowIndex, 1, rowIndex, CHECKLIST_COLUMN_COUNT);
                 row.getCell(1).value = exportRow.name.toUpperCase();
                 fillRow(row, 1, CHECKLIST_COLUMN_COUNT, CHECKLIST_EXPORT_COLORS.categoryBg);
-                row.getCell(1).font = { bold: true };
+                row.getCell(1).font = { bold: true, size: 11 };
                 row.height = 20;
                 rowIndex += 1;
                 break;
@@ -218,9 +240,9 @@ async function populateWorksheet(
             case "subCategory": {
                 const row = sheet.getRow(rowIndex);
                 sheet.mergeCells(rowIndex, 1, rowIndex, CHECKLIST_COLUMN_COUNT);
-                row.getCell(1).value = exportRow.name;
+                row.getCell(1).value = `Sub Category: ${exportRow.name}`;
                 fillRow(row, 1, CHECKLIST_COLUMN_COUNT, CHECKLIST_EXPORT_COLORS.subCategoryBg);
-                row.getCell(1).font = { bold: true };
+                row.getCell(1).font = { bold: true, size: 11 };
                 row.height = 20;
                 rowIndex += 1;
                 break;
@@ -240,16 +262,20 @@ async function populateWorksheet(
                 row.getCell(5).alignment = { horizontal: "center", vertical: "top" };
                 row.getCell(6).value = exportRow.vendorDisplay;
                 row.getCell(6).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(7).value = getChecklistPickupDisplay(item);
+                row.getCell(7).value = formatDateTimeLines(getChecklistPickupDisplay(item));
                 row.getCell(7).alignment = { horizontal: "center", vertical: "top", wrapText: true };
-                row.getCell(8).value = getChecklistReturnDisplay(item);
+                row.getCell(8).value = formatDateTimeLines(getChecklistReturnDisplay(item));
                 row.getCell(8).alignment = { horizontal: "center", vertical: "top", wrapText: true };
                 row.getCell(9).value = getChecklistAssigneeDisplay(item);
                 row.getCell(9).alignment = { horizontal: "left", vertical: "top", wrapText: true };
                 row.getCell(10).value = getChecklistStatusLabel(item.status);
                 row.getCell(10).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(11).value = getChecklistDeadlineDisplay(item);
+                row.getCell(11).value = formatDateTimeLines(getChecklistDeadlineDisplay(item));
                 row.getCell(11).alignment = { horizontal: "center", vertical: "top", wrapText: true };
+                for (let column = 1; column <= CHECKLIST_COLUMN_COUNT; column++) {
+                    const cell = row.getCell(column);
+                    cell.font = { ...(cell.font ?? {}), size: 11 };
+                }
                 applyBorderRange(row, 1, CHECKLIST_COLUMN_COUNT);
                 const wrappedLines = Math.max(
                     estimateWrappedLines(String(row.getCell(2).value ?? ""), CHECKLIST_COLUMN_WIDTHS[1]),

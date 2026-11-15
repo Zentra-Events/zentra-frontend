@@ -39,6 +39,17 @@ interface ChecklistExportPreviewModalProps {
 
 const CATEGORY_COL_SPAN = CHECKLIST_EXPORT_COLUMNS.length;
 
+function renderDateTime(value: string) {
+    if (!value || value === "-") return value || "-";
+    const [date, time] = value.split(", ");
+    return (
+        <span className="inline-flex flex-col leading-tight">
+            <span>{date}</span>
+            {time && <span>{time}</span>}
+        </span>
+    );
+}
+
 function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
     const tableRows = rows.filter(
         r =>
@@ -52,90 +63,109 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
 
     return (
         <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] border-collapse text-xs border border-black">
-            <thead>
-                <tr className={previewStyles.headerBg}>
-                    {CHECKLIST_EXPORT_COLUMNS.map(header => (
-                        <th
-                            key={header}
-                            className="border border-black px-2 py-2 text-center font-bold"
-                        >
-                            {header}
-                        </th>
-                    ))}
-                </tr>
-            </thead>
-            <tbody>
-                {tableRows
-                    .filter(r => r.type !== "table-header")
-                    .map((row, index) => {
-                        if (row.type === "category") {
-                            return (
-                                <tr key={`cat-${index}`} className={previewStyles.categoryBg}>
-                                    <td
-                                        colSpan={CATEGORY_COL_SPAN}
-                                        className="border border-black px-2 py-2 font-bold uppercase"
+            <table className="w-full min-w-[1000px] table-fixed border-collapse text-xs border border-black">
+                <thead>
+                    <tr className={previewStyles.headerBg}>
+                        {CHECKLIST_EXPORT_COLUMNS.map(header => (
+                            <th
+                                key={header}
+                                className={`border border-black px-1.5 py-2 text-center font-bold ${
+                                    {
+                                        No: "w-[4%]",
+                                        "Item Name": "w-[12%]",
+                                        Description: "w-[16%]",
+                                        Qty: "w-[5%]",
+                                        Days: "w-[5%]",
+                                        "Vendor/Inventory": "w-[11%]",
+                                        "Pickup/Start": "w-[9%]",
+                                        "Drop/End": "w-[9%]",
+                                        "Assigned To": "w-[12%]",
+                                        Status: "w-[8%]",
+                                        Deadline: "w-[9%]",
+                                    }[header]
+                                }`}
+                            >
+                                {header}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {tableRows
+                        .filter(r => r.type !== "table-header")
+                        .map((row, index) => {
+                            if (row.type === "category") {
+                                return (
+                                    <tr key={`cat-${index}`} className={previewStyles.categoryBg}>
+                                        <td
+                                            colSpan={CATEGORY_COL_SPAN}
+                                            className="border border-black px-2 py-2 font-bold uppercase"
+                                        >
+                                            {row.name}
+                                        </td>
+                                    </tr>
+                                );
+                            }
+                            if (row.type === "subCategory") {
+                                return (
+                                    <tr
+                                        key={`sub-${index}`}
+                                        className={previewStyles.subCategoryBg}
                                     >
-                                        {row.name}
-                                    </td>
-                                </tr>
-                            );
-                        }
-                        if (row.type === "subCategory") {
-                            return (
-                                <tr key={`sub-${index}`} className={previewStyles.subCategoryBg}>
-                                    <td
-                                        colSpan={CATEGORY_COL_SPAN}
-                                        className="border border-black px-2 py-2 font-semibold"
-                                    >
-                                        {row.name}
-                                    </td>
-                                </tr>
-                            );
-                        }
-                        if (row.type === "item") {
-                            const item = row.item;
-                            return (
-                                <tr key={`item-${index}`}>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {row.serial}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 align-top">
-                                        {getChecklistItemName(item)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 align-top whitespace-pre-wrap">
-                                        {getChecklistItemDetails(item)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.quantity ?? 0}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {item.days ?? "-"}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 align-top">
-                                        {row.vendorDisplay}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {getChecklistPickupDisplay(item)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {getChecklistReturnDisplay(item)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 align-top">
-                                        {getChecklistAssigneeDisplay(item)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {getChecklistStatusLabel(item.status)}
-                                    </td>
-                                    <td className="border border-black px-2 py-2 text-center align-top">
-                                        {getChecklistDeadlineDisplay(item)}
-                                    </td>
-                                </tr>
-                            );
-                        }
-                        return null;
-                    })}
-            </tbody>
+                                        <td
+                                            colSpan={CATEGORY_COL_SPAN}
+                                            className="border border-black px-2 py-2 font-semibold"
+                                        >
+                                            Sub Category: {row.name}
+                                        </td>
+                                    </tr>
+                                );
+                            }
+                            if (row.type === "item") {
+                                const item = row.item;
+                                return (
+                                    <tr key={`item-${index}`}>
+                                        <td className="border border-black px-2 py-2 text-center align-top">
+                                            {row.serial}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 align-top">
+                                            <span className="font-medium">
+                                                {getChecklistItemName(item)}
+                                            </span>
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 align-top whitespace-pre-wrap text-muted-foreground">
+                                            {getChecklistItemDetails(item)}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top">
+                                            {item.quantity ?? 0}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top">
+                                            {item.days ?? "-"}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 align-top">
+                                            {row.vendorDisplay}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top">
+                                            {renderDateTime(getChecklistPickupDisplay(item))}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top">
+                                            {renderDateTime(getChecklistReturnDisplay(item))}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 align-top">
+                                            {getChecklistAssigneeDisplay(item)}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top whitespace-nowrap">
+                                            {getChecklistStatusLabel(item.status)}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top">
+                                            {renderDateTime(getChecklistDeadlineDisplay(item))}
+                                        </td>
+                                    </tr>
+                                );
+                            }
+                            return null;
+                        })}
+                </tbody>
             </table>
         </div>
     );

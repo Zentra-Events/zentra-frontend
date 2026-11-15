@@ -4,13 +4,13 @@ import React, { useState } from "react";
 import { Eye } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/tooltip";
 import { groupByCategory } from "@/lib/utils";
 import { formatLocalDateTime } from "@/lib/utils/date";
 import { getChecklistStatusLabel } from "@/lib/utils/checklist-status";
 import type { ChecklistItem } from "@/components/checklist-modal/types";
 import type { ChecklistExportContext } from "@/lib/checklist-export/checklist-document";
 import { ChecklistExportPreviewModal } from "@/components/checklist-export-preview-modal";
+import { Tooltip } from "./ui";
 
 interface ChecklistPreviewModalProps {
     isOpen: boolean;
@@ -70,14 +70,24 @@ export function ChecklistPreviewModal({
     ): React.ReactNode => {
         const descText = item.description || "-";
         const isLongDesc = descText.length > 12;
+        const renderDateTime = (value?: string) => {
+            if (!value) return "-";
+            const [date, time] = formatLocalDateTime(value).split(", ");
+            return (
+                <span className="inline-flex flex-col whitespace-nowrap leading-tight">
+                    <span>{date}</span>
+                    {time && <span>{time}</span>}
+                </span>
+            );
+        };
 
         return (
             <tr key={key} className={!isLastItem ? "border-b border-border" : ""}>
                 <td className="py-3 px-3 align-middle text-xs text-muted-foreground">{rowIndex}</td>
-                <td className="py-3 px-3 align-middle">
+                <td className="py-3 px-3 align-middle break-words [overflow-wrap:anywhere]">
                     <span className="font-medium">{item.item}</span>
                 </td>
-                <td className="py-3 px-3 align-middle max-w-[200px]">
+                <td className="py-3 px-3 align-middle break-words [overflow-wrap:anywhere]">
                     {isLongDesc ? (
                         <Tooltip content={descText}>
                             <span className="block truncate">{descText.slice(0, 12) + "..."}</span>
@@ -88,7 +98,7 @@ export function ChecklistPreviewModal({
                 </td>
                 <td className="py-3 px-3 align-middle text-center">{item.quantity || 0}</td>
                 <td className="py-3 px-3 align-middle text-center">{item.days ?? "-"}</td>
-                <td className="py-3 px-3 align-middle">
+                <td className="py-3 px-3 align-middle break-words [overflow-wrap:anywhere]">
                     {(() => {
                         if (item.inventoryID) {
                             const inv = inventoryList.find(
@@ -104,13 +114,15 @@ export function ChecklistPreviewModal({
                         return <span>{vendor?.name || item.vendor || "-"}</span>;
                     })()}
                 </td>
-                <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
-                    {item.pickupDate ? formatLocalDateTime(item.pickupDate) : "-"}
+                <td className="py-3 px-3 align-middle text-center text-xs">
+                    {renderDateTime(item.pickupDate)}
                 </td>
-                <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
-                    {item.returnDate ? formatLocalDateTime(item.returnDate) : "-"}
+                <td className="py-3 px-3 align-middle text-center text-xs">
+                    {renderDateTime(item.returnDate)}
                 </td>
-                <td className="py-3 px-3 align-middle">{item.poc?.trim() || "-"}</td>
+                <td className="py-3 px-3 align-middle break-words [overflow-wrap:anywhere]">
+                    {item.poc?.trim() || "-"}
+                </td>
                 <td className="py-3 px-3 align-middle text-center">
                     {(() => {
                         const statusStyles: Record<string, string> = {
@@ -132,14 +144,14 @@ export function ChecklistPreviewModal({
                         );
                     })()}
                 </td>
-                <td className="py-3 px-3 align-middle text-center">
+                <td className="py-3 px-3 align-middle text-center text-xs">
                     {item.deadlineDate ? (
                         <span
-                            className={
+                            className={`inline-flex flex-col whitespace-nowrap leading-tight ${
                                 checkPastDate(item.deadlineDate) ? "text-red-500 font-medium" : ""
-                            }
+                            }`}
                         >
-                            {formatLocalDateTime(item.deadlineDate)}
+                            {renderDateTime(item.deadlineDate)}
                         </span>
                     ) : (
                         "-"
@@ -202,22 +214,42 @@ export function ChecklistPreviewModal({
 
                 {/* Single table with grouped categories and one column header */}
                 <div className="overflow-x-auto border border-border rounded-md">
-                    <table className="w-full min-w-[1200px] text-sm">
+                    <table className="w-full min-w-[1200px] table-fixed text-sm">
                         <thead>
-                            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                                <th className="py-3 px-3 font-medium text-xs text-muted-foreground w-10">
+                            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                <th className="py-3 px-2 font-medium text-xs text-muted-foreground w-[4%]">
                                     No
                                 </th>
-                                <th className="py-3 px-3 font-medium">Item Name</th>
-                                <th className="py-3 px-3 font-medium max-w-[200px]">Description</th>
-                                <th className="py-3 px-3 font-medium text-center w-16">Qty</th>
-                                <th className="py-3 px-3 font-medium text-center w-16">Days</th>
-                                <th className="py-3 px-3 font-medium">Vendor / Inventory</th>
-                                <th className="py-3 px-3 font-medium text-center">Pickup/Start</th>
-                                <th className="py-3 px-3 font-medium text-center">Return/End</th>
-                                <th className="py-3 px-3 font-medium">Assigned To</th>
-                                <th className="py-3 px-3 font-medium text-center w-24">Status</th>
-                                <th className="py-3 px-3 font-medium text-center">Deadline</th>
+                                <th className="py-3 px-2 font-medium w-[12%]">
+                                    Item Name
+                                </th>
+                                <th className="py-3 px-2 font-medium w-[16%]">
+                                    Description
+                                </th>
+                                <th className="py-3 px-2 font-medium text-center w-[5%]">
+                                    Qty
+                                </th>
+                                <th className="py-3 px-2 font-medium text-center w-[5%]">
+                                    Days
+                                </th>
+                                <th className="py-3 px-2 font-medium w-[11%]">
+                                    Vendor / Inventory
+                                </th>
+                                <th className="py-3 px-2 font-medium text-center whitespace-nowrap w-[9%]">
+                                    Pickup/Start
+                                </th>
+                                <th className="py-3 px-2 font-medium text-center whitespace-nowrap w-[9%]">
+                                    Drop/End
+                                </th>
+                                <th className="py-3 px-2 font-medium w-[12%]">
+                                    Assigned To
+                                </th>
+                                <th className="py-3 px-3 font-medium text-center w-24">
+                                    Status
+                                </th>
+                                <th className="py-3 px-2 font-medium text-center w-[9%]">
+                                    Deadline
+                                </th>
                             </tr>
                         </thead>
                         <tbody>

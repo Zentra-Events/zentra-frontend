@@ -342,10 +342,10 @@ export const ChecklistItemEditor = forwardRef<ChecklistItemEditorHandle, Checkli
                                             const value = date ? toLocalISOString(date) : "";
                                             onUpdate("returnDate", value);
                                         }}
-                                        placeholderText="Return/End date & time"
+                                        placeholderText="Drop/End date & time"
                                         dateFormat="MMM d, yyyy h:mm aa"
                                         smallLabel
-                                        label="Return/End"
+                                        label="Drop/End"
                                     />
                                     <DatePickerField
                                         value={parseLocalDateTime(item.deadlineDate)}
