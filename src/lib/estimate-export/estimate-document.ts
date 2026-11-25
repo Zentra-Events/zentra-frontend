@@ -10,6 +10,8 @@ export const ESTIMATE_EXPORT_COLORS = {
     totalBg: "FFB4C6E7",
     subTotalBg: "FFFFF2CC",
     summaryBg: "FFE6E0F8",
+    zeroRateBg: "FFFFF2CC",
+    zeroRateText: "FF78350F",
     border: "FF000000",
 } as const;
 
@@ -17,7 +19,9 @@ export const ESTIMATE_EXPORT_COLUMNS = [
     "Sl. No",
     "Elements",
     "Details",
-    "nos",
+    "Unit",
+    "Qty",
+    "Days",
     "Rate",
     "Amount",
 ] as const;
@@ -98,6 +102,10 @@ function buildEstimateNumber(estimate: EstimateDto): string {
 }
 
 function getItemAmount(item: EstimateItem): number {
+    if (isLumpSumItem(item)) {
+        const rate = item.pricePerItem ?? item.rate ?? item.unitCost ?? 0;
+        return Number((rate * (item.days || 1)).toFixed(2));
+    }
     if (typeof item.finalAmt === "number" && !Number.isNaN(item.finalAmt)) return item.finalAmt;
     if (typeof item.total === "number" && !Number.isNaN(item.total)) return item.total;
     const rate = item.pricePerItem ?? item.rate ?? 0;
@@ -107,6 +115,14 @@ function getItemAmount(item: EstimateItem): number {
 
 function getItemRate(item: EstimateItem): number {
     return item.pricePerItem ?? item.rate ?? item.unitCost ?? 0;
+}
+
+export function getItemUnit(item: EstimateItem): string {
+    return (item.unit || "nos").trim();
+}
+
+export function isLumpSumItem(item: EstimateItem): boolean {
+    return getItemUnit(item).toLowerCase() === "lump sum";
 }
 
 function getItemName(item: EstimateItem): string {

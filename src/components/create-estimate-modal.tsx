@@ -23,7 +23,7 @@ import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { calculateEstimateSummary } from "@/lib/utils/estimate";
 import { parseApiDate } from "@/lib/utils/date";
-import { groupLinesByCategory } from "@/lib/utils/artifact-utils";
+import { groupLinesByCategory, QUANTITY_UNITS } from "@/lib/utils/artifact-utils";
 import { groupEventItemsByCategory } from "@/lib/utils/estimate-comparison";
 import AdditionalEstimateConfirmationModal from "@/components/ui/additional-estimate-confirmation-modal";
 import { Select, FormikFieldSelect } from "./ui";
@@ -79,6 +79,14 @@ const GST_LABEL_BY_TYPE: Record<string, string> = {
     CGST_SGST: "CGST + SGST",
     IGST: "IGST",
 };
+
+const ESTIMATE_UNIT_OPTIONS = [...QUANTITY_UNITS, "Lump Sum"] as const;
+
+const estimateLineQuantity = (line: Pick<EstimateLine, "sqft" | "unit">) =>
+    line.unit?.trim() === "Lump Sum" ? 1 : line.sqft;
+
+const normalizeEstimateLine = (line: EstimateLine): EstimateLine =>
+    line.unit?.trim() === "Lump Sum" ? { ...line, sqft: 1 } : line;
 
 const composeSelectionKey = (clientName: string, title: string) => {
     return `${clientName.trim().toLowerCase()}::${title.trim().toLowerCase()}`;
@@ -608,8 +616,9 @@ export default function CreateEstimateModal({
                 billingAddress: restored.billingAddress,
             });
         }
-        setLines(restored.lines);
-        recoveredLinesRef.current = restored.lines;
+        const recoveredLines = restored.lines.map(normalizeEstimateLine);
+        setLines(recoveredLines);
+        recoveredLinesRef.current = recoveredLines;
         setPrefillData({
             ...restored,
             // initialForm reads discounts while the draft schema stores
@@ -730,6 +739,10 @@ export default function CreateEstimateModal({
                               const rawQuantity = toNumber(content.quantity) ?? rawSqft ?? 1;
                               const rawUnitCost = toNumber(content.unitCost) ?? rawRate ?? 0;
                               const rawTotal = toNumber(content.total);
+                              const unit =
+                                  typeof content.unit === "string" && content.unit.trim()
+                                      ? content.unit
+                                      : "nos";
 
                               const safeDays =
                                   typeof rawDays === "number" &&
@@ -748,11 +761,13 @@ export default function CreateEstimateModal({
                                       ? rawRate
                                       : 0;
                               const safeQuantity =
-                                  typeof rawQuantity === "number" &&
-                                  Number.isFinite(rawQuantity) &&
-                                  rawQuantity > 0
-                                      ? rawQuantity
-                                      : safeSqft;
+                                  unit.trim() === "Lump Sum"
+                                      ? 1
+                                      : typeof rawQuantity === "number" &&
+                                          Number.isFinite(rawQuantity) &&
+                                          rawQuantity > 0
+                                        ? rawQuantity
+                                        : safeSqft;
                               const safeUnitCost =
                                   typeof rawUnitCost === "number" && Number.isFinite(rawUnitCost)
                                       ? rawUnitCost
@@ -760,15 +775,16 @@ export default function CreateEstimateModal({
                               const safeTotal =
                                   typeof rawTotal === "number" && Number.isFinite(rawTotal)
                                       ? Number(rawTotal.toFixed(2))
-                                      : Number((safeDays * safeSqft * safeRate).toFixed(2));
+                                      : Number((safeDays * safeQuantity * safeRate).toFixed(2));
 
                               return {
                                   id: String(identifier),
                                   description,
                                   specification,
                                   days: safeDays,
-                                  sqft: safeSqft,
+                                  sqft: unit.trim() === "Lump Sum" ? 1 : safeSqft,
                                   rate: safeRate,
+                                  unit,
                                   quantity: safeQuantity,
                                   unitCost: safeUnitCost,
                                   total: safeTotal,
@@ -947,7 +963,7 @@ export default function CreateEstimateModal({
         if (recoveredLinesRef.current) {
             const recovered = recoveredLinesRef.current;
             recoveredLinesRef.current = null;
-            setLines(recovered);
+            setLines(recovered.map(normalizeEstimateLine));
             return;
         }
         const fromItems: EstimateLine[] = [];
@@ -1025,7 +1041,7 @@ export default function CreateEstimateModal({
                         item: itemName,
                         specification,
                         days,
-                        sqft,
+                        sqft: unit.trim() === "Lump Sum" ? 1 : sqft,
                         rate,
                         vendor,
                         unit,
@@ -1101,7 +1117,10 @@ export default function CreateEstimateModal({
             pocContactNumber: prefillData?.pocContactNumber ?? "",
             enquiryPoC: prefillData?.enquiryPoC ?? "",
             serviceCharge: prefillData?.serviceCharge ?? 0,
-            gst: prefillData?.gst ?? 0,
+            gst:
+                (prefillData?.gstType ?? "NONE") === "NONE"
+                    ? undefined
+                    : prefillData?.gst,
             gstType: prefillData?.gstType ?? "NONE",
             discountAmount: prefillData?.discounts ?? 0,
             billingAddress: prefillData?.billingAddress ?? "",
@@ -1110,7 +1129,11 @@ export default function CreateEstimateModal({
     );
 
     const totalAmount = useMemo(
-        () => lines.reduce((sum, line) => sum + line.days * line.sqft * line.rate, 0),
+        () =>
+            lines.reduce(
+                (sum, line) => sum + line.days * estimateLineQuantity(line) * line.rate,
+                0,
+            ),
         [lines],
     );
 
@@ -1284,10 +1307,10 @@ export default function CreateEstimateModal({
             const persistableLines = lines.filter(isPersistableArtifactLine);
             const invalidItems = persistableLines.filter(line => {
                 const hasEmptyItem = !line.item || line.item.trim() === "";
-                const hasEmptyRate = !Number.isFinite(line.rate) || Number(line.rate) === 0;
+                const hasInvalidRate = !Number.isFinite(line.rate);
                 const hasInvalidQty = !Number.isFinite(line.sqft) || Number(line.sqft) < 1;
                 const hasInvalidDays = !Number.isFinite(line.days) || Number(line.days) < 1;
-                return hasEmptyItem || hasEmptyRate || hasInvalidQty || hasInvalidDays;
+                return hasEmptyItem || hasInvalidRate || hasInvalidQty || hasInvalidDays;
             });
 
             if (invalidItems.length > 0) {
@@ -1295,7 +1318,7 @@ export default function CreateEstimateModal({
                 setInvalidLineIds(invalidIds);
                 toast.error("Invalid artifacts", {
                     description:
-                        "Each artifact requires an item name, days, quantity, and rate greater than 0.",
+                        "Each artifact requires an item name, days, quantity, and a valid rate.",
                 });
                 setIsSaving(false);
                 return;
@@ -1310,8 +1333,8 @@ export default function CreateEstimateModal({
                     const currentSerial = (serialCounters.get(category) ?? 0) + 1;
                     serialCounters.set(category, currentSerial);
 
-                    const count =
-                        Number.isFinite(line.sqft) && line.sqft > 0 ? Number(line.sqft) : 1;
+                    const quantity = estimateLineQuantity(line);
+                    const count = Number.isFinite(quantity) && quantity > 0 ? Number(quantity) : 1;
                     const pricePerItem = Number.isFinite(line.rate) ? line.rate : 0;
                     const days = Number.isFinite(line.days) && line.days > 0 ? line.days : 1;
 
@@ -1344,16 +1367,17 @@ export default function CreateEstimateModal({
                 (acc, line) => {
                     const category = line.category || "General";
                     const bucket = acc[category] ?? [];
-                    const total = Number((line.days * line.sqft * line.rate).toFixed(2));
+                    const quantity = estimateLineQuantity(line);
+                    const total = Number((line.days * quantity * line.rate).toFixed(2));
 
                     bucket.push({
                         id: line.id,
                         description: line.item,
                         specification: line.specification,
                         days: line.days,
-                        sqft: line.sqft,
+                        sqft: quantity,
                         rate: line.rate,
-                        quantity: line.sqft,
+                        quantity,
                         unitCost: line.rate,
                         total,
                         vendor: line.vendor || "",
@@ -1376,6 +1400,7 @@ export default function CreateEstimateModal({
             const submitSummary = calculateEstimateSummary({
                 totalAmount,
                 gst: Number(values.gst) || 0,
+                gstType: values.gstType,
                 serviceCharge: Number(values.serviceCharge) || 0,
                 discounts: discountAmount,
             });
@@ -1406,7 +1431,7 @@ export default function CreateEstimateModal({
                 enquiryId: activeEnquiryId,
                 eventName: values.title ?? "",
                 eventID: prefillData.eventID ?? "",
-                gst: values.gst,
+                gst: values.gstType === "NONE" ? 0 : (values.gst ?? 0),
                 gstType: values.gstType,
                 serviceCharge: values.serviceCharge,
                 discounts: values.discountAmount,
@@ -1759,11 +1784,12 @@ export default function CreateEstimateModal({
                         const summary = calculateEstimateSummary({
                             totalAmount,
                             gst: Number(values.gst) || 0,
+                            gstType: values.gstType,
                             serviceCharge: Number(values.serviceCharge) || 0,
                             discounts: Number(values.discountAmount) || 0,
                         });
                         const gstLabel = GST_LABEL_BY_TYPE[values.gstType] ?? "GST";
-                        const gstDisabled = values.gstType === "NONE" || !prefillData?.enquiryId;
+                        const gstDisabled = values.gstType === "NONE";
 
                         return (
                             <Form>
@@ -2003,11 +2029,13 @@ export default function CreateEstimateModal({
                                                     label="Tax Type"
                                                     options={GST_TYPE_OPTIONS}
                                                     isDisabled={!prefillData?.enquiryId}
-                                                    onChange={() => {
-                                                        // Reset the GST percentage to its default
-                                                        // whenever the tax type changes so the
-                                                        // cost summary breakups recalculate cleanly.
-                                                        setFieldValue("gst", 0);
+                                                    onChange={e => {
+                                                        const gstType = e.target.value;
+                                                        if (gstType === "CGST_SGST") {
+                                                            setFieldValue("gst", 18);
+                                                        } else if (gstType === "NONE" || gstType === "IGST") {
+                                                            setFieldValue("gst", undefined);
+                                                        }
                                                     }}
                                                 />
                                                 <FormikFieldInput
@@ -2056,10 +2084,15 @@ export default function CreateEstimateModal({
                                             <ArtifactsSection
                                                 lines={lines as unknown as ArtifactLine[]}
                                                 onLinesChange={newLines =>
-                                                    setLines(newLines as EstimateLine[])
+                                                    setLines(
+                                                        (newLines as EstimateLine[]).map(
+                                                            normalizeEstimateLine,
+                                                        ),
+                                                    )
                                                 }
                                                 disabled={!prefillData?.enquiryId}
                                                 errorLineIds={invalidLineIds}
+                                                unitOptions={ESTIMATE_UNIT_OPTIONS}
                                             />
                                         </div>
                                     </section>

@@ -139,6 +139,9 @@ export function CategoryItemRow<L extends CategoryEditorLine>({
                     </td>
                 );
             case "number": {
+                if (column.field === "sqft" && item.unit?.trim() === "Lump Sum") {
+                    return <td key={column.field} className={cellClass} />;
+                }
                 const editor = (
                     <InlineNumber
                         value={itemNumberValue(item, column.field)}
@@ -172,9 +175,13 @@ export function CategoryItemRow<L extends CategoryEditorLine>({
                     <td key={column.field} className={cellClass}>
                         <InlineUnitSelect
                             value={itemUnitValue(item, column.field)}
-                            onSave={val =>
-                                onChange({ [column.field]: val } as CategoryEditorItemPatch<L>)
-                            }
+                            onSave={val => {
+                                const patch =
+                                    val === "Lump Sum"
+                                        ? { [column.field]: val, sqft: 1 }
+                                        : { [column.field]: val };
+                                onChange(patch as CategoryEditorItemPatch<L>);
+                            }}
                             disabled={disabled}
                             options={unitOptions}
                             data-field={column.field}

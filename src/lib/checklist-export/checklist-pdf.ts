@@ -10,6 +10,7 @@ import {
     getChecklistReturnDisplay,
     getChecklistAssigneeDisplay,
     getChecklistItemName,
+    getChecklistItemUnit,
     type ChecklistExportContext,
     type ChecklistExportRow,
 } from "./checklist-document";
@@ -28,7 +29,7 @@ const PDF_COLORS = {
 
 const TABLE_HEAD = [CHECKLIST_EXPORT_COLUMNS as unknown as string[]];
 const CHECKLIST_COLUMN_WIDTH_RATIOS = [
-    0.04, 0.12, 0.16, 0.05, 0.05, 0.11, 0.09, 0.09, 0.12, 0.08, 0.09,
+    0.04, 0.11, 0.12, 0.07, 0.05, 0.05, 0.10, 0.09, 0.09, 0.11, 0.08, 0.09,
 ];
 
 function formatDateTimeLines(value: string): string {
@@ -75,7 +76,8 @@ function rowsToSegment(rows: ChecklistExportRow[]): TableSegment {
                 String(exportRow.serial),
                 getChecklistItemName(item),
                 getChecklistItemDetails(item),
-                String(item.quantity ?? 0),
+                getChecklistItemUnit(item),
+                getChecklistItemUnit(item).toLowerCase() === "lump sum" ? "" : String(item.quantity ?? 0),
                 item.days != null ? String(item.days) : "-",
                 exportRow.vendorDisplay,
                 formatDateTimeLines(getChecklistPickupDisplay(item)),
@@ -127,12 +129,13 @@ function buildTableColumnStyles(contentWidth: number) {
         2: { halign: "left" as const, cellWidth: widths[2] },
         3: { halign: "center" as const, cellWidth: widths[3] },
         4: { halign: "center" as const, cellWidth: widths[4] },
-        5: { halign: "left" as const, cellWidth: widths[5] },
-        6: { halign: "center" as const, cellWidth: widths[6] },
+        5: { halign: "center" as const, cellWidth: widths[5] },
+        6: { halign: "left" as const, cellWidth: widths[6] },
         7: { halign: "center" as const, cellWidth: widths[7] },
-        8: { halign: "left" as const, cellWidth: widths[8] },
-        9: { halign: "center" as const, cellWidth: widths[9] },
+        8: { halign: "center" as const, cellWidth: widths[8] },
+        9: { halign: "left" as const, cellWidth: widths[9] },
         10: { halign: "center" as const, cellWidth: widths[10] },
+        11: { halign: "center" as const, cellWidth: widths[11] },
     };
 }
 

@@ -11,6 +11,7 @@ import {
     getChecklistReturnDisplay,
     getChecklistAssigneeDisplay,
     getChecklistItemName,
+    getChecklistItemUnit,
     type ChecklistDocumentModel,
     type ChecklistExportContext,
 } from "./checklist-document";
@@ -29,7 +30,7 @@ const META_VALUE_START_COL = 3;
 const META_VALUE_END_COL = 5;
 const META_LOGO_START_COL = 7;
 // Proportions mirror the export preview table (scaled to Excel column units).
-const CHECKLIST_COLUMN_WIDTHS = [8, 24, 32, 10, 10, 22, 18, 18, 24, 16, 18];
+const CHECKLIST_COLUMN_WIDTHS = [8, 22, 24, 12, 9, 9, 21, 17, 17, 22, 14, 15];
 
 function formatDateTimeLines(value: string): string {
     return value.replace(", ", "\n");
@@ -256,22 +257,24 @@ async function populateWorksheet(
                 row.getCell(2).alignment = { horizontal: "left", vertical: "top", wrapText: true };
                 row.getCell(3).value = getChecklistItemDetails(item);
                 row.getCell(3).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(4).value = item.quantity ?? 0;
+                row.getCell(4).value = getChecklistItemUnit(item);
                 row.getCell(4).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(5).value = item.days ?? "-";
+                row.getCell(5).value = getChecklistItemUnit(item).toLowerCase() === "lump sum" ? "" : item.quantity ?? 0;
                 row.getCell(5).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(6).value = exportRow.vendorDisplay;
-                row.getCell(6).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(7).value = formatDateTimeLines(getChecklistPickupDisplay(item));
-                row.getCell(7).alignment = { horizontal: "center", vertical: "top", wrapText: true };
-                row.getCell(8).value = formatDateTimeLines(getChecklistReturnDisplay(item));
+                row.getCell(6).value = item.days ?? "-";
+                row.getCell(6).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(7).value = exportRow.vendorDisplay;
+                row.getCell(7).alignment = { horizontal: "left", vertical: "top", wrapText: true };
+                row.getCell(8).value = formatDateTimeLines(getChecklistPickupDisplay(item));
                 row.getCell(8).alignment = { horizontal: "center", vertical: "top", wrapText: true };
-                row.getCell(9).value = getChecklistAssigneeDisplay(item);
-                row.getCell(9).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(10).value = getChecklistStatusLabel(item.status);
-                row.getCell(10).alignment = { horizontal: "center", vertical: "top" };
-                row.getCell(11).value = formatDateTimeLines(getChecklistDeadlineDisplay(item));
-                row.getCell(11).alignment = { horizontal: "center", vertical: "top", wrapText: true };
+                row.getCell(9).value = formatDateTimeLines(getChecklistReturnDisplay(item));
+                row.getCell(9).alignment = { horizontal: "center", vertical: "top", wrapText: true };
+                row.getCell(10).value = getChecklistAssigneeDisplay(item);
+                row.getCell(10).alignment = { horizontal: "left", vertical: "top", wrapText: true };
+                row.getCell(11).value = getChecklistStatusLabel(item.status);
+                row.getCell(11).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(12).value = formatDateTimeLines(getChecklistDeadlineDisplay(item));
+                row.getCell(12).alignment = { horizontal: "center", vertical: "top", wrapText: true };
                 for (let column = 1; column <= CHECKLIST_COLUMN_COUNT; column++) {
                     const cell = row.getCell(column);
                     cell.font = { ...(cell.font ?? {}), size: 11 };
@@ -280,11 +283,11 @@ async function populateWorksheet(
                 const wrappedLines = Math.max(
                     estimateWrappedLines(String(row.getCell(2).value ?? ""), CHECKLIST_COLUMN_WIDTHS[1]),
                     estimateWrappedLines(String(row.getCell(3).value ?? ""), CHECKLIST_COLUMN_WIDTHS[2]),
-                    estimateWrappedLines(String(row.getCell(6).value ?? ""), CHECKLIST_COLUMN_WIDTHS[5]),
                     estimateWrappedLines(String(row.getCell(7).value ?? ""), CHECKLIST_COLUMN_WIDTHS[6]),
                     estimateWrappedLines(String(row.getCell(8).value ?? ""), CHECKLIST_COLUMN_WIDTHS[7]),
                     estimateWrappedLines(String(row.getCell(9).value ?? ""), CHECKLIST_COLUMN_WIDTHS[8]),
-                    estimateWrappedLines(String(row.getCell(11).value ?? ""), CHECKLIST_COLUMN_WIDTHS[10]),
+                    estimateWrappedLines(String(row.getCell(10).value ?? ""), CHECKLIST_COLUMN_WIDTHS[9]),
+                    estimateWrappedLines(String(row.getCell(12).value ?? ""), CHECKLIST_COLUMN_WIDTHS[11]),
                 );
                 row.height = Math.max(28, wrappedLines * 14 + 8);
                 rowIndex += 1;

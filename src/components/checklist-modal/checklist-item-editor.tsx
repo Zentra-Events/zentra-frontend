@@ -18,6 +18,8 @@ import type { ChecklistItemValidation } from "./validation";
 import type { Vendor } from "@/types/vendor";
 import type { Inventory } from "@/types/inventory";
 
+const CHECKLIST_UNIT_OPTIONS = [...QUANTITY_UNITS, "Lump Sum"] as const;
+
 // react-select is client-only; lazy-load it (SSG/SSR safe), mirroring
 // `vendor-dropdown.tsx` and the legacy checklist modal.
 const CreatableSelectField = dynamic(
@@ -232,37 +234,8 @@ export const ChecklistItemEditor = forwardRef<ChecklistItemEditorHandle, Checkli
                                         )}
                                     </div>
 
-                                    {/* Row 2a — Days, Quantity, Unit */}
+                                    {/* Row 2a — Unit, Quantity, Days */}
                                     <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr] col-span-3">
-                                        <div>
-                                            <Input
-                                                label="Days"
-                                                type="number"
-                                                smallLabel
-                                                value={(item.days ?? 0) || ""}
-                                                onChange={e =>
-                                                    onUpdate("days", parseInt(e.target.value) || 0)
-                                                }
-                                                error={errors.days}
-                                                id="checklist-item-days"
-                                            />
-                                        </div>
-                                        <div>
-                                            <Input
-                                                label="Quantity"
-                                                smallLabel
-                                                type="number"
-                                                value={item.quantity || ""}
-                                                onChange={e =>
-                                                    onUpdate(
-                                                        "quantity",
-                                                        parseInt(e.target.value) || 0,
-                                                    )
-                                                }
-                                                error={errors.quantity}
-                                                id="checklist-item-quantity"
-                                            />
-                                        </div>
                                         <div>
                                             <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                                 Unit
@@ -276,8 +249,13 @@ export const ChecklistItemEditor = forwardRef<ChecklistItemEditorHandle, Checkli
                                             >
                                                 <InlineUnitSelect
                                                     value={item.unit || "nos"}
-                                                    onSave={val => onUpdate("unit", val)}
-                                                    options={QUANTITY_UNITS}
+                                                    onSave={val => {
+                                                        onUpdate("unit", val);
+                                                        if (val.trim().toLowerCase() === "lump sum") {
+                                                            onUpdate("quantity", 1);
+                                                        }
+                                                    }}
+                                                    options={CHECKLIST_UNIT_OPTIONS}
                                                     data-field="unit"
                                                     className="w-full"
                                                 />
@@ -288,10 +266,37 @@ export const ChecklistItemEditor = forwardRef<ChecklistItemEditorHandle, Checkli
                                                 </p>
                                             )}
                                         </div>
+                                        <div>
+                                            <Input
+                                                label="Quantity"
+                                                smallLabel
+                                                type="number"
+                                                value={item.unit?.trim().toLowerCase() === "lump sum" ? "" : item.quantity || ""}
+                                                disabled={item.unit?.trim().toLowerCase() === "lump sum"}
+                                                onChange={e =>
+                                                    onUpdate("quantity", parseInt(e.target.value) || 0)
+                                                }
+                                                error={errors.quantity}
+                                                id="checklist-item-quantity"
+                                            />
+                                        </div>
+                                        <div>
+                                            <Input
+                                                label="Days"
+                                                type="number"
+                                                smallLabel
+                                                value={(item.days ?? 0) || ""}
+                                                onChange={e =>
+                                                    onUpdate("days", parseInt(e.target.value) || 0)
+                                                }
+                                                error={errors.days}
+                                                id="checklist-item-days"
+                                            />
+                                        </div>
                                     </div>
 
                                     {/* Row 2b — Assigned Vendor, Assigned To */}
-                                        <div className="grid gap-3 mt-2 md:grid-cols-[1fr_1fr] col-span-3">
+                                    <div className="grid gap-3 mt-2 md:grid-cols-[1fr_1fr] col-span-3">
                                         <div>
                                             <VendorDropdown
                                                 value={item.vendor}
@@ -315,6 +320,7 @@ export const ChecklistItemEditor = forwardRef<ChecklistItemEditorHandle, Checkli
                                                 id="checklist-item-assigned-to"
                                                 error={errors.poc}
                                                 enableApiSearch
+                                                isCreatable={false}
                                             />
                                         </div>
                                     </div>

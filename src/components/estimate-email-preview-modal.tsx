@@ -9,7 +9,7 @@ import { buildEstimateDocumentModel } from "@/lib/estimate-export/estimate-docum
 import { apiRequest } from "@/lib/api/api-client";
 import { API_ENDPOINTS } from "@/lib/api/endpoint";
 import { toast } from "sonner";
-import { EstimatePreviewModal } from "./estimate-preview-modal";
+import { EstimatePreviewModal, DEFAULT_TERMS } from "./estimate-preview-modal";
 
 interface EstimateEmailPreviewModalProps {
     estimate: EstimateDto;
@@ -75,6 +75,7 @@ export function EstimateEmailPreviewModal({
     const [body, setBody] = useState(
         `Dear Client,\n\nPlease find attached the estimate for your event.\n\nEstimate Number: ${model.filenameBase}\n\nIf you have any questions or require further clarification, please feel free to reach out.\n\nBest regards,\nZentra Team`,
     );
+    const [terms] = useState(DEFAULT_TERMS);
     const [sending, setSending] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
 
@@ -143,7 +144,7 @@ export function EstimateEmailPreviewModal({
         try {
             let pdfBlob: Blob;
             try {
-                pdfBlob = await generateEstimatePdfBlob(estimate, eventName);
+                pdfBlob = await generateEstimatePdfBlob(estimate, eventName, terms);
             } catch (pdfError) {
                 console.error("Failed to generate estimate PDF:", pdfError);
                 throw new Error("Failed to generate the estimate PDF. Please try again.");

@@ -154,6 +154,7 @@ export type EventResponse = {
         description?: string;
         count?: number;
         pricePerItem?: number;
+        unit?: string;
         vendor?: string;
         days?: number;
         serialNumber?: number;

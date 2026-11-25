@@ -18,6 +18,7 @@ export interface ArtifactsSectionProps {
     disabled?: boolean;
     errorLineIds?: Set<string>;
     errorRowRef?: RefCallback<HTMLTableRowElement> | Ref<HTMLTableRowElement>;
+    unitOptions?: readonly string[];
 }
 
 export function ArtifactsSection({
@@ -25,6 +26,7 @@ export function ArtifactsSection({
     onLinesChange,
     disabled = false,
     errorLineIds,
+    unitOptions = QUANTITY_UNITS,
 }: ArtifactsSectionProps) {
     return (
         <CategoryEditor
@@ -32,7 +34,7 @@ export function ArtifactsSection({
             onLinesChange={onLinesChange}
             disabled={disabled}
             errorLineIds={errorLineIds}
-            unitOptions={QUANTITY_UNITS}
+            unitOptions={unitOptions}
         />
     );
 }

@@ -47,13 +47,10 @@ export const DEFAULT_ITEM_COLUMNS: readonly CategoryEditorItemColumnSpec[] = [
         className: "text-xs",
     },
     {
-        field: "days",
-        label: "Days",
-        type: "number",
+        field: "unit",
+        label: "Unit",
+        type: "unit",
         align: "center",
-        min: 1,
-        contributesToTotal: true,
-        className: "mx-auto text-xs",
     },
     {
         field: "sqft",
@@ -65,10 +62,13 @@ export const DEFAULT_ITEM_COLUMNS: readonly CategoryEditorItemColumnSpec[] = [
         className: "mx-auto text-xs",
     },
     {
-        field: "unit",
-        label: "Unit",
-        type: "unit",
+        field: "days",
+        label: "Days",
+        type: "number",
         align: "center",
+        min: 1,
+        contributesToTotal: true,
+        className: "mx-auto text-xs",
     },
     {
         field: "rate",

@@ -11,6 +11,7 @@ export const CHECKLIST_EXPORT_COLUMNS = [
     "No",
     "Item Name",
     "Description",
+    "Unit",
     "Qty",
     "Days",
     "Vendor/Inventory",

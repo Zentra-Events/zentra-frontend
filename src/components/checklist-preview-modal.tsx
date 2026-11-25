@@ -96,7 +96,10 @@ export function ChecklistPreviewModal({
                         descText
                     )}
                 </td>
-                <td className="py-3 px-3 align-middle text-center">{item.quantity || 0}</td>
+                <td className="py-3 px-3 align-middle text-center">{item.unit || "nos"}</td>
+                <td className="py-3 px-3 align-middle text-center">
+                    {item.unit?.trim().toLowerCase() === "lump sum" ? "" : item.quantity || 0}
+                </td>
                 <td className="py-3 px-3 align-middle text-center">{item.days ?? "-"}</td>
                 <td className="py-3 px-3 align-middle break-words [overflow-wrap:anywhere]">
                     {(() => {
@@ -220,11 +223,14 @@ export function ChecklistPreviewModal({
                                 <th className="py-3 px-2 font-medium text-xs text-muted-foreground w-[4%]">
                                     No
                                 </th>
-                                <th className="py-3 px-2 font-medium w-[12%]">
+                                <th className="py-3 px-2 font-medium w-[11%]">
                                     Item Name
                                 </th>
-                                <th className="py-3 px-2 font-medium w-[16%]">
+                                <th className="py-3 px-2 font-medium w-[12%]">
                                     Description
+                                </th>
+                                <th className="py-3 px-2 font-medium text-center w-[7%]">
+                                    Unit
                                 </th>
                                 <th className="py-3 px-2 font-medium text-center w-[5%]">
                                     Qty
@@ -232,7 +238,7 @@ export function ChecklistPreviewModal({
                                 <th className="py-3 px-2 font-medium text-center w-[5%]">
                                     Days
                                 </th>
-                                <th className="py-3 px-2 font-medium w-[11%]">
+                                <th className="py-3 px-2 font-medium w-[10%]">
                                     Vendor / Inventory
                                 </th>
                                 <th className="py-3 px-2 font-medium text-center whitespace-nowrap w-[9%]">
@@ -241,7 +247,7 @@ export function ChecklistPreviewModal({
                                 <th className="py-3 px-2 font-medium text-center whitespace-nowrap w-[9%]">
                                     Drop/End
                                 </th>
-                                <th className="py-3 px-2 font-medium w-[12%]">
+                                <th className="py-3 px-2 font-medium w-[11%]">
                                     Assigned To
                                 </th>
                                 <th className="py-3 px-3 font-medium text-center w-24">
@@ -265,7 +271,7 @@ export function ChecklistPreviewModal({
                                             className="bg-muted/50 border-b border-border"
                                         >
                                             <td
-                                                colSpan={11}
+                                                colSpan={12}
                                                 className="px-4 py-2 text-sm font-semibold text-foreground uppercase tracking-wide"
                                             >
                                                 {group.name}
@@ -296,7 +302,7 @@ export function ChecklistPreviewModal({
                                                 className="bg-muted/30 border-b border-border"
                                             >
                                                 <td
-                                                    colSpan={11}
+                                                    colSpan={12}
                                                     className="px-6 py-1.5 text-xs font-medium text-muted-foreground"
                                                 >
                                                     {sub.name}

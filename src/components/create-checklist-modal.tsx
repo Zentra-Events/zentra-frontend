@@ -696,41 +696,8 @@ export default function CreateChecklistModal({ open, onClose, onSave }: Props) {
                                                         ),
                                                     },
                                                     {
-                                                        key: "days",
-                                                        header: "Days",
-                                                        align: "center",
-                                                        cellClassName: "w-20",
-                                                        render: (_, index) => (
-                                                            <Input
-                                                                type="number"
-                                                                min="1"
-                                                                value={lines[index]?.days || 1}
-                                                                onChange={e => {
-                                                                    const v = Number(
-                                                                        e.target.value,
-                                                                    );
-                                                                    setLines(prev =>
-                                                                        prev.map((l, idx) =>
-                                                                            idx === index
-                                                                                ? {
-                                                                                      ...l,
-                                                                                      days: Number.isNaN(
-                                                                                          v,
-                                                                                      )
-                                                                                          ? 1
-                                                                                          : v,
-                                                                                  }
-                                                                                : l,
-                                                                        ),
-                                                                    );
-                                                                }}
-                                                                className="text-center"
-                                                            />
-                                                        ),
-                                                    },
-                                                    {
                                                         key: "sqft",
-                                                        header: "SqFt",
+                                                        header: "Qty",
                                                         align: "center",
                                                         cellClassName: "w-20",
                                                         render: (_, index) => (
@@ -752,6 +719,33 @@ export default function CreateChecklistModal({ open, onClose, onSave }: Props) {
                                                                                       )
                                                                                           ? 1
                                                                                           : v,
+                                                                                  }
+                                                                                : l,
+                                                                        ),
+                                                                    );
+                                                                }}
+                                                                className="text-center"
+                                                            />
+                                                        ),
+                                                    },
+                                                    {
+                                                        key: "days",
+                                                        header: "Days",
+                                                        align: "center",
+                                                        cellClassName: "w-20",
+                                                        render: (_, index) => (
+                                                            <Input
+                                                                type="number"
+                                                                min="1"
+                                                                value={lines[index]?.days || 1}
+                                                                onChange={e => {
+                                                                    const v = Number(e.target.value);
+                                                                    setLines(prev =>
+                                                                        prev.map((l, idx) =>
+                                                                            idx === index
+                                                                                ? {
+                                                                                      ...l,
+                                                                                      days: Number.isNaN(v) ? 1 : v,
                                                                                   }
                                                                                 : l,
                                                                         ),

@@ -43,6 +43,7 @@ export function FormikFieldInput({
                                 id={inputId}
                                 {...inputProps}
                                 {...field}
+                                value={field.value ?? ""}
                                 onChange={e => {
                                     field.onChange(e);
                                     onChange?.(e);

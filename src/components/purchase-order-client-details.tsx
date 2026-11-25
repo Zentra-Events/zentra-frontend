@@ -203,7 +203,7 @@ export function PurchaseOrderClientDetails({
 
             {/* Client Details – Client Name & Billing Address */}
             {isEditing ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                     <Input
                         id="client-name"
                         label="Client Name"
@@ -219,23 +219,6 @@ export function PurchaseOrderClientDetails({
                         value={clientFinancials.billingAddress}
                         onChange={e => onFinancialChange("billingAddress", e.target.value)}
                         placeholder="Enter billing address"
-                        smallLabel
-                    />
-                    <Select
-                        id="client-gst-type"
-                        label="Tax Type"
-                        options={GST_TYPE_OPTIONS}
-                        value={
-                            GST_TYPE_OPTIONS.find(
-                                o => o.value === (clientFinancials.gstType ?? "NONE"),
-                            ) ?? GST_TYPE_OPTIONS[0]
-                        }
-                        onChange={option =>
-                            onFinancialChange(
-                                "gstType",
-                                option && option.value ? option.value : "NONE",
-                            )
-                        }
                         smallLabel
                     />
                 </div>
@@ -257,14 +240,21 @@ export function PurchaseOrderClientDetails({
                             Client Billing Details
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                            <Input
-                                id="client-service-charge"
-                                label="Service Charge (%)"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={toNumericInputValue(clientFinancials.serviceCharge)}
-                                onChange={e => onFinancialChange("serviceCharge", e.target.value)}
+                            <Select
+                                id="client-gst-type"
+                                label="GST Type"
+                                options={GST_TYPE_OPTIONS}
+                                value={
+                                    GST_TYPE_OPTIONS.find(
+                                        o => o.value === (clientFinancials.gstType ?? "NONE"),
+                                    ) ?? GST_TYPE_OPTIONS[0]
+                                }
+                                onChange={option =>
+                                    onFinancialChange(
+                                        "gstType",
+                                        option && option.value ? option.value : "NONE",
+                                    )
+                                }
                                 smallLabel
                             />
                             <Input
@@ -278,6 +268,16 @@ export function PurchaseOrderClientDetails({
                                 onChange={e => onFinancialChange("gst", e.target.value)}
                                 smallLabel
                                 disabled={clientFinancials.gstType === "NONE"}
+                            />
+                            <Input
+                                id="client-service-charge"
+                                label="Service Charge (%)"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={toNumericInputValue(clientFinancials.serviceCharge)}
+                                onChange={e => onFinancialChange("serviceCharge", e.target.value)}
+                                smallLabel
                             />
                             <Input
                                 id="client-discount"

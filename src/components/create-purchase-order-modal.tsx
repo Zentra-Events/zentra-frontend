@@ -82,8 +82,8 @@ interface CategorySection {
     subCategories: SubCategoryGroup[];
 }
 
-function calculateLineItemAmount(item: Pick<LineItem, "qty" | "rate" | "days">): number {
-    return item.qty * item.rate * item.days;
+function calculateLineItemAmount(item: Pick<LineItem, "qty" | "rate" | "days" | "unit">): number {
+    return (item.unit?.trim().toLowerCase() === "lump sum" ? 1 : item.qty) * item.rate * item.days;
 }
 
 interface Financials {
@@ -94,6 +94,8 @@ interface Financials {
     advance: number;
     note: string;
 }
+
+const PURCHASE_ORDER_UNIT_OPTIONS = [...QUANTITY_UNITS, "Lump Sum"] as const;
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                             */
@@ -130,7 +132,7 @@ function toLineItem(item: RawEventItem, index: number, srcIndex: number): LineIt
         id: `item-${index}`,
         itemName: item.item ?? "",
         description: item.description ?? "",
-        qty: item.quantity ?? 1,
+        qty: item.unit?.trim().toLowerCase() === "lump sum" ? 1 : (item.quantity ?? 1),
         rate: item.pricePerItem ?? 0,
         days: item.days ?? 1,
         unit: item.unit && item.unit.trim() ? item.unit.trim() : "nos",
@@ -260,7 +262,7 @@ function buildFinancialsFromSummary(
         return {
             subtotal: vs.totalAmount ?? computedSubtotal,
             gstType: isSelf ? "NONE" : (vs.gstType ?? "NONE"),
-            gstPercent: isSelf ? 0 : (vs.gst ?? 0),
+            gstPercent: isSelf || (vs.gstType ?? "NONE") === "NONE" ? 0 : (vs.gst ?? 0),
             tdsPercent: isSelf ? 0 : (vs.tds ?? 0),
             advance: isSelf ? 0 : (vs.advanceAmount ?? 0),
             note: vs.changeSummary ?? "",
@@ -282,7 +284,7 @@ function buildFinancialsFromSummary(
  * explains the editable fields without permanently consuming modal space.
  */
 const EDITABLE_FIELDS_HINT =
-    "Click any Qty, Unit or Rate value to edit it. Changes update the event checklist when you save the purchase order.";
+    "Click any Unit, Qty or Rate value to edit it. Changes update the event checklist when you save the purchase order.";
 
 /**
  * Table column header that flags the column's cells as inline-editable.
@@ -422,7 +424,10 @@ export function CreatePurchaseOrderModal({
 
     useEffect(() => {
         if (isOpen) {
-            const init = itemList.map(it => ({ ...it }));
+            const init = itemList.map(it => ({
+                ...it,
+                ...(it.unit?.trim().toLowerCase() === "lump sum" ? { quantity: 1 } : {}),
+            }));
             setEditableItems(init);
             setOriginalItems(init.map(it => ({ ...it })));
         }
@@ -616,13 +621,19 @@ export function CreatePurchaseOrderModal({
     const updateClientFinancial = (field: keyof ClientFinancials, value: string) => {
         setClientFinancials(prev => {
             if (field === "gstType") {
-                // When switching to "No GST", zero out the GST percent so it
-                // is not applied in calculations or saved to the backend.
-                return {
-                    ...prev,
-                    gstType: value,
-                    gst: value === "NONE" ? 0 : prev.gst,
-                };
+                // Clear GST on type changes to No GST or IGST. CGST + SGST
+                // starts at 18%, and remains editable after this update.
+                if (value === "NONE" || value === "IGST") {
+                    return { ...prev, gstType: value, gst: 0 };
+                }
+                if (value === "CGST_SGST") {
+                    return {
+                        ...prev,
+                        gstType: value,
+                        gst: 18,
+                    };
+                }
+                return { ...prev, gstType: value };
             }
             if (field === "billingAddress" || field === "amountRecievedFromClientDate") {
                 return { ...prev, [field]: value };
@@ -705,13 +716,19 @@ export function CreatePurchaseOrderModal({
             if (!current) return prev;
             let updated: Financials;
             if (field === "gstType") {
-                // When switching to "No GST", zero out the GST percent so it
-                // is not applied in calculations or saved to the backend.
-                updated = {
-                    ...current,
-                    gstType: value,
-                    gstPercent: value === "NONE" ? 0 : current.gstPercent,
-                };
+                // Clear GST on type changes to No GST or IGST. CGST + SGST
+                // starts at 18%, and remains editable after this update.
+                if (value === "NONE" || value === "IGST") {
+                    updated = { ...current, gstType: value, gstPercent: 0 };
+                } else if (value === "CGST_SGST") {
+                    updated = {
+                        ...current,
+                        gstType: value,
+                        gstPercent: 18,
+                    };
+                } else {
+                    updated = { ...current, gstType: value };
+                }
             } else if (field === "note") {
                 updated = { ...current, [field]: value };
             } else if (value === "") {
@@ -740,7 +757,12 @@ export function CreatePurchaseOrderModal({
                 } else if (field === "rate") {
                     next[srcIndex] = { ...current, pricePerItem: value as number };
                 } else if (field === "unit") {
-                    next[srcIndex] = { ...current, unit: value as string };
+                    const unit = value as string;
+                    next[srcIndex] = {
+                        ...current,
+                        unit,
+                        ...(unit.trim().toLowerCase() === "lump sum" ? { quantity: 1 } : {}),
+                    };
                 }
                 return next;
             });
@@ -778,29 +800,6 @@ export function CreatePurchaseOrderModal({
             },
         },
         {
-            key: "days",
-            header: "Days",
-            align: "center",
-            cellClassName: "w-16",
-            render: (item: LineItem) => <span className="text-sm">{item.days}</span>,
-        },
-        {
-            key: "qty",
-            header: <EditableHeader label="Qty" />,
-            align: "center",
-            cellClassName: "w-16",
-            render: (item: LineItem) => (
-                <InlineNumber
-                    value={item.qty}
-                    min={1}
-                    step={1}
-                    className="text-xs"
-                    data-field="qty"
-                    onSave={val => updateLineItem(item.srcIndex, "qty", val)}
-                />
-            ),
-        },
-        {
             key: "unit",
             header: <EditableHeader label="Unit" />,
             align: "center",
@@ -808,12 +807,37 @@ export function CreatePurchaseOrderModal({
             render: (item: LineItem) => (
                 <InlineUnitSelect
                     value={item.unit || "nos"}
-                    options={QUANTITY_UNITS}
+                    options={PURCHASE_ORDER_UNIT_OPTIONS}
                     className="text-xs text-center"
                     data-field="unit"
                     onSave={val => updateLineItem(item.srcIndex, "unit", val || "nos")}
                 />
             ),
+        },
+        {
+            key: "qty",
+            header: <EditableHeader label="Qty" />,
+            align: "center",
+            cellClassName: "w-16",
+            render: (item: LineItem) => (
+                item.unit?.trim().toLowerCase() === "lump sum" ? null : (
+                    <InlineNumber
+                        value={item.qty}
+                        min={1}
+                        step={1}
+                        className="text-xs"
+                        data-field="qty"
+                        onSave={val => updateLineItem(item.srcIndex, "qty", val)}
+                    />
+                )
+            ),
+        },
+        {
+            key: "days",
+            header: "Days",
+            align: "center",
+            cellClassName: "w-16",
+            render: (item: LineItem) => <span className="text-sm">{item.days}</span>,
         },
 
         {
@@ -1109,7 +1133,7 @@ export function CreatePurchaseOrderModal({
                         ) : (
                             <>
                                 {/* Category Sections – line items with inline-editable
-                                    Qty / Unit / Rate and read-only Days / Total. The ⓘ beside
+                                    Unit / Qty / Rate and read-only Days / Total. The ⓘ beside
                                     each section header explains what can be edited. */}
                                 {categories.map(section => (
                                     <section key={section.id} className="space-y-4">

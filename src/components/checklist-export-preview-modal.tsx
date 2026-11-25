@@ -72,14 +72,15 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                 className={`border border-black px-1.5 py-2 text-center font-bold ${
                                     {
                                         No: "w-[4%]",
-                                        "Item Name": "w-[12%]",
-                                        Description: "w-[16%]",
+                                        "Item Name": "w-[11%]",
+                                        Description: "w-[12%]",
+                                        Unit: "w-[7%]",
                                         Qty: "w-[5%]",
                                         Days: "w-[5%]",
-                                        "Vendor/Inventory": "w-[11%]",
+                                        "Vendor/Inventory": "w-[10%]",
                                         "Pickup/Start": "w-[9%]",
                                         "Drop/End": "w-[9%]",
-                                        "Assigned To": "w-[12%]",
+                                        "Assigned To": "w-[11%]",
                                         Status: "w-[8%]",
                                         Deadline: "w-[9%]",
                                     }[header]
@@ -137,7 +138,10 @@ function ChecklistPreviewTable({ rows }: { rows: ChecklistExportRow[] }) {
                                             {getChecklistItemDetails(item)}
                                         </td>
                                         <td className="border border-black px-1.5 py-2 text-center align-top">
-                                            {item.quantity ?? 0}
+                                            {item.unit || "nos"}
+                                        </td>
+                                        <td className="border border-black px-1.5 py-2 text-center align-top">
+                                            {item.unit?.trim().toLowerCase() === "lump sum" ? "" : item.quantity ?? 0}
                                         </td>
                                         <td className="border border-black px-1.5 py-2 text-center align-top">
                                             {item.days ?? "-"}

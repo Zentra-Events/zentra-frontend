@@ -101,7 +101,7 @@ interface RawItemWithCategory {
  * per-item financials.
  *
  * CALCULATION (per raw item):
- *   amount      = (quantity ?? 1) × (pricePerItem ?? 0) × (days ?? 1)
+ *   amount      = (Lump Sum ? 1 : quantity ?? 1) × (pricePerItem ?? 0) × (days ?? 1)
  *   lookupKey   = "SELF" for inventory items (inventoryID set),
  *                 item.vendor otherwise (vendorless items use "",
  *                 which matches no vendor financials → GST/TDS = 0)
@@ -166,7 +166,8 @@ export function groupItemsByCategory(
     // Gather all items with their vendor details and per-item GST/TDS/netTotal
     // For each item, look up its vendor in vendorSummary to get GST% and TDS%
     const allItems: PurchaseItemRow[] = rawItems.map((item, idx) => {
-        const amount = (item.quantity ?? 1) * (item.pricePerItem ?? 0) * (item.days ?? 1);
+        const quantity = item.unit?.trim().toLowerCase() === "lump sum" ? 1 : (item.quantity ?? 1);
+        const amount = quantity * (item.pricePerItem ?? 0) * (item.days ?? 1);
         // Only explicitly-marked inventory items use the "SELF" vendor financials.
         // Plain vendorless items have no vendor financials, so GST/TDS = 0.
         const isInventoryItem = Boolean(item.inventoryID);
@@ -182,7 +183,7 @@ export function groupItemsByCategory(
             serial: idx + 1,
             itemName: item.item || "—",
             description: item.description || "",
-            qty: item.quantity ?? 1,
+            qty: quantity,
             unit: item.unit && item.unit.trim() ? item.unit.trim() : "nos",
             rate: item.pricePerItem ?? 0,
             days: item.days ?? 1,
@@ -408,9 +409,9 @@ function PaymentTermsSection() {
  *   Sl. No      — running serial across direct items + sub-category groups
  *   Item        — item.itemName || "—"
  *   Description — item.description || "—"
- *   Days        — item.days
- *   Qty         — item.qty
  *   Unit        — item.unit || "nos"
+ *   Qty         — item.qty
+ *   Days        — item.days
  *   Rate        — formatExportCurrency(item.rate)  (pricePerItem ?? 0)
  *   Total Amount— formatExportCurrency(item.amount)   (= qty × rate × days)
  *   GST Amount  — "+{gstAmount}" or "—"   (green when > 0)
@@ -432,11 +433,13 @@ function CategoryItemsTable({ categories }: { categories: CategoryPurchaseRow[] 
             <td className="border border-black px-2 py-1.5 align-top whitespace-pre-wrap text-muted-foreground">
                 {item.description || "—"}
             </td>
-            <td className="border border-black px-2 py-1.5 text-right align-top">{item.days}</td>
-            <td className="border border-black px-2 py-1.5 text-right align-top">{item.qty}</td>
             <td className="border border-black px-2 py-1.5 text-center align-top">
                 {item.unit || "nos"}
             </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top">
+                {item.unit?.trim().toLowerCase() === "lump sum" ? "" : item.qty}
+            </td>
+            <td className="border border-black px-2 py-1.5 text-right align-top">{item.days}</td>
             <td className="border border-black px-2 py-1.5 text-right align-top">
                 {formatExportCurrency(item.rate)}
             </td>
@@ -478,13 +481,13 @@ function CategoryItemsTable({ categories }: { categories: CategoryPurchaseRow[] 
                         Description
                     </th>
                     <th className="border border-black px-2 py-2 text-center font-bold w-12">
-                        Days
-                    </th>
-                    <th className="border border-black px-2 py-2 text-center font-bold w-12">
-                        Qty
+                        Unit
                     </th>
                     <th className="border border-black px-2 py-2 text-center font-bold w-16">
-                        Unit
+                        Qty
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center font-bold w-12">
+                        Days
                     </th>
                     <th className="border border-black px-2 py-2 text-center font-bold w-20">
                         Rate
@@ -758,7 +761,8 @@ export function buildUnassignedVendorRow(items: EventResponse["items"]): VendorF
     if (unassigned.length === 0) return null;
 
     const totalAmount = unassigned.reduce(
-        (sum, item) => sum + (item.quantity ?? 1) * (item.pricePerItem ?? 0) * (item.days ?? 1),
+        (sum, item) =>
+            sum + (item.unit?.trim().toLowerCase() === "lump sum" ? 1 : (item.quantity ?? 1)) * (item.pricePerItem ?? 0) * (item.days ?? 1),
         0,
     );
 

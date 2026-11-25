@@ -73,6 +73,7 @@ export function ExecutionChecklistModal({
 
         const items: ChecklistItem[] = rawItems.map(it => ({
             ...it,
+            quantity: it.unit?.trim().toLowerCase() === "lump sum" ? 1 : it.quantity,
             _uid: it._uid || generateId(),
         }));
         setChecklistData(items);

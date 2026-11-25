@@ -12,13 +12,15 @@ import {
     getItemDetails,
     getItemName,
     getItemRate,
+    getItemUnit,
+    isLumpSumItem,
     type EstimateExportRow,
 } from "@/lib/estimate-export/estimate-document";
 import { downloadEstimateExcel } from "@/lib/estimate-export/estimate-excel";
 import { downloadEstimatePdf } from "@/lib/estimate-export/estimate-pdf";
 import { toast } from "sonner";
 
-const DEFAULT_TERMS =
+export const DEFAULT_TERMS =
     "1. Payment Terms: 50% advance payment is required to confirm the booking. The remaining 50% to be paid on or before the day of the event.\n\n2. Cancellation Policy: In case of cancellation, the advance payment shall be non-refundable. Any changes to the event date must be communicated at least 7 days prior.\n\n3. Liability: The event management team shall not be held liable for any delays or damages caused by force majeure events including but not limited to natural disasters, government restrictions, or acts of God.\n\n4. Additional Charges: Any additional items or services requested after the finalization of the estimate will be charged extra at prevailing rates.\n\n5. Setup & Breakdown: The client shall provide adequate space and access for setup and breakdown of equipment. Any damages to venue property caused by our equipment shall be assessed and charged separately.";
 
 interface EstimatePreviewModalProps {
@@ -35,6 +37,7 @@ const previewStyles = {
     totalBg: "bg-[#b4c6e7]",
     subTotalBg: "bg-[#fff2cc]",
     summaryBg: "bg-[#e6e0f8]",
+    zeroRate: "bg-amber-100 font-semibold text-amber-900",
 } as const;
 
 function summaryRowClass(variant: Extract<EstimateExportRow, { type: "summary" }>["variant"]) {
@@ -59,7 +62,16 @@ function EstimatePreviewTable({ rows }: { rows: EstimateExportRow[] }) {
         <table className="w-full border-collapse text-xs border border-black">
             <thead>
                 <tr className={previewStyles.headerBg}>
-                    {["Sl. No", "Elements", "Details", "nos", "Rate", "Amount"].map(header => (
+                    {[
+                        "Sl. No",
+                        "Elements",
+                        "Details",
+                        "Unit",
+                        "Qty",
+                        "Days",
+                        "Rate",
+                        "Amount",
+                    ].map(header => (
                         <th
                             key={header}
                             className="border border-black px-2 py-2 text-center font-bold"
@@ -80,7 +92,7 @@ function EstimatePreviewTable({ rows }: { rows: EstimateExportRow[] }) {
                                         {row.serial}
                                     </td>
                                     <td
-                                        colSpan={5}
+                                        colSpan={7}
                                         className="border border-black px-2 py-2 font-bold"
                                     >
                                         {row.name}
@@ -93,7 +105,7 @@ function EstimatePreviewTable({ rows }: { rows: EstimateExportRow[] }) {
                                 <tr key={`sub-${index}`} className={previewStyles.subCategoryBg}>
                                     <td className="border border-black px-2 py-2" />
                                     <td
-                                        colSpan={5}
+                                        colSpan={7}
                                         className="border border-black px-2 py-2 font-semibold"
                                     >
                                         Sub Category: {row.name}
@@ -114,10 +126,20 @@ function EstimatePreviewTable({ rows }: { rows: EstimateExportRow[] }) {
                                     <td className="border border-black px-2 py-2 align-top whitespace-pre-wrap">
                                         {getItemDetails(item)}
                                     </td>
-                                    <td className="border border-black px-2 py-2 text-right align-top">
-                                        {item.quantity ?? 0}
+                                    <td className="border border-black px-2 py-2 text-center align-top">
+                                        {getItemUnit(item)}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-right align-top">
+                                        {isLumpSumItem(item) ? "" : item.quantity ?? 0}
+                                    </td>
+                                    <td className="border border-black px-2 py-2 text-right align-top">
+                                        {item.days ?? 1}
+                                    </td>
+                                    <td
+                                        className={`border border-black px-2 py-2 text-right align-top ${
+                                            getItemRate(item) === 0 ? previewStyles.zeroRate : ""
+                                        }`}
+                                    >
                                         {formatExportCurrency(getItemRate(item))}
                                     </td>
                                     <td className="border border-black px-2 py-2 text-right align-top">
@@ -132,7 +154,7 @@ function EstimatePreviewTable({ rows }: { rows: EstimateExportRow[] }) {
                                 <tr key={`sum-${index}`} className={summaryRowClass(row.variant)}>
                                     <td className="border border-black px-2 py-2" />
                                     <td
-                                        colSpan={4}
+                                        colSpan={6}
                                         className={`border border-black px-2 py-2 ${bold ? "font-bold" : ""}`}
                                     >
                                         {row.label}

@@ -7,6 +7,8 @@ import {
     getItemDetails,
     getItemName,
     getItemRate,
+    getItemUnit,
+    isLumpSumItem,
     type EstimateExportRow,
 } from "./estimate-document";
 import type { EstimateDto } from "@/types/estimate";
@@ -24,15 +26,19 @@ const PDF_COLORS = {
     totalBg: [180, 198, 231] as [number, number, number],
     subTotalBg: [255, 242, 204] as [number, number, number],
     summaryBg: [230, 224, 248] as [number, number, number],
+    zeroRateBg: [254, 243, 199] as [number, number, number],
+    zeroRateText: [120, 53, 15] as [number, number, number],
 };
 
-const TABLE_HEAD = [["Sl. No", "Elements", "Details", "nos", "Rate", "Amount"]];
+const TABLE_HEAD = [["Sl. No", "Elements", "Details", "Unit", "Qty", "Days", "Rate", "Amount"]];
 
 /** Fixed column widths (mm); Details fills remainder to match header/content width */
 const PDF_TABLE_FIXED_COLUMNS_MM = {
     serial: 14,
     elements: 34,
     quantity: 12,
+    days: 10,
+    unit: 16,
     rate: 20,
     amount: 24,
 } as const;
@@ -45,15 +51,17 @@ function buildTableColumnStyles(contentWidth: number) {
         0: { halign: "center" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.serial },
         1: { halign: "left" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.elements },
         2: { halign: "left" as const, cellWidth: detailsWidth },
-        3: { halign: "right" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.quantity },
-        4: { halign: "right" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.rate },
-        5: { halign: "right" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.amount },
+        3: { halign: "center" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.unit },
+        4: { halign: "right" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.quantity },
+        5: { halign: "center" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.days },
+        6: { halign: "right" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.rate },
+        7: { halign: "right" as const, cellWidth: PDF_TABLE_FIXED_COLUMNS_MM.amount },
     };
 }
 
 type TableSegment = {
     body: RowInput[];
-    rowMeta: { fillColor?: [number, number, number]; fontStyle?: "bold" }[];
+    rowMeta: { fillColor?: [number, number, number]; fontStyle?: "bold"; zeroRate?: boolean }[];
 };
 
 function rowsToSegment(rows: EstimateExportRow[]): TableSegment {
@@ -61,10 +69,10 @@ function rowsToSegment(rows: EstimateExportRow[]): TableSegment {
 
     rows.forEach(exportRow => {
         if (exportRow.type === "category") {
-            segment.body.push([exportRow.serial, exportRow.name, "", "", "", ""]);
+            segment.body.push([exportRow.serial, exportRow.name, "", "", "", "", "", ""]);
             segment.rowMeta.push({ fillColor: PDF_COLORS.categoryBg, fontStyle: "bold" });
         } else if (exportRow.type === "subCategory") {
-            segment.body.push(["", `Sub Category: ${exportRow.name}`, "", "", "", ""]);
+            segment.body.push(["", `Sub Category: ${exportRow.name}`, "", "", "", "", "", ""]);
             segment.rowMeta.push({ fillColor: PDF_COLORS.subCategoryBg, fontStyle: "bold" });
         } else if (exportRow.type === "item") {
             const item = exportRow.item;
@@ -72,11 +80,13 @@ function rowsToSegment(rows: EstimateExportRow[]): TableSegment {
                 String(exportRow.serial),
                 getItemName(item),
                 getItemDetails(item),
-                String(item.quantity ?? 0),
+                getItemUnit(item),
+                isLumpSumItem(item) ? "" : String(item.quantity ?? 0),
+                String(item.days ?? 1),
                 formatExportCurrency(getItemRate(item)),
                 formatExportCurrency(getItemAmount(item)),
             ]);
-            segment.rowMeta.push({});
+            segment.rowMeta.push({ zeroRate: getItemRate(item) === 0 });
         } else if (exportRow.type === "summary") {
             const fillColor =
                 exportRow.variant === "total" || exportRow.variant === "service"
@@ -91,6 +101,8 @@ function rowsToSegment(rows: EstimateExportRow[]): TableSegment {
             segment.body.push([
                 "",
                 exportRow.label,
+                "",
+                "",
                 "",
                 "",
                 "",
@@ -178,6 +190,12 @@ function renderTableSegment(
             if (data.section !== "body") return;
             const meta = segment.rowMeta[data.row.index];
             if (!meta) return;
+            if (meta.zeroRate && data.column.index === 6) {
+                data.cell.styles.fillColor = PDF_COLORS.zeroRateBg;
+                data.cell.styles.textColor = PDF_COLORS.zeroRateText;
+                data.cell.styles.fontStyle = "bold";
+                return;
+            }
             if (meta.fillColor) data.cell.styles.fillColor = meta.fillColor;
             if (meta.fontStyle) data.cell.styles.fontStyle = meta.fontStyle;
         },

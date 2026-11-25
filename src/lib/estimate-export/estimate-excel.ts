@@ -22,9 +22,9 @@ const THIN_BORDER: Partial<ExcelJS.Borders> = {
 
 /** Sl. No / meta label column — wider so labels do not overlap column B */
 const SERIAL_COLUMN_WIDTH = 16;
-/** Logo column (F) — merged F2:F6 in header */
+/** Logo column (H) — merged H2:H6 in header */
 const LOGO_COLUMN_WIDTH = 22;
-const META_VALUE_END_COL = 5;
+const META_VALUE_END_COL = 7;
 
 function clearCellBorders(cell: ExcelJS.Cell) {
     cell.border = {};
@@ -78,12 +78,12 @@ function fillHeaderRow(
 }
 
 function setupLogoArea(sheet: ExcelJS.Worksheet, startRow: number, endRow: number) {
-    sheet.mergeCells(startRow, 6, endRow, 6);
-    const logoCell = sheet.getCell(startRow, 6);
+    sheet.mergeCells(startRow, 8, endRow, 8);
+    const logoCell = sheet.getCell(startRow, 8);
     logoCell.alignment = { vertical: "middle", horizontal: "center", wrapText: false };
     clearCellBorders(logoCell);
     for (let r = startRow; r <= endRow; r++) {
-        clearBorderRange(sheet.getRow(r), 1, 6);
+        clearBorderRange(sheet.getRow(r), 1, 8);
         sheet.getRow(r).height = Math.max(sheet.getRow(r).height ?? 0, 22);
     }
 }
@@ -108,7 +108,7 @@ async function embedLogoInWorksheet(
     const imageWidthPx = Math.round(LOGO_COLUMN_WIDTH * 7);
 
     sheet.addImage(imageId, {
-        tl: { col: 5.15, row: startRow - 1 + 0.08 },
+        tl: { col: 7.15, row: startRow - 1 + 0.08 },
         ext: { width: imageWidthPx, height: imageHeightPx },
     });
 }
@@ -143,12 +143,12 @@ function writeSummaryRow(
     row.getCell(2).font = { bold: labelBold };
     row.getCell(2).alignment = { horizontal: "left", vertical: "middle" };
 
-    const amountCell = row.getCell(6);
+    const amountCell = row.getCell(8);
     amountCell.value = value;
     amountCell.numFmt = "#,##0.00";
     amountCell.alignment = { horizontal: "right", vertical: "middle" };
 
-    fillRow(row, 1, 6, bgArgb);
+    fillRow(row, 1, 8, bgArgb);
     row.getCell(2).font = { bold: labelBold };
     amountCell.numFmt = "#,##0.00";
 }
@@ -163,7 +163,7 @@ function writeTermsSection(
 
     // Title row
     const titleRow = sheet.getRow(startRow);
-    sheet.mergeCells(startRow, 1, startRow, 6);
+    sheet.mergeCells(startRow, 1, startRow, 8);
     titleRow.getCell(1).value = "Terms & Conditions";
     titleRow.getCell(1).font = { bold: true, size: 11 };
     titleRow.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
@@ -172,13 +172,13 @@ function writeTermsSection(
         pattern: "solid",
         fgColor: { argb: "FFF5F5F5" },
     };
-    clearBorderRange(titleRow, 1, 6);
+    clearBorderRange(titleRow, 1, 8);
     titleRow.height = 22;
 
     // Content rows
     const contentRow = startRow + 1;
     const contentEndRow = contentRow + termsLines.length;
-    sheet.mergeCells(contentRow, 1, contentEndRow, 6);
+    sheet.mergeCells(contentRow, 1, contentEndRow, 8);
 
     const contentCell = sheet.getCell(contentRow, 1);
     contentCell.value = terms;
@@ -189,13 +189,13 @@ function writeTermsSection(
         pattern: "solid",
         fgColor: { argb: "FFF5F5F5" },
     };
-    clearBorderRange(sheet.getRow(contentRow), 1, 6);
+    clearBorderRange(sheet.getRow(contentRow), 1, 8);
 
     // Apply fill to all merged content rows
     for (let r = contentRow; r <= contentEndRow; r++) {
         const row = sheet.getRow(r);
-        clearBorderRange(row, 1, 6);
-        for (let c = 1; c <= 6; c++) {
+        clearBorderRange(row, 1, 8);
+        for (let c = 1; c <= 8; c++) {
             row.getCell(c).fill = {
                 type: "pattern",
                 pattern: "solid",
@@ -220,6 +220,8 @@ async function populateWorksheet(
         { width: 42 },
         { width: 10 },
         { width: 14 },
+        { width: 10 },
+        { width: 12 },
         { width: LOGO_COLUMN_WIDTH },
     ];
 
@@ -230,12 +232,12 @@ async function populateWorksheet(
     for (const exportRow of model.rows) {
         switch (exportRow.type) {
             case "title": {
-                sheet.mergeCells(rowIndex, 1, rowIndex, 6);
+                sheet.mergeCells(rowIndex, 1, rowIndex, 8);
                 const cell = sheet.getCell(rowIndex, 1);
                 cell.value = exportRow.text;
                 cell.font = { bold: true, size: 14 };
                 cell.alignment = { horizontal: "center", vertical: "middle" };
-                fillHeaderRow(sheet.getRow(rowIndex), 1, 6, ESTIMATE_EXPORT_COLORS.titleBg, true);
+                fillHeaderRow(sheet.getRow(rowIndex), 1, 8, ESTIMATE_EXPORT_COLORS.titleBg, true);
                 sheet.getRow(rowIndex).height = 28;
                 rowIndex += 1;
                 break;
@@ -253,7 +255,7 @@ async function populateWorksheet(
                 row.getCell(2).value = exportRow.value;
                 row.getCell(2).alignment = { wrapText: true, vertical: "top", horizontal: "left" };
 
-                clearBorderRange(row, 1, 6);
+                clearBorderRange(row, 1, 8);
                 row.height = 18;
                 rowIndex += 1;
                 break;
@@ -265,11 +267,11 @@ async function populateWorksheet(
             }
             case "section-title": {
                 const row = sheet.getRow(rowIndex);
-                sheet.mergeCells(rowIndex, 1, rowIndex, 6);
+                sheet.mergeCells(rowIndex, 1, rowIndex, 8);
                 row.getCell(1).value = exportRow.text;
                 row.getCell(1).font = { bold: true, size: 11 };
                 row.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
-                clearBorderRange(row, 1, 6);
+                clearBorderRange(row, 1, 8);
                 row.height = 20;
                 rowIndex += 1;
                 break;
@@ -280,7 +282,7 @@ async function populateWorksheet(
                 row.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
                 row.getCell(2).value = exportRow.name;
                 row.getCell(2).font = { bold: true };
-                fillRow(row, 1, 6, ESTIMATE_EXPORT_COLORS.categoryBg, false);
+                fillRow(row, 1, 8, ESTIMATE_EXPORT_COLORS.categoryBg, false);
                 row.getCell(2).font = { bold: true };
                 row.height = 20;
                 rowIndex += 1;
@@ -290,7 +292,7 @@ async function populateWorksheet(
                 const row = sheet.getRow(rowIndex);
                 row.getCell(2).value = `Sub Category: ${exportRow.name}`;
                 row.getCell(2).font = { bold: true };
-                fillRow(row, 1, 6, ESTIMATE_EXPORT_COLORS.subCategoryBg, false);
+                fillRow(row, 1, 8, ESTIMATE_EXPORT_COLORS.subCategoryBg, false);
                 row.getCell(2).font = { bold: true };
                 row.height = 20;
                 rowIndex += 1;
@@ -305,15 +307,33 @@ async function populateWorksheet(
                 row.getCell(2).alignment = { horizontal: "left", vertical: "top", wrapText: true };
                 row.getCell(3).value = getItemDetails(item);
                 row.getCell(3).alignment = { horizontal: "left", vertical: "top", wrapText: true };
-                row.getCell(4).value = item.quantity ?? 0;
-                row.getCell(4).alignment = { horizontal: "right", vertical: "top" };
-                row.getCell(5).value = getItemRate(item);
-                row.getCell(5).numFmt = "#,##0.00";
+                row.getCell(4).value = item.unit || "nos";
+                row.getCell(4).alignment = { horizontal: "center", vertical: "top" };
+                if ((item.unit || "").trim().toLowerCase() !== "lump sum") {
+                    row.getCell(5).value = item.quantity ?? 0;
+                }
                 row.getCell(5).alignment = { horizontal: "right", vertical: "top" };
-                row.getCell(6).value = getItemAmount(item);
-                row.getCell(6).numFmt = "#,##0.00";
-                row.getCell(6).alignment = { horizontal: "right", vertical: "top" };
-                applyBorderRange(row, 1, 6);
+                row.getCell(6).value = item.days ?? 1;
+                row.getCell(6).alignment = { horizontal: "center", vertical: "top" };
+                row.getCell(7).value = getItemRate(item);
+                row.getCell(7).numFmt = "#,##0.00";
+                row.getCell(7).alignment = { horizontal: "right", vertical: "top" };
+                if (getItemRate(item) === 0) {
+                    row.getCell(7).fill = {
+                        type: "pattern",
+                        pattern: "solid",
+                        fgColor: { argb: ESTIMATE_EXPORT_COLORS.zeroRateBg },
+                    };
+                    row.getCell(7).font = {
+                        ...(row.getCell(7).font || {}),
+                        bold: true,
+                        color: { argb: ESTIMATE_EXPORT_COLORS.zeroRateText },
+                    };
+                }
+                row.getCell(8).value = getItemAmount(item);
+                row.getCell(8).numFmt = "#,##0.00";
+                row.getCell(8).alignment = { horizontal: "right", vertical: "top" };
+                applyBorderRange(row, 1, 8);
                 row.height = 28;
                 rowIndex += 1;
                 break;

@@ -537,7 +537,7 @@ export function EstimateVersionsView({
                                                                 Edit
                                                             </AccessButton>
                                                         )}
-                                                    {!isViewOnlyMode && (isReview || isFinal) && (
+                                                    {!isViewOnlyMode && isFinal && (
                                                         <AccessButton
                                                             size="sm"
                                                             variant="outline"
